@@ -144,13 +144,13 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * 带重试的视频生成
+ * 带重试的视频生成 - 使用指数退避策略
  */
 async function generateVideoWithRetry(
   client: VideoGenerationClient,
   contentItems: Content[],
   options: any,
-  maxRetries: number = 3
+  maxRetries: number = 5
 ): Promise<any> {
   let lastError: Error | null = null;
   
@@ -168,10 +168,12 @@ async function generateVideoWithRetry(
         response: error.response ? JSON.stringify(error.response).substring(0, 500) : 'N/A'
       });
       
-      // 如果是403错误，等待后重试
+      // 如果是403错误，使用指数退避等待后重试
       if (error.message?.includes('403') || error.statusCode === 403) {
-        const waitTime = (attempt + 1) * 15000; // 15秒、30秒、45秒
-        console.log(`收到403错误，等待 ${waitTime/1000} 秒后重试 (尝试 ${attempt + 1}/${maxRetries})...`);
+        // 指数退避：20秒、40秒、60秒、80秒、100秒
+        const waitTime = (attempt + 1) * 20000;
+        console.log(`收到403限流错误，等待 ${waitTime/1000} 秒后重试 (尝试 ${attempt + 1}/${maxRetries})...`);
+        console.log(`提示：API调用频率受限，建议减少并发请求或等待更长时间`);
         await delay(waitTime);
       } else {
         // 其他错误直接抛出
@@ -180,7 +182,7 @@ async function generateVideoWithRetry(
     }
   }
   
-  throw lastError || new Error('视频生成失败，API请求频率过高，请稍后再试');
+  throw lastError || new Error('视频生成失败，API请求频率过高，请稍后再试（建议等待2-3分钟后重试）');
 }
 
 /**
@@ -200,10 +202,10 @@ async function generateSequential(
   for (let i = 0; i < scenesWithImages.length; i++) {
     const scene = scenesWithImages[i];
     
-    // 如果不是第一个视频，添加延迟避免限流（5秒间隔）
+    // 如果不是第一个视频，添加延迟避免限流（10秒间隔）
     if (i > 0) {
-      console.log(`等待5秒后继续生成下一个视频...`);
-      await delay(5000);
+      console.log(`等待10秒后继续生成下一个视频...`);
+      await delay(10000);
     }
     
     try {
@@ -249,7 +251,7 @@ async function generateSequential(
         resolution: '720p',
         returnLastFrame: true,
         generateAudio: true,
-      }, 3); // 最多重试3次
+      }); // 使用默认重试次数（5次）
 
       if (response.videoUrl) {
         await updateSceneVideo(supabase, scene.id, response.videoUrl, response.lastFrameUrl, 'completed');
@@ -438,9 +440,8 @@ function buildVideoPrompt(scene: {
 }
 
 /**
- * 快速生成模式 - 并行生成视频片段
- * 优点：速度快
- * 缺点：不同分镜之间可能缺乏连贯性
+ * 快速生成模式 - 串行生成视频片段（避免限流）
+ * 注意：虽然名为快速模式，但为了避免API限流，实际上采用串行方式
  */
 async function generateFast(
   scenesWithImages: any[],
@@ -451,10 +452,15 @@ async function generateFast(
 ): Promise<any[]> {
   const results = [];
 
-  // 并行生成所有视频
-  const promises = scenesWithImages.map(async (scene, index) => {
-    // 添加延迟，避免同时发起太多请求
-    await delay(index * 2000);
+  // 串行生成所有视频（避免并发限流）
+  for (let i = 0; i < scenesWithImages.length; i++) {
+    const scene = scenesWithImages[i];
+    
+    // 添加延迟，避免API限流（每个视频之间间隔10秒）
+    if (i > 0) {
+      console.log(`[快速模式] 等待10秒后继续生成下一个视频...`);
+      await delay(10000);
+    }
 
     try {
       // 获取当前分镜图片的签名URL
@@ -488,18 +494,18 @@ async function generateFast(
         resolution: '720p',
         returnLastFrame: false,
         generateAudio: true,
-      }, 3);
+      }); // 使用默认重试次数（5次）
 
       if (response.videoUrl) {
         await updateSceneVideo(supabase, scene.id, response.videoUrl, null, 'completed');
 
-        return {
+        results.push({
           sceneId: scene.id,
           sceneNumber: scene.scene_number,
           videoUrl: response.videoUrl,
           duration: duration,
           status: 'completed',
-        };
+        });
       } else {
         throw new Error('视频生成失败：未返回视频URL');
       }
@@ -508,17 +514,14 @@ async function generateFast(
 
       await updateSceneVideo(supabase, scene.id, null, null, 'failed');
 
-      return {
+      results.push({
         sceneId: scene.id,
         sceneNumber: scene.scene_number,
         error: error instanceof Error ? error.message : '未知错误',
         status: 'failed',
-      };
+      });
     }
-  });
-
-  const responses = await Promise.all(promises);
-  results.push(...responses);
+  }
 
   return results;
 }
