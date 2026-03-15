@@ -8,12 +8,12 @@ import { getSupabaseClient } from '@/storage/database/supabase-client';
  * 
  * 将分镜图片转换为视频片段
  * - 连续生成模式：使用上一帧保持连贯性（推荐）
- * - 并行模式：独立生成，但会添加延迟避免限流
+ * - 快速模式：并行生成，速度快但可能不够连贯
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectId, sceneIds, parallel = false } = body;
+    const { projectId, sceneIds, parallel = false, mode = 'continuous' } = body;
 
     if (!projectId) {
       return NextResponse.json(
@@ -23,6 +23,16 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseClient();
+
+    // 获取用户配置
+    const { data: settings } = await supabase
+      .from('user_settings')
+      .select('*')
+      .limit(1)
+      .single();
+
+    // 使用用户配置的模型，如果没有配置则使用默认模型
+    const videoModel = settings?.video_model || 'doubao-seedance-1-5-pro-251215';
 
     // 获取项目信息
     const { data: project, error: projectError } = await supabase
@@ -92,8 +102,15 @@ export async function POST(request: NextRequest) {
 
     let results: any[] = [];
 
-    // 统一使用顺序生成模式，避免403限流错误
-    results = await generateSequential(scenesWithImages, client, storage, supabase);
+    // 根据模式选择生成方式
+    // fast: 快速模式 - 并行生成，速度快但可能不够连贯
+    // continuous: 连续模式 - 使用上一帧保持连贯性，推荐
+    
+    if (mode === 'fast') {
+      results = await generateFast(scenesWithImages, client, storage, supabase, videoModel);
+    } else {
+      results = await generateSequential(scenesWithImages, client, storage, supabase, videoModel);
+    }
 
     // 更新项目状态
     const completedCount = results.filter(r => r.status === 'completed').length;
@@ -174,7 +191,8 @@ async function generateSequential(
   scenesWithImages: any[],
   client: VideoGenerationClient,
   storage: S3Storage,
-  supabase: any
+  supabase: any,
+  videoModel: string = 'doubao-seedance-1-5-pro-251215'
 ): Promise<any[]> {
   const results = [];
   let previousLastFrame: string | null = null;
@@ -225,7 +243,7 @@ async function generateSequential(
 
       // 生成视频（带重试机制）
       const response = await generateVideoWithRetry(client, contentItems, {
-        model: 'doubao-seedance-1-5-pro-251215',
+        model: videoModel,
         duration: duration,
         ratio: '16:9',
         resolution: '720p',
@@ -417,4 +435,90 @@ function buildVideoPrompt(scene: {
   }
 
   return parts.join('，');
+}
+
+/**
+ * 快速生成模式 - 并行生成视频片段
+ * 优点：速度快
+ * 缺点：不同分镜之间可能缺乏连贯性
+ */
+async function generateFast(
+  scenesWithImages: any[],
+  client: VideoGenerationClient,
+  storage: S3Storage,
+  supabase: any,
+  videoModel: string = 'doubao-seedance-1-5-pro-251215'
+): Promise<any[]> {
+  const results = [];
+
+  // 并行生成所有视频
+  const promises = scenesWithImages.map(async (scene, index) => {
+    // 添加延迟，避免同时发起太多请求
+    await delay(index * 2000);
+
+    try {
+      // 获取当前分镜图片的签名URL
+      const imageUrl = await getImageUrl(scene, storage);
+      if (!imageUrl) {
+        throw new Error('无法获取分镜图片URL');
+      }
+
+      const contentItems: Content[] = [
+        {
+          type: 'image_url',
+          image_url: { url: imageUrl },
+          role: 'first_frame',
+        },
+        {
+          type: 'text',
+          text: buildVideoPrompt(scene),
+        },
+      ];
+
+      // 计算视频时长
+      const duration = calculateDuration(scene);
+
+      console.log(`[快速模式] 开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
+
+      // 生成视频（带重试）
+      const response = await generateVideoWithRetry(client, contentItems, {
+        model: videoModel,
+        duration: duration,
+        ratio: '16:9',
+        resolution: '720p',
+        returnLastFrame: false,
+        generateAudio: true,
+      }, 3);
+
+      if (response.videoUrl) {
+        await updateSceneVideo(supabase, scene.id, response.videoUrl, null, 'completed');
+
+        return {
+          sceneId: scene.id,
+          sceneNumber: scene.scene_number,
+          videoUrl: response.videoUrl,
+          duration: duration,
+          status: 'completed',
+        };
+      } else {
+        throw new Error('视频生成失败：未返回视频URL');
+      }
+    } catch (error) {
+      console.error(`[快速模式] 分镜 ${scene.scene_number} 视频生成失败:`, error);
+
+      await updateSceneVideo(supabase, scene.id, null, null, 'failed');
+
+      return {
+        sceneId: scene.id,
+        sceneNumber: scene.scene_number,
+        error: error instanceof Error ? error.message : '未知错误',
+        status: 'failed',
+      };
+    }
+  });
+
+  const responses = await Promise.all(promises);
+  results.push(...responses);
+
+  return results;
 }

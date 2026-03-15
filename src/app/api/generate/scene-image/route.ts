@@ -15,6 +15,14 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // 获取用户配置
+  const supabase = getSupabaseClient()
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('*')
+    .limit(1)
+    .single()
+
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
   const config = new Config()
   const imageClient = new ImageGenerationClient(config, customHeaders)
@@ -27,6 +35,9 @@ export async function POST(request: NextRequest) {
     bucketName: process.env.COZE_BUCKET_NAME,
     region: "cn-beijing",
   })
+
+  // 使用用户配置的模型，如果没有配置则使用默认模型
+  const modelName = settings?.image_model || undefined
 
   try {
     // 构建真人实拍风格分镜提示词
@@ -55,6 +66,7 @@ export async function POST(request: NextRequest) {
       prompt,
       size: "2K",
       watermark: false,
+      ...(modelName && { model: modelName }),
     })
 
     const helper = imageClient.getResponseHelper(response)

@@ -15,6 +15,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu"
 import { 
   ArrowLeft, 
   Users, 
@@ -88,6 +96,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [generating, setGenerating] = useState(false)
   const [generatingVideos, setGeneratingVideos] = useState(false)
   const [videoProgress, setVideoProgress] = useState(0)
+  const [videoMode, setVideoMode] = useState<'fast' | 'continuous'>('continuous')
 
   const fetchData = async () => {
     try {
@@ -148,8 +157,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
-  // 生成视频片段（顺序生成，保持连贯性）
-  const handleGenerateVideos = async () => {
+  // 生成视频片段（支持两种模式）
+  const handleGenerateVideos = async (mode: 'fast' | 'continuous' = 'continuous') => {
     if (completedScenes.length === 0) {
       toast.error("请先生成分镜图片")
       return
@@ -162,7 +171,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const res = await fetch("/api/generate/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id })
+        body: JSON.stringify({ projectId: id, mode })
       })
       
       // 检查响应类型
@@ -257,24 +266,53 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   </>
                 )}
               </Button>
-              <Button
-                onClick={handleGenerateVideos}
-                disabled={generatingVideos || completedScenes.length === 0}
-                variant="default"
-                title="顺序生成视频，保持场景连贯性"
-              >
-                {generatingVideos ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    合成中...
-                  </>
-                ) : (
-                  <>
-                    <Film className="w-4 h-4 mr-2" />
-                    合成视频
-                  </>
-                )}
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    disabled={generatingVideos || completedScenes.length === 0}
+                    variant="default"
+                  >
+                    {generatingVideos ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        合成中...
+                      </>
+                    ) : (
+                      <>
+                        <Film className="w-4 h-4 mr-2" />
+                        合成视频
+                        <ChevronRight className="w-4 h-4 ml-1 rotate-90" />
+                      </>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>选择合成模式</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => handleGenerateVideos('continuous')}
+                    className="cursor-pointer"
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">连续合成</span>
+                      <span className="text-xs text-muted-foreground">
+                        使用上一帧保持连贯性（推荐）
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleGenerateVideos('fast')}
+                    className="cursor-pointer"
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">快速合成</span>
+                      <span className="text-xs text-muted-foreground">
+                        并行生成，速度快但可能不够连贯
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -364,7 +402,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {pendingVideoScenes.length > 0 && !generatingVideos && (
                     <div className="flex gap-3 justify-center pt-2">
                       <Button
-                        onClick={handleGenerateVideos}
+                        onClick={() => handleGenerateVideos('continuous')}
                         disabled={generatingVideos}
                         variant="default"
                         className="gap-2"

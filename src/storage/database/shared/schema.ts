@@ -224,3 +224,61 @@ export type UpdateCharacter = z.infer<typeof updateCharacterSchema>
 export type Scene = typeof scenes.$inferSelect
 export type InsertScene = z.infer<typeof insertSceneSchema>
 export type UpdateScene = z.infer<typeof updateSceneSchema>
+
+// ============================================
+// 用户配置表
+// ============================================
+export const userSettings = pgTable(
+  "user_settings",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    
+    // LLM配置
+    llmProvider: varchar("llm_provider", { length: 50 }).default("doubao"),
+    llmModel: varchar("llm_model", { length: 100 }).default("doubao-seed-2-0-pro"),
+    llmApiKey: text("llm_api_key"),
+    llmBaseUrl: varchar("llm_base_url", { length: 255 }),
+    
+    // 图像生成配置
+    imageProvider: varchar("image_provider", { length: 50 }).default("doubao"),
+    imageModel: varchar("image_model", { length: 100 }).default("doubao-seed-3-0"),
+    imageApiKey: text("image_api_key"),
+    imageBaseUrl: varchar("image_base_url", { length: 255 }),
+    imageSize: varchar("image_size", { length: 20 }).default("2K"),
+    
+    // 视频生成配置
+    videoProvider: varchar("video_provider", { length: 50 }).default("doubao"),
+    videoModel: varchar("video_model", { length: 100 }).default("doubao-seedance-1-5-pro-251215"),
+    videoApiKey: text("video_api_key"),
+    videoBaseUrl: varchar("video_base_url", { length: 255 }),
+    videoResolution: varchar("video_resolution", { length: 20 }).default("720p"),
+    videoRatio: varchar("video_ratio", { length: 20 }).default("16:9"),
+    
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  }
+)
+
+// User Settings schemas
+export const updateUserSettingsSchema = createCoercedInsertSchema(userSettings)
+  .pick({
+    llmProvider: true,
+    llmModel: true,
+    llmApiKey: true,
+    llmBaseUrl: true,
+    imageProvider: true,
+    imageModel: true,
+    imageApiKey: true,
+    imageBaseUrl: true,
+    imageSize: true,
+    videoProvider: true,
+    videoModel: true,
+    videoApiKey: true,
+    videoBaseUrl: true,
+    videoResolution: true,
+    videoRatio: true,
+  })
+  .partial()
+
+export type UserSettings = typeof userSettings.$inferSelect
+export type UpdateUserSettings = z.infer<typeof updateUserSettingsSchema>

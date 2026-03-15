@@ -10,9 +10,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "内容不能为空" }, { status: 400 })
   }
 
+  // 获取用户配置
+  const supabase = getSupabaseClient()
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('*')
+    .limit(1)
+    .single()
+
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
   const config = new Config()
   const client = new LLMClient(config, customHeaders)
+  
+  // 使用用户配置的模型，如果没有配置则使用默认模型
+  const modelName = settings?.llm_model || 'doubao-seed-2-0-pro'
 
   const systemPrompt = `你是一个专业的短剧视频创作助手。你的任务是分析小说或脚本内容，提取出人物信息和视频分镜信息。
 
@@ -58,7 +69,7 @@ export async function POST(request: NextRequest) {
     ]
 
     const response = await client.invoke(messages, {
-      model: "doubao-seed-2-0-pro-260215",
+      model: modelName,
       temperature: 0.3,
     })
 

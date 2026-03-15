@@ -12,7 +12,9 @@ import {
   Image, 
   MoreVertical,
   Trash2,
-  Loader2
+  Loader2,
+  Settings,
+  User
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -32,6 +34,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
+import { SettingsDialog } from "@/components/settings-dialog"
+import { ProfileDialog } from "@/components/profile-dialog"
 
 interface Project {
   id: string
@@ -47,6 +51,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -183,85 +189,103 @@ export default function Home() {
             </div>
           </div>
           
-          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="amber-gradient text-white border-0 hover:opacity-90">
-                <Plus className="w-4 h-4 mr-2" />
-                新建项目
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>创建新项目</DialogTitle>
-                <DialogDescription>
-                  输入小说或脚本内容，AI将自动分析并提取人物和分镜
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 mt-4">
-                <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setProfileOpen(true)}
+              className="hover:bg-secondary"
+            >
+              <User className="w-5 h-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSettingsOpen(true)}
+              className="hover:bg-secondary"
+            >
+              <Settings className="w-5 h-5" />
+            </Button>
+            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="amber-gradient text-white border-0 hover:opacity-90">
+                  <Plus className="w-4 h-4 mr-2" />
+                  新建项目
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>创建新项目</DialogTitle>
+                  <DialogDescription>
+                    输入小说或脚本内容，AI将自动分析并提取人物和分镜
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">项目名称 *</Label>
+                      <Input
+                        id="name"
+                        placeholder="输入项目名称"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="type">内容类型</Label>
+                      <select
+                        id="type"
+                        className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                        value={formData.sourceType}
+                        onChange={(e) => setFormData({ ...formData, sourceType: e.target.value })}
+                      >
+                        <option value="novel">小说</option>
+                        <option value="script">脚本</option>
+                      </select>
+                    </div>
+                  </div>
                   <div className="space-y-2">
-                    <Label htmlFor="name">项目名称 *</Label>
+                    <Label htmlFor="description">项目描述</Label>
                     <Input
-                      id="name"
-                      placeholder="输入项目名称"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      id="description"
+                      placeholder="简要描述你的故事（可选）"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="type">内容类型</Label>
-                    <select
-                      id="type"
-                      className="w-full h-10 px-3 rounded-md border border-input bg-background"
-                      value={formData.sourceType}
-                      onChange={(e) => setFormData({ ...formData, sourceType: e.target.value })}
+                    <Label htmlFor="content">小说/脚本内容 *</Label>
+                    <Textarea
+                      id="content"
+                      placeholder="粘贴你的小说或脚本内容..."
+                      className="h-[200px] resize-none overflow-y-auto font-serif"
+                      value={formData.sourceContent}
+                      onChange={(e) => setFormData({ ...formData, sourceContent: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4">
+                    <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                      取消
+                    </Button>
+                    <Button 
+                      onClick={handleCreate} 
+                      disabled={creating}
+                      className="amber-gradient text-white border-0"
                     >
-                      <option value="novel">小说</option>
-                      <option value="script">脚本</option>
-                    </select>
+                      {creating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          创建中...
+                        </>
+                      ) : (
+                        "创建并分析"
+                      )}
+                    </Button>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">项目描述</Label>
-                  <Input
-                    id="description"
-                    placeholder="简要描述你的故事（可选）"
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="content">小说/脚本内容 *</Label>
-                  <Textarea
-                    id="content"
-                    placeholder="粘贴你的小说或脚本内容..."
-                    className="h-[200px] resize-none overflow-y-auto font-serif"
-                    value={formData.sourceContent}
-                    onChange={(e) => setFormData({ ...formData, sourceContent: e.target.value })}
-                  />
-                </div>
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                    取消
-                  </Button>
-                  <Button 
-                    onClick={handleCreate} 
-                    disabled={creating}
-                    className="amber-gradient text-white border-0"
-                  >
-                    {creating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        创建中...
-                      </>
-                    ) : (
-                      "创建并分析"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </header>
 
@@ -348,6 +372,12 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* 配置中心对话框 */}
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+
+      {/* 个人中心对话框 */}
+      <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
     </div>
   )
 }
