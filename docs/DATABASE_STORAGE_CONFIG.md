@@ -193,8 +193,10 @@ docker compose -f docker-compose.local.yml ps
 
 - **API 地址**：http://localhost:9000
 - **控制台地址**：http://localhost:9001
-- **默认用户名**：minioadmin
-- **默认密码**：minioadmin123
+- **用户名**：`minioadmin`
+- **密码**：`minioadmin123`
+
+> ⚠️ 注意：控制台端口是 **9001**，不是 9000！
 
 #### 3. 创建存储桶
 

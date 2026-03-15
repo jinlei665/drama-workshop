@@ -36,8 +36,12 @@ services:
       - "9000:9000"      # API 端口
       - "9001:9001"      # 控制台端口
     environment:
+      # 新版本 MinIO (2022+) 使用这两个变量
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
+      # 旧版本 MinIO 兼容（某些镜像可能需要）
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
     volumes:
       - minio-data:/data
     command: server /data --console-address ":9001"
