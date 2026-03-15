@@ -47,16 +47,18 @@ cp -r public $TEMP_DIR/app/
 cp -r .cozeproj $TEMP_DIR/app/ 2>/dev/null || true
 cp .coze $TEMP_DIR/app/ 2>/dev/null || true
 
-# 复制构建产物 (standalone + static)
+# 复制构建产物 (standalone + static + all manifests)
 echo ""
 echo "[4/5] 复制构建产物..."
 mkdir -p $TEMP_DIR/app/.next
 cp -r .next/static $TEMP_DIR/app/.next/
 cp -r .next/server $TEMP_DIR/app/.next/
 cp -r .next/standalone $TEMP_DIR/app/.next/
+cp -r .next/cache $TEMP_DIR/app/.next/ 2>/dev/null || true
+cp -r .next/node_modules $TEMP_DIR/app/.next/ 2>/dev/null || true
+# 复制所有 manifest 文件
+cp .next/*.json $TEMP_DIR/app/.next/
 cp .next/BUILD_ID $TEMP_DIR/app/.next/
-cp .next/package.json $TEMP_DIR/app/.next/
-cp .next/required-server-files.json $TEMP_DIR/app/.next/
 
 # 创建环境变量模板
 cat > $TEMP_DIR/app/.env.example << 'EOF'
