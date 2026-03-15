@@ -1,0 +1,88 @@
+# 短剧漫剧创作工坊 - Electron Builder 配置
+
+appId: com.dramastudio.app
+productName: 短剧漫剧创作工坊
+copyright: Copyright © 2024
+
+# 目录配置
+directories:
+  output: dist/electron
+  buildResources: electron/resources
+
+# 文件包含
+files:
+  - .next/standalone/**/*
+  - .next/static/**/*
+  - public/**/*
+  - electron/**/*
+  - package.json
+  - .coze
+
+# 额外资源
+extraResources:
+  - from: node_modules
+    to: node_modules
+    filter:
+      - "**/*"
+
+# Windows 配置
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  icon: electron/resources/icon.ico
+
+# NSIS 安装器配置
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  installerIcon: electron/resources/icon.ico
+  uninstallerIcon: electron/resources/icon.ico
+  installerHeaderIcon: electron/resources/icon.ico
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 短剧漫剧创作工坊
+
+# Linux 配置
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+    - target: tar.gz
+      arch:
+        - x64
+  icon: electron/resources/icons
+  category: AudioVideo
+  maintainer: drama-studio@example.com
+  desktop:
+    Name: 短剧漫剧创作工坊
+    Comment: AI powered drama video creation tool
+    Categories: AudioVideo;Video
+
+# macOS 配置 (可选)
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: electron/resources/icon.icns
+  category: public.app-category.video
+
+# 发布配置
+publish: null
+
+# 构建前执行
+beforeBuild: null
+
+# 构建后执行
+afterSign: null

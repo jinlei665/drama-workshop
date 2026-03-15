@@ -1,14 +1,24 @@
 {
-  "name": "projects",
-  "version": "0.1.0",
+  "name": "drama-studio",
+  "version": "1.0.0",
+  "description": "短剧漫剧创作工坊 - AI驱动的短剧视频生成工具",
   "private": true,
+  "author": "Drama Studio Team",
+  "license": "MIT",
   "scripts": {
     "build": "bash ./scripts/build.sh",
     "dev": "bash ./scripts/dev.sh",
-    "preinstall": "npx only-allow pnpm",
-    "lint": "eslint",
     "start": "bash ./scripts/start.sh",
-    "ts-check": "tsc -p tsconfig.json"
+    "lint": "eslint",
+    "ts-check": "tsc -p tsconfig.json",
+    "build:portable": "bash ./scripts/build-portable.sh",
+    "build:portable:win": "scripts/build-portable.bat",
+    "build:electron": "bash ./scripts/build-electron.sh",
+    "build:docker": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "preinstall": "npx only-allow pnpm"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.958.0",
