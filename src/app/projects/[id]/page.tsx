@@ -149,7 +149,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   }
 
   // 生成视频片段
-  const handleGenerateVideos = async () => {
+  const handleGenerateVideos = async (parallel: boolean = false) => {
     if (completedScenes.length === 0) {
       toast.error("请先生成分镜图片")
       return
@@ -162,7 +162,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const res = await fetch("/api/generate/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id })
+        body: JSON.stringify({ projectId: id, parallel })
       })
       const data = await res.json()
 
@@ -245,9 +245,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 )}
               </Button>
               <Button
-                onClick={handleGenerateVideos}
+                onClick={() => handleGenerateVideos(true)}
                 disabled={generatingVideos || completedScenes.length === 0}
                 variant="default"
+                title="并行生成：快速但场景间可能不连贯"
               >
                 {generatingVideos ? (
                   <>
@@ -257,7 +258,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 ) : (
                   <>
                     <Film className="w-4 h-4 mr-2" />
-                    合成视频
+                    快速合成
                   </>
                 )}
               </Button>
@@ -310,7 +311,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <div>
                       <CardTitle>视频合成进度</CardTitle>
                       <CardDescription>
-                        将分镜图片转换为动态视频片段
+                        将分镜图片转换为动态视频片段，支持两种模式
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-4">
@@ -331,7 +332,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </div>
                   )}
                   
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-3 gap-4 text-center mb-4">
                     <div className="p-4 rounded-lg bg-secondary/50">
                       <div className="text-2xl font-bold text-primary">{completedScenes.length}</div>
                       <div className="text-sm text-muted-foreground">分镜图片</div>
@@ -345,6 +346,30 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                       <div className="text-sm text-muted-foreground">待生成</div>
                     </div>
                   </div>
+
+                  {/* 合成按钮区域 */}
+                  {pendingVideoScenes.length > 0 && (
+                    <div className="flex gap-3 justify-center pt-2">
+                      <Button
+                        onClick={() => handleGenerateVideos(true)}
+                        disabled={generatingVideos}
+                        variant="default"
+                        className="gap-2"
+                      >
+                        <Film className="w-4 h-4" />
+                        快速合成（并行）
+                      </Button>
+                      <Button
+                        onClick={() => handleGenerateVideos(false)}
+                        disabled={generatingVideos}
+                        variant="outline"
+                        className="gap-2"
+                      >
+                        <Film className="w-4 h-4" />
+                        连续合成（连贯）
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -357,7 +382,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <div className="text-center text-muted-foreground">
                       <Film className="w-16 h-16 mx-auto mb-4 opacity-50" />
                       <p className="text-lg mb-2">暂无视频片段</p>
-                      <p className="text-sm">请先生成分镜图片，然后点击"合成视频"按钮</p>
+                      <p className="text-sm">请在分镜管理中为单个分镜生成视频，或点击上方按钮批量合成</p>
                     </div>
                   </CardContent>
                 </Card>

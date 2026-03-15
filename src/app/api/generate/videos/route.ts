@@ -6,12 +6,14 @@ import { getSupabaseClient } from '@/storage/database/supabase-client';
  * 批量生成视频片段
  * POST /api/generate/videos
  * 
- * 将分镜图片转换为视频片段，支持连续生成以保持视觉连贯性
+ * 将分镜图片转换为视频片段
+ * - 默认模式：连续生成（使用上一帧保持连贯性）
+ * - 并行模式：独立生成（更快，但场景间可能有视觉跳跃）
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectId, sceneIds } = body;
+    const { projectId, sceneIds, parallel = false } = body;
 
     if (!projectId) {
       return NextResponse.json(
@@ -88,113 +90,14 @@ export async function POST(request: NextRequest) {
       region: 'cn-beijing',
     });
 
-    // 顺序生成视频（保持连贯性）
-    const results = [];
-    let previousLastFrame: string | null = null;
+    let results: any[] = [];
 
-    for (const scene of scenesWithImages) {
-      try {
-        // 构建视频生成内容
-        const contentItems: Content[] = [];
-        
-        // 如果有上一帧，使用它作为首帧
-        if (previousLastFrame) {
-          contentItems.push({
-            type: 'image_url',
-            image_url: { url: previousLastFrame },
-            role: 'first_frame',
-          });
-        } else {
-          // 获取当前分镜图片的签名URL
-          let imageUrl = (scene as any).image_url;
-          if (!imageUrl && (scene as any).image_key) {
-            try {
-              const signedUrl = await storage.generatePresignedUrl({
-                key: (scene as any).image_key,
-                expireTime: 3600, // 1小时有效
-              });
-              // signedUrl可能是字符串或对象
-              imageUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as any).url;
-            } catch (e) {
-              console.error('获取图片URL失败:', e);
-              throw new Error('无法获取分镜图片URL');
-            }
-          }
-
-          if (!imageUrl) {
-            throw new Error('分镜图片URL不存在');
-          }
-
-          contentItems.push({
-            type: 'image_url',
-            image_url: { url: imageUrl },
-            role: 'first_frame',
-          });
-        }
-
-        // 添加视频描述
-        const videoPrompt = buildVideoPrompt(scene as any);
-        contentItems.push({
-          type: 'text',
-          text: videoPrompt,
-        });
-
-        // 生成视频
-        const response = await client.videoGeneration(contentItems, {
-          model: 'doubao-seedance-1-5-pro-251215',
-          duration: 5, // 5秒视频
-          ratio: '16:9', // 短剧常用比例
-          resolution: '720p',
-          returnLastFrame: true, // 获取最后一帧用于下一个视频
-          generateAudio: true, // 生成音效和对白
-        });
-
-        if (response.videoUrl) {
-          // 更新分镜记录
-          await supabase
-            .from('scenes')
-            .update({
-              video_url: response.videoUrl,
-              last_frame_url: response.lastFrameUrl || null,
-              video_status: 'completed',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', (scene as any).id);
-
-          results.push({
-            sceneId: (scene as any).id,
-            sceneNumber: (scene as any).scene_number,
-            videoUrl: response.videoUrl,
-            status: 'completed',
-          });
-
-          // 保存最后一帧用于下一个视频
-          previousLastFrame = response.lastFrameUrl;
-        } else {
-          throw new Error('视频生成失败：未返回视频URL');
-        }
-      } catch (error) {
-        console.error(`分镜 ${(scene as any).scene_number} 视频生成失败:`, error);
-        
-        // 更新失败状态
-        await supabase
-          .from('scenes')
-          .update({
-            video_status: 'failed',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', (scene as any).id);
-
-        results.push({
-          sceneId: (scene as any).id,
-          sceneNumber: (scene as any).scene_number,
-          error: error instanceof Error ? error.message : '未知错误',
-          status: 'failed',
-        });
-
-        // 如果失败，重置previousLastFrame，下一个视频使用自己的图片
-        previousLastFrame = null;
-      }
+    if (parallel) {
+      // 并行生成模式：每个分镜独立生成，不保持连贯性，速度更快
+      results = await generateParallel(scenesWithImages, client, storage, supabase);
+    } else {
+      // 连续生成模式：使用上一帧保持连贯性
+      results = await generateSequential(scenesWithImages, client, storage, supabase);
     }
 
     // 更新项目状态
@@ -219,6 +122,219 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * 连续生成模式 - 使用上一帧保持视觉连贯性
+ */
+async function generateSequential(
+  scenesWithImages: any[],
+  client: VideoGenerationClient,
+  storage: S3Storage,
+  supabase: any
+): Promise<any[]> {
+  const results = [];
+  let previousLastFrame: string | null = null;
+
+  for (const scene of scenesWithImages) {
+    try {
+      const contentItems: Content[] = [];
+      
+      // 如果有上一帧，使用它作为首帧
+      if (previousLastFrame) {
+        contentItems.push({
+          type: 'image_url',
+          image_url: { url: previousLastFrame },
+          role: 'first_frame',
+        });
+      } else {
+        // 获取当前分镜图片的签名URL
+        const imageUrl = await getImageUrl(scene, storage);
+        if (!imageUrl) {
+          throw new Error('无法获取分镜图片URL');
+        }
+        contentItems.push({
+          type: 'image_url',
+          image_url: { url: imageUrl },
+          role: 'first_frame',
+        });
+      }
+
+      // 添加视频描述
+      const videoPrompt = buildVideoPrompt(scene);
+      contentItems.push({
+        type: 'text',
+        text: videoPrompt,
+      });
+
+      // 生成视频
+      const response = await client.videoGeneration(contentItems, {
+        model: 'doubao-seedance-1-5-pro-251215',
+        duration: 5,
+        ratio: '16:9',
+        resolution: '720p',
+        returnLastFrame: true,
+        generateAudio: true,
+      });
+
+      if (response.videoUrl) {
+        await updateSceneVideo(supabase, scene.id, response.videoUrl, response.lastFrameUrl, 'completed');
+        
+        results.push({
+          sceneId: scene.id,
+          sceneNumber: scene.scene_number,
+          videoUrl: response.videoUrl,
+          status: 'completed',
+        });
+
+        previousLastFrame = response.lastFrameUrl;
+      } else {
+        throw new Error('视频生成失败：未返回视频URL');
+      }
+    } catch (error) {
+      console.error(`分镜 ${scene.scene_number} 视频生成失败:`, error);
+      
+      await updateSceneVideo(supabase, scene.id, null, null, 'failed');
+      
+      results.push({
+        sceneId: scene.id,
+        sceneNumber: scene.scene_number,
+        error: error instanceof Error ? error.message : '未知错误',
+        status: 'failed',
+      });
+
+      // 失败后重置，下一个视频使用自己的图片
+      previousLastFrame = null;
+    }
+  }
+
+  return results;
+}
+
+/**
+ * 并行生成模式 - 每个分镜独立生成，速度更快
+ */
+async function generateParallel(
+  scenesWithImages: any[],
+  client: VideoGenerationClient,
+  storage: S3Storage,
+  supabase: any
+): Promise<any[]> {
+  // 并发控制：最多同时生成2个视频
+  const maxConcurrent = 2;
+  const results: any[] = [];
+
+  for (let i = 0; i < scenesWithImages.length; i += maxConcurrent) {
+    const batch = scenesWithImages.slice(i, i + maxConcurrent);
+    
+    const batchPromises = batch.map(async (scene) => {
+      try {
+        // 获取图片URL
+        const imageUrl = await getImageUrl(scene, storage);
+        if (!imageUrl) {
+          throw new Error('无法获取分镜图片URL');
+        }
+
+        const contentItems: Content[] = [
+          {
+            type: 'image_url',
+            image_url: { url: imageUrl },
+            role: 'first_frame',
+          },
+          {
+            type: 'text',
+            text: buildVideoPrompt(scene),
+          },
+        ];
+
+        // 生成视频
+        const response = await client.videoGeneration(contentItems, {
+          model: 'doubao-seedance-1-5-pro-251215',
+          duration: 5,
+          ratio: '16:9',
+          resolution: '720p',
+          returnLastFrame: false, // 并行模式不需要最后一帧
+          generateAudio: true,
+        });
+
+        if (response.videoUrl) {
+          await updateSceneVideo(supabase, scene.id, response.videoUrl, null, 'completed');
+          
+          return {
+            sceneId: scene.id,
+            sceneNumber: scene.scene_number,
+            videoUrl: response.videoUrl,
+            status: 'completed',
+          };
+        } else {
+          throw new Error('视频生成失败：未返回视频URL');
+        }
+      } catch (error) {
+        console.error(`分镜 ${scene.scene_number} 视频生成失败:`, error);
+        
+        await updateSceneVideo(supabase, scene.id, null, null, 'failed');
+        
+        return {
+          sceneId: scene.id,
+          sceneNumber: scene.scene_number,
+          error: error instanceof Error ? error.message : '未知错误',
+          status: 'failed',
+        };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
+/**
+ * 获取分镜图片URL
+ */
+async function getImageUrl(scene: any, storage: S3Storage): Promise<string | null> {
+  // 优先使用直接存储的URL
+  if (scene.image_url) {
+    return scene.image_url;
+  }
+
+  // 从对象存储获取签名URL
+  if (scene.image_key) {
+    try {
+      const signedUrl = await storage.generatePresignedUrl({
+        key: scene.image_key,
+        expireTime: 3600,
+      });
+      return typeof signedUrl === 'string' ? signedUrl : (signedUrl as any).url;
+    } catch (e) {
+      console.error('获取图片URL失败:', e);
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 更新分镜视频信息
+ */
+async function updateSceneVideo(
+  supabase: any,
+  sceneId: string,
+  videoUrl: string | null,
+  lastFrameUrl: string | null,
+  status: string
+) {
+  await supabase
+    .from('scenes')
+    .update({
+      video_url: videoUrl,
+      last_frame_url: lastFrameUrl,
+      video_status: status,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', sceneId);
 }
 
 /**

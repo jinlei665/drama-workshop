@@ -29,7 +29,9 @@ import {
   Sparkles, 
   Loader2,
   Image as ImageIcon,
-  Video
+  Video,
+  Play,
+  Film
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -43,6 +45,9 @@ interface Scene {
   emotion: string | null
   character_ids: string[]
   image_key: string | null
+  image_url: string | null
+  video_url: string | null
+  video_status: string
   status: string
   metadata: {
     shotType?: string
@@ -68,7 +73,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [creating, setCreating] = useState(false)
-  const [generating, setGenerating] = useState<string | null>(null)
+  const [generatingImage, setGeneratingImage] = useState<string | null>(null)
+  const [generatingVideo, setGeneratingVideo] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     sceneNumber: scenes.length + 1,
     title: "",
@@ -198,7 +204,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       return
     }
 
-    setGenerating(scene.id)
+    setGeneratingImage(scene.id)
     try {
       // 获取出场人物的外貌描述
       const charDescriptions = scene.character_ids
@@ -228,7 +234,45 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       console.error("生成分镜图片失败:", error)
       toast.error("生成分镜图片失败")
     } finally {
-      setGenerating(null)
+      setGeneratingImage(null)
+    }
+  }
+
+  // 生成单个分镜视频
+  const handleGenerateVideo = async (scene: Scene) => {
+    if (!scene.image_key && !scene.image_url) {
+      toast.error("请先生成分镜图片")
+      return
+    }
+
+    setGeneratingVideo(scene.id)
+    try {
+      const res = await fetch("/api/generate/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          projectId,
+          sceneIds: [scene.id]
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "视频生成失败")
+      }
+
+      if (data.results?.[0]?.status === 'completed') {
+        toast.success("视频生成成功")
+      } else {
+        toast.error(data.results?.[0]?.error || "视频生成失败")
+      }
+      onUpdate()
+    } catch (error) {
+      console.error("生成视频失败:", error)
+      toast.error("生成视频失败")
+    } finally {
+      setGeneratingVideo(null)
     }
   }
 
@@ -265,13 +309,29 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     }
   }
 
+  // 获取视频状态样式
+  const getVideoStatusBadge = (status: string) => {
+    switch (status) {
+      case "pending":
+        return <Badge variant="outline" className="text-muted-foreground">待生成视频</Badge>
+      case "generating":
+        return <Badge variant="default" className="bg-blue-500">视频生成中</Badge>
+      case "completed":
+        return <Badge variant="default" className="bg-green-600">视频已完成</Badge>
+      case "failed":
+        return <Badge variant="destructive">视频生成失败</Badge>
+      default:
+        return null
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">视频分镜管理</h2>
           <p className="text-sm text-muted-foreground">
-            管理短剧视频分镜，生成每个分镜的画面参考
+            管理短剧视频分镜，生成每个分镜的画面和视频
           </p>
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -334,11 +394,14 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
               key={scene.id}
               scene={scene}
               characters={characters}
-              generating={generating === scene.id}
+              generatingImage={generatingImage === scene.id}
+              generatingVideo={generatingVideo === scene.id}
               onEdit={() => openEditDialog(scene)}
               onDelete={() => handleDelete(scene.id)}
               onGenerateImage={() => handleGenerateImage(scene)}
+              onGenerateVideo={() => handleGenerateVideo(scene)}
               getStatusBadge={getStatusBadge}
+              getVideoStatusBadge={getVideoStatusBadge}
             />
           ))}
         </div>
@@ -448,7 +511,7 @@ function SceneForm({
           id="scene-dialogue"
           value={formData.dialogue}
           onChange={(e) => setFormData({ ...formData, dialogue: e.target.value })}
-          placeholder="人物对白"
+          placeholder="人物对白（视频生成时会自动配音）"
         />
       </div>
       <div className="space-y-2">
@@ -522,54 +585,80 @@ function SceneForm({
 function SceneCard({
   scene,
   characters,
-  generating,
+  generatingImage,
+  generatingVideo,
   onEdit,
   onDelete,
   onGenerateImage,
-  getStatusBadge
+  onGenerateVideo,
+  getStatusBadge,
+  getVideoStatusBadge
 }: {
   scene: Scene
   characters: Character[]
-  generating: boolean
+  generatingImage: boolean
+  generatingVideo: boolean
   onEdit: () => void
   onDelete: () => void
   onGenerateImage: () => void
+  onGenerateVideo: () => void
   getStatusBadge: (status: string) => React.ReactNode
+  getVideoStatusBadge: (status: string) => React.ReactNode
 }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   // 获取图片 URL
   useEffect(() => {
-    if (scene.image_key) {
+    if (scene.image_url) {
+      setImageUrl(scene.image_url)
+    } else if (scene.image_key) {
       fetch(`/api/images?key=${scene.image_key}`)
         .then(res => res.json())
         .then(data => setImageUrl(data.url))
         .catch(console.error)
     }
-  }, [scene.image_key])
+  }, [scene.image_key, scene.image_url])
 
   // 获取出场人物名称
   const sceneCharacters = scene.character_ids
     .map(id => characters.find(c => c.id === id)?.name)
     .filter(Boolean)
 
+  const hasImage = scene.image_key || scene.image_url
+  const hasVideo = scene.video_url
+
   return (
     <Card className="group hover:shadow-md transition-shadow">
       <div className="flex flex-col md:flex-row">
-        {/* 图片区域 */}
-        <div className="md:w-1/3 aspect-video md:aspect-auto bg-secondary/50 relative">
-          {imageUrl ? (
+        {/* 图片/视频区域 */}
+        <div className="md:w-1/4 aspect-video md:aspect-auto bg-secondary/50 relative overflow-hidden">
+          {hasVideo ? (
+            // 显示视频
+            <video 
+              src={scene.video_url!} 
+              className="w-full h-full object-cover"
+              muted
+              loop
+              onMouseEnter={(e) => e.currentTarget.play()}
+              onMouseLeave={(e) => {
+                e.currentTarget.pause()
+                e.currentTarget.currentTime = 0
+              }}
+            />
+          ) : imageUrl ? (
+            // 显示图片
             <img 
               src={imageUrl} 
               alt={scene.title || `分镜 ${scene.scene_number}`}
               className="w-full h-full object-cover"
             />
           ) : (
+            // 空状态
             <div className="absolute inset-0 flex items-center justify-center">
-              {generating ? (
+              {generatingImage ? (
                 <div className="text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-muted-foreground mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">生成中...</p>
+                  <p className="text-xs text-muted-foreground">生成图片...</p>
                 </div>
               ) : (
                 <Button 
@@ -583,19 +672,36 @@ function SceneCard({
               )}
             </div>
           )}
+
+          {/* 视频播放标识 */}
+          {hasVideo && (
+            <div className="absolute top-2 right-2">
+              <Badge className="bg-green-600 text-white">
+                <Play className="w-3 h-3 mr-1" />
+                视频
+              </Badge>
+            </div>
+          )}
+
+          {/* 分镜序号 */}
+          <div className="absolute top-2 left-2">
+            <Badge variant="secondary" className="bg-black/60 text-white">
+              {scene.scene_number}
+            </Badge>
+          </div>
         </div>
 
         {/* 内容区域 */}
         <div className="flex-1 p-4">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline">第 {scene.scene_number} 镜</Badge>
               {getStatusBadge(scene.status)}
+              {getVideoStatusBadge(scene.video_status)}
               {scene.metadata?.shotType && (
-                <Badge variant="secondary">{scene.metadata.shotType}</Badge>
+                <Badge variant="outline">{scene.metadata.shotType}</Badge>
               )}
               {scene.metadata?.cameraMovement && (
-                <Badge variant="secondary">{scene.metadata.cameraMovement}</Badge>
+                <Badge variant="outline">{scene.metadata.cameraMovement}</Badge>
               )}
             </div>
             <DropdownMenu>
@@ -609,9 +715,16 @@ function SceneCard({
                   <Edit className="w-4 h-4 mr-2" />
                   编辑
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={onGenerateImage} disabled={generating}>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  生成分镜图
+                <DropdownMenuItem onClick={onGenerateImage} disabled={generatingImage}>
+                  <ImageIcon className="w-4 h-4 mr-2" />
+                  {hasImage ? "重新生成图片" : "生成分镜图"}
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={onGenerateVideo} 
+                  disabled={generatingVideo || !hasImage}
+                >
+                  <Film className="w-4 h-4 mr-2" />
+                  {hasVideo ? "重新生成视频" : "生成视频"}
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-destructive" onClick={onDelete}>
                   <Trash2 className="w-4 h-4 mr-2" />
@@ -643,6 +756,40 @@ function SceneCard({
             )}
             {sceneCharacters.length > 0 && (
               <span>出场：{sceneCharacters.join("、")}</span>
+            )}
+          </div>
+
+          {/* 快捷操作按钮 */}
+          <div className="flex gap-2 mt-3">
+            {!hasImage && (
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={onGenerateImage}
+                disabled={generatingImage}
+              >
+                {generatingImage ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : (
+                  <ImageIcon className="w-4 h-4 mr-1" />
+                )}
+                生成图片
+              </Button>
+            )}
+            {hasImage && !hasVideo && (
+              <Button 
+                size="sm" 
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={onGenerateVideo}
+                disabled={generatingVideo}
+              >
+                {generatingVideo ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : (
+                  <Film className="w-4 h-4 mr-1" />
+                )}
+                生成视频
+              </Button>
             )}
           </div>
         </div>
