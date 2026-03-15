@@ -148,8 +148,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
-  // 生成视频片段
-  const handleGenerateVideos = async (parallel: boolean = false) => {
+  // 生成视频片段（顺序生成，保持连贯性）
+  const handleGenerateVideos = async () => {
     if (completedScenes.length === 0) {
       toast.error("请先生成分镜图片")
       return
@@ -162,7 +162,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const res = await fetch("/api/generate/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id, parallel })
+        body: JSON.stringify({ projectId: id })
       })
       
       // 检查响应类型
@@ -258,10 +258,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 )}
               </Button>
               <Button
-                onClick={() => handleGenerateVideos(true)}
+                onClick={handleGenerateVideos}
                 disabled={generatingVideos || completedScenes.length === 0}
                 variant="default"
-                title="并行生成：快速但场景间可能不连贯"
+                title="顺序生成视频，保持场景连贯性"
               >
                 {generatingVideos ? (
                   <>
@@ -271,7 +271,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 ) : (
                   <>
                     <Film className="w-4 h-4 mr-2" />
-                    快速合成
+                    合成视频
                   </>
                 )}
               </Button>
@@ -324,7 +324,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     <div>
                       <CardTitle>视频合成进度</CardTitle>
                       <CardDescription>
-                        将分镜图片转换为动态视频片段，支持两种模式
+                        将分镜图片转换为动态视频片段，保持场景连贯性
                       </CardDescription>
                     </div>
                     <div className="flex items-center gap-4">
@@ -338,7 +338,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   {generatingVideos && (
                     <div className="space-y-2 mb-4">
                       <div className="flex items-center justify-between text-sm">
-                        <span>正在生成视频片段...</span>
+                        <span>正在生成视频片段（每个间隔3秒避免限流）...</span>
                         <span className="text-muted-foreground">这可能需要几分钟</span>
                       </div>
                       <Progress value={videoProgress} className="h-2" />
@@ -361,25 +361,16 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   </div>
 
                   {/* 合成按钮区域 */}
-                  {pendingVideoScenes.length > 0 && (
+                  {pendingVideoScenes.length > 0 && !generatingVideos && (
                     <div className="flex gap-3 justify-center pt-2">
                       <Button
-                        onClick={() => handleGenerateVideos(true)}
+                        onClick={handleGenerateVideos}
                         disabled={generatingVideos}
                         variant="default"
                         className="gap-2"
                       >
                         <Film className="w-4 h-4" />
-                        快速合成（并行）
-                      </Button>
-                      <Button
-                        onClick={() => handleGenerateVideos(false)}
-                        disabled={generatingVideos}
-                        variant="outline"
-                        className="gap-2"
-                      >
-                        <Film className="w-4 h-4" />
-                        连续合成（连贯）
+                        开始合成视频
                       </Button>
                     </div>
                   )}

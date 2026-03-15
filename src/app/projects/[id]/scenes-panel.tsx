@@ -271,7 +271,11 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       if (data.results?.[0]?.status === 'completed') {
         toast.success("视频生成成功")
       } else {
-        toast.error(data.results?.[0]?.error || "视频生成失败")
+        const errorMsg = data.results?.[0]?.error || "视频生成失败"
+        if (errorMsg.includes('403')) {
+          throw new Error("API请求频率过高，请等待几分钟后再试")
+        }
+        throw new Error(errorMsg)
       }
       onUpdate()
     } catch (error) {

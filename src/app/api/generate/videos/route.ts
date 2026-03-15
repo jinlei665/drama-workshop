@@ -7,8 +7,8 @@ import { getSupabaseClient } from '@/storage/database/supabase-client';
  * POST /api/generate/videos
  * 
  * 将分镜图片转换为视频片段
- * - 默认模式：连续生成（使用上一帧保持连贯性）
- * - 并行模式：独立生成（更快，但场景间可能有视觉跳跃）
+ * - 连续生成模式：使用上一帧保持连贯性（推荐）
+ * - 并行模式：独立生成，但会添加延迟避免限流
  */
 export async function POST(request: NextRequest) {
   try {
@@ -92,13 +92,8 @@ export async function POST(request: NextRequest) {
 
     let results: any[] = [];
 
-    if (parallel) {
-      // 并行生成模式：每个分镜独立生成，不保持连贯性，速度更快
-      results = await generateParallel(scenesWithImages, client, storage, supabase);
-    } else {
-      // 连续生成模式：使用上一帧保持连贯性
-      results = await generateSequential(scenesWithImages, client, storage, supabase);
-    }
+    // 统一使用顺序生成模式，避免403限流错误
+    results = await generateSequential(scenesWithImages, client, storage, supabase);
 
     // 更新项目状态
     const completedCount = results.filter(r => r.status === 'completed').length;
@@ -125,7 +120,55 @@ export async function POST(request: NextRequest) {
 }
 
 /**
+ * 延迟函数
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 带重试的视频生成
+ */
+async function generateVideoWithRetry(
+  client: VideoGenerationClient,
+  contentItems: Content[],
+  options: any,
+  maxRetries: number = 3
+): Promise<any> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await client.videoGeneration(contentItems, options);
+      return response;
+    } catch (error: any) {
+      lastError = error;
+      
+      // 打印详细错误信息
+      console.log(`视频生成错误详情:`, {
+        message: error.message,
+        statusCode: error.statusCode,
+        response: error.response ? JSON.stringify(error.response).substring(0, 500) : 'N/A'
+      });
+      
+      // 如果是403错误，等待后重试
+      if (error.message?.includes('403') || error.statusCode === 403) {
+        const waitTime = (attempt + 1) * 15000; // 15秒、30秒、45秒
+        console.log(`收到403错误，等待 ${waitTime/1000} 秒后重试 (尝试 ${attempt + 1}/${maxRetries})...`);
+        await delay(waitTime);
+      } else {
+        // 其他错误直接抛出
+        throw error;
+      }
+    }
+  }
+  
+  throw lastError || new Error('视频生成失败，API请求频率过高，请稍后再试');
+}
+
+/**
  * 连续生成模式 - 使用上一帧保持视觉连贯性
+ * 添加请求间隔和重试机制，避免403限流
  */
 async function generateSequential(
   scenesWithImages: any[],
@@ -136,7 +179,15 @@ async function generateSequential(
   const results = [];
   let previousLastFrame: string | null = null;
 
-  for (const scene of scenesWithImages) {
+  for (let i = 0; i < scenesWithImages.length; i++) {
+    const scene = scenesWithImages[i];
+    
+    // 如果不是第一个视频，添加延迟避免限流（5秒间隔）
+    if (i > 0) {
+      console.log(`等待5秒后继续生成下一个视频...`);
+      await delay(5000);
+    }
+    
     try {
       const contentItems: Content[] = [];
       
@@ -170,15 +221,17 @@ async function generateSequential(
       // 计算视频时长（基于内容复杂度）
       const duration = calculateDuration(scene);
 
-      // 生成视频
-      const response = await client.videoGeneration(contentItems, {
+      console.log(`开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
+
+      // 生成视频（带重试机制）
+      const response = await generateVideoWithRetry(client, contentItems, {
         model: 'doubao-seedance-1-5-pro-251215',
         duration: duration,
         ratio: '16:9',
         resolution: '720p',
         returnLastFrame: true,
         generateAudio: true,
-      });
+      }, 3); // 最多重试3次
 
       if (response.videoUrl) {
         await updateSceneVideo(supabase, scene.id, response.videoUrl, response.lastFrameUrl, 'completed');
@@ -187,10 +240,12 @@ async function generateSequential(
           sceneId: scene.id,
           sceneNumber: scene.scene_number,
           videoUrl: response.videoUrl,
+          duration: duration,
           status: 'completed',
         });
 
         previousLastFrame = response.lastFrameUrl;
+        console.log(`分镜 ${scene.scene_number} 视频生成成功`);
       } else {
         throw new Error('视频生成失败：未返回视频URL');
       }
@@ -209,88 +264,6 @@ async function generateSequential(
       // 失败后重置，下一个视频使用自己的图片
       previousLastFrame = null;
     }
-  }
-
-  return results;
-}
-
-/**
- * 并行生成模式 - 每个分镜独立生成，速度更快
- */
-async function generateParallel(
-  scenesWithImages: any[],
-  client: VideoGenerationClient,
-  storage: S3Storage,
-  supabase: any
-): Promise<any[]> {
-  // 并发控制：最多同时生成1个视频（避免403错误）
-  const maxConcurrent = 1;
-  const results: any[] = [];
-
-  for (let i = 0; i < scenesWithImages.length; i += maxConcurrent) {
-    const batch = scenesWithImages.slice(i, i + maxConcurrent);
-    
-    const batchPromises = batch.map(async (scene) => {
-      try {
-        // 获取图片URL
-        const imageUrl = await getImageUrl(scene, storage);
-        if (!imageUrl) {
-          throw new Error('无法获取分镜图片URL');
-        }
-
-        const contentItems: Content[] = [
-          {
-            type: 'image_url',
-            image_url: { url: imageUrl },
-            role: 'first_frame',
-          },
-          {
-            type: 'text',
-            text: buildVideoPrompt(scene),
-          },
-        ];
-
-        // 计算视频时长（基于内容复杂度）
-        const duration = calculateDuration(scene);
-
-        // 生成视频
-        const response = await client.videoGeneration(contentItems, {
-          model: 'doubao-seedance-1-5-pro-251215',
-          duration: duration,
-          ratio: '16:9',
-          resolution: '720p',
-          returnLastFrame: false, // 并行模式不需要最后一帧
-          generateAudio: true,
-        });
-
-        if (response.videoUrl) {
-          await updateSceneVideo(supabase, scene.id, response.videoUrl, null, 'completed');
-          
-          return {
-            sceneId: scene.id,
-            sceneNumber: scene.scene_number,
-            videoUrl: response.videoUrl,
-            status: 'completed',
-          };
-        } else {
-          throw new Error('视频生成失败：未返回视频URL');
-        }
-      } catch (error) {
-        console.error(`分镜 ${scene.scene_number} 视频生成失败:`, error);
-        
-        await updateSceneVideo(supabase, scene.id, null, null, 'failed');
-        
-        return {
-          sceneId: scene.id,
-          sceneNumber: scene.scene_number,
-          error: error instanceof Error ? error.message : '未知错误',
-          status: 'failed',
-        };
-      }
-    });
-
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
   }
 
   return results;
