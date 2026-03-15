@@ -4,6 +4,9 @@
 - [系统要求](#系统要求)
 - [方式一：使用安装包（推荐）](#方式一使用安装包推荐)
 - [方式二：源码部署](#方式二源码部署)
+- [方式三：Docker Desktop 部署](#方式三docker-desktop-部署)
+- [数据库配置](#数据库配置)
+- [对象存储配置](#对象存储配置)
 - [常见问题](#常见问题)
 
 ---
@@ -59,13 +62,13 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# 或使用本地 PostgreSQL
-DATABASE_URL=postgresql://postgres:password@localhost:5432/drama_studio
+# 或使用本地数据库
+DATABASE_URL=mysql://root:password@localhost:3306/drama_studio
 
-# 对象存储（推荐使用云存储）
-S3_ENDPOINT=https://your-s3-endpoint.com
-S3_ACCESS_KEY=your-access-key
-S3_SECRET_KEY=your-secret-key
+# 对象存储（本地 MinIO 或云存储）
+S3_ENDPOINT=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
 S3_BUCKET=drama-studio
 
 # API 密钥
@@ -171,9 +174,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # 对象存储
-S3_ENDPOINT=https://your-s3-endpoint.com
-S3_ACCESS_KEY=your-access-key
-S3_SECRET_KEY=your-secret-key
+S3_ENDPOINT=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
 S3_BUCKET=drama-studio
 
 # API 密钥
@@ -200,9 +203,162 @@ pnpm start
 
 ---
 
-## 可选：安装本地数据库
+## 方式三：Docker Desktop 部署
 
-### 方式一：安装 PostgreSQL
+### 1. 安装 Docker Desktop
+
+1. 访问 https://www.docker.com/products/docker-desktop/
+2. 下载 Windows 版本
+3. 安装并启动 Docker Desktop
+4. 等待 Docker 引擎启动完成
+
+### 2. 克隆项目
+
+```cmd
+git clone https://github.com/your-repo/drama-studio.git
+cd drama-studio
+```
+
+### 3. 启动本地服务
+
+**方案 A：PostgreSQL + MinIO**
+
+```cmd
+docker compose up -d
+```
+
+**方案 B：MySQL + MinIO**
+
+```cmd
+docker compose -f docker-compose.local.yml up -d
+```
+
+### 4. 初始化数据库
+
+**PostgreSQL：**
+```cmd
+docker exec -i drama-studio-db psql -U postgres -d drama_studio < docker/init-db.sql
+```
+
+**MySQL：**
+```cmd
+docker exec -i drama-studio-mysql mysql -u drama_user -pdrama123456 drama_studio < docker/init-mysql.sql
+```
+
+### 5. 配置环境变量
+
+```cmd
+copy .env.docker.example .env
+notepad .env
+```
+
+**Docker 内部网络配置：**
+
+```env
+# PostgreSQL
+DATABASE_URL=postgresql://postgres:postgres@db:5432/drama_studio
+
+# 或 MySQL
+DATABASE_URL=mysql://drama_user:drama123456@mysql:3306/drama_studio
+
+# MinIO
+S3_ENDPOINT=http://minio:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
+S3_BUCKET=drama-studio
+```
+
+### 6. 启动应用
+
+```cmd
+# 安装依赖
+pnpm install
+
+# 如使用 MySQL
+pnpm add mysql2
+
+# 构建
+pnpm build
+
+# 启动
+pnpm start
+```
+
+---
+
+## 数据库配置
+
+### 方案对比
+
+| 数据库 | 难度 | 成本 | 推荐场景 |
+|--------|------|------|---------|
+| **Supabase 云** | ⭐ | 免费 | 生产环境（推荐） |
+| **本地 PostgreSQL** | ⭐⭐⭐ | 免费 | 内网部署 |
+| **本地 MySQL** | ⭐⭐ | 免费 | 熟悉 MySQL 的用户 |
+
+### 方案一：Supabase 云服务（推荐）
+
+1. 访问 https://supabase.com/ 注册账号
+2. 创建新项目
+3. 在项目设置中获取：
+   - Project URL
+   - Anon Key
+   - Service Role Key
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJ...
+```
+
+**优点：**
+- 免费套餐足够开发使用
+- 自动备份
+- 无需维护数据库
+
+### 方案二：本地 MySQL
+
+#### 安装 MySQL
+
+1. **下载 MySQL**
+   - 访问 https://dev.mysql.com/downloads/mysql/
+   - 选择 Windows 版本下载
+   - 运行安装程序
+
+2. **配置 MySQL**
+   - 设置 root 密码
+   - 选择 "Developer Default" 或 "Server Only"
+
+3. **创建数据库**
+
+打开 MySQL Command Line Client 或 MySQL Workbench：
+
+```sql
+CREATE DATABASE drama_studio CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'drama_user'@'localhost' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON drama_studio.* TO 'drama_user'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+4. **初始化表结构**
+
+```cmd
+mysql -u drama_user -p drama_studio < docker\init-mysql.sql
+```
+
+5. **配置连接**
+
+```env
+DATABASE_URL=mysql://drama_user:your_password@localhost:3306/drama_studio
+```
+
+6. **安装 MySQL 驱动**
+
+```cmd
+pnpm add mysql2
+```
+
+### 方案三：本地 PostgreSQL
 
 1. **下载 PostgreSQL**
    - 访问 https://www.postgresql.org/download/windows/
@@ -210,29 +366,109 @@ pnpm start
 
 2. **创建数据库**
 
-```cmd
-# 打开 SQL Shell (psql)
-# 输入密码后执行：
+使用 pgAdmin 或命令行：
+
+```sql
 CREATE DATABASE drama_studio;
 CREATE USER drama_user WITH PASSWORD 'your_password';
 GRANT ALL PRIVILEGES ON DATABASE drama_studio TO drama_user;
 ```
 
-3. **修改 .env 配置**
+3. **配置连接**
 
 ```env
 DATABASE_URL=postgresql://drama_user:your_password@localhost:5432/drama_studio
 ```
 
-### 方式二：使用 Supabase 云服务（推荐）
+---
 
-1. 访问 https://supabase.com/
-2. 注册并创建新项目
-3. 获取连接信息：
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-4. 在 `.env` 中配置这些值
+## 对象存储配置
+
+### 方案对比
+
+| 存储 | 难度 | 成本 | 推荐场景 |
+|------|------|------|---------|
+| **MinIO 本地** | ⭐⭐ | 免费 | 开发/内网（推荐） |
+| **阿里云 OSS** | ⭐ | 按量付费 | 生产环境 |
+| **腾讯云 COS** | ⭐ | 按量付费 | 生产环境 |
+
+### 方案一：本地 MinIO（推荐）
+
+#### 安装 MinIO
+
+1. **下载 MinIO**
+   - 访问 https://dl.min.io/server/minio/release/windows-amd64/minio.exe
+   - 保存到 `C:\minio\minio.exe`
+
+2. **创建数据目录**
+
+```cmd
+mkdir C:\minio-data
+```
+
+3. **启动 MinIO**
+
+```cmd
+C:\minio\minio.exe server C:\minio-data --console-address ":9001"
+```
+
+4. **配置为 Windows 服务（可选）**
+
+使用 NSSM（Non-Sucking Service Manager）：
+
+```cmd
+# 下载 NSSM: https://nssm.cc/download
+# 解压后运行：
+nssm install MinIO "C:\minio\minio.exe" "server C:\minio-data --console-address :9001"
+nssm set MinIO AppEnvironmentExtra "MINIO_ROOT_USER=minioadmin" "MINIO_ROOT_PASSWORD=minioadmin123"
+nssm start MinIO
+```
+
+5. **创建存储桶**
+
+   - 打开浏览器访问 http://localhost:9001
+   - 用户名：`minioadmin`
+   - 密码：`minioadmin123`
+   - 点击 "Buckets" → "Create Bucket"
+   - 输入名称：`drama-studio`
+
+6. **配置项目**
+
+```env
+S3_ENDPOINT=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
+S3_BUCKET=drama-studio
+S3_REGION=us-east-1
+```
+
+#### 使用 Docker 启动 MinIO
+
+如果已安装 Docker Desktop：
+
+```cmd
+docker compose -f docker-compose.local.yml up -d minio
+```
+
+### 方案二：阿里云 OSS
+
+```env
+S3_ENDPOINT=https://oss-cn-hangzhou.aliyuncs.com
+S3_ACCESS_KEY=your-access-key-id
+S3_SECRET_KEY=your-access-key-secret
+S3_BUCKET=your-bucket-name
+S3_REGION=oss-cn-hangzhou
+```
+
+### 方案三：腾讯云 COS
+
+```env
+S3_ENDPOINT=https://cos.ap-guangzhou.myqcloud.com
+S3_ACCESS_KEY=your-secret-id
+S3_SECRET_KEY=your-secret-key
+S3_BUCKET=your-bucket-name
+S3_REGION=ap-guangzhou
+```
 
 ---
 
