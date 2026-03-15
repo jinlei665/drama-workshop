@@ -14,8 +14,7 @@ import {
   Play, 
   Loader2,
   Sparkles,
-  Download,
-  RefreshCw
+  Video
 } from "lucide-react"
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
@@ -54,6 +53,10 @@ interface Scene {
   character_ids: string[]
   image_key: string | null
   status: string
+  metadata: {
+    shotType?: string
+    cameraMovement?: string
+  } | null
 }
 
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
@@ -159,7 +162,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 {characters.length} 人物
               </Badge>
               <Badge variant="outline" className="gap-1">
-                <Image className="w-3 h-3" />
+                <Video className="w-3 h-3" />
                 {scenes.length} 分镜
               </Badge>
               <Button
@@ -193,12 +196,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               人物管理
             </TabsTrigger>
             <TabsTrigger value="scenes" className="gap-2">
-              <Image className="w-4 h-4" />
+              <Video className="w-4 h-4" />
               分镜管理
             </TabsTrigger>
             <TabsTrigger value="preview" className="gap-2">
               <Play className="w-4 h-4" />
-              漫剧预览
+              视频预览
             </TabsTrigger>
           </TabsList>
 
@@ -222,15 +225,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           <TabsContent value="preview">
             <Card>
               <CardHeader>
-                <CardTitle>漫剧预览</CardTitle>
+                <CardTitle>短剧视频预览</CardTitle>
                 <CardDescription>
-                  预览生成的漫剧效果
+                  预览生成的视频分镜效果
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {scenes.filter(s => s.status === "completed").length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
-                    <Image className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <Video className="w-12 h-12 mx-auto mb-4 opacity-50" />
                     <p>暂无已生成的分镜，请先生成分镜图片</p>
                   </div>
                 ) : (
@@ -282,8 +285,14 @@ function ScenePreview({ scene }: { scene: Scene }) {
           )}
         </div>
         <div className="md:w-1/2 p-6">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <Badge variant="outline">第 {scene.scene_number} 镜</Badge>
+            {scene.metadata?.shotType && (
+              <Badge variant="secondary">{scene.metadata.shotType}</Badge>
+            )}
+            {scene.metadata?.cameraMovement && (
+              <Badge variant="secondary">{scene.metadata.cameraMovement}</Badge>
+            )}
             {scene.emotion && <Badge>{scene.emotion}</Badge>}
           </div>
           <h3 className="font-semibold text-lg mb-2">
@@ -301,7 +310,7 @@ function ScenePreview({ scene }: { scene: Scene }) {
           )}
           {scene.action && (
             <p className="text-xs text-muted-foreground">
-              动作：{scene.action}
+              动作/表演：{scene.action}
             </p>
           )}
         </div>

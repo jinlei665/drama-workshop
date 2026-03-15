@@ -4,20 +4,21 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: '漫剧创作工坊',
-    template: '%s | 漫剧创作工坊',
+    default: '短剧漫剧创作工坊',
+    template: '%s | 短剧漫剧创作工坊',
   },
   description:
-    '将文字故事转化为精美漫剧，AI驱动的角色设计与分镜生成工具',
+    '将文字故事转化为精美短剧视频，AI驱动的角色造型设计与视频分镜生成工具',
   keywords: [
+    '短剧',
     '漫剧',
-    '漫画',
+    '视频分镜',
     'AI创作',
-    '分镜生成',
     '角色设计',
     '故事可视化',
+    '影视制作',
   ],
-  authors: [{ name: '漫剧创作工坊' }],
+  authors: [{ name: '短剧漫剧创作工坊' }],
   generator: 'Coze Code',
 };
 

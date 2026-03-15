@@ -74,8 +74,8 @@ export async function POST(request: NextRequest) {
         .map((id: string) => characterMap.get(id)?.appearance)
         .filter(Boolean)
 
-      // 构建提示词
-      let prompt = `漫漫画风，分镜画面，${scene.description}`
+      // 构建真人实拍风格提示词
+      let prompt = `真人实拍风格，短剧视频分镜画面，${scene.description}`
 
       if (scene.emotion) {
         prompt += `，${scene.emotion}的氛围`
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
         prompt += `，画面中的角色：${charDescriptions.join("、")}`
       }
 
-      prompt += "，高质量，专业漫画风格，细节丰富，构图精美"
+      prompt += "，专业影视剧画面，电影级构图，高清摄影，4K画质，细节丰富"
 
       // 生成图片
       const response = await imageClient.generate({

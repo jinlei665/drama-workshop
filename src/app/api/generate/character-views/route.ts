@@ -4,7 +4,7 @@ import { S3Storage } from "coze-coding-dev-sdk"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import axios from "axios"
 
-// POST /api/generate/character-views - 生成人物三视图
+// POST /api/generate/character-views - 生成人物三视图（短剧角色设定）
 export async function POST(request: NextRequest) {
   const { characterId, appearance } = await request.json()
 
@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
   })
 
   try {
-    // 生成三视图的提示词模板
-    const basePrompt = `动漫风格人物角色设计，${appearance}，角色设定图，三视图，包含正面、侧面、背面三个角度，白色背景，高质量，专业插画，细节丰富`
+    // 生成真人风格角色设定图（用于短剧拍摄参考）
+    const basePrompt = `真人实拍风格，短剧角色设定图，${appearance}，专业影视造型，三视图包含正面、侧面、背面三个角度，白色摄影棚背景，高清人像摄影，电影级光影，4K画质，用于影视剧造型参考`
 
     // 生成三视图
     const response = await imageClient.generate({

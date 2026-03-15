@@ -4,7 +4,7 @@ import { S3Storage } from "coze-coding-dev-sdk"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import axios from "axios"
 
-// POST /api/generate/scene-image - 生成分镜图片
+// POST /api/generate/scene-image - 生成分镜图片（短剧视频分镜）
 export async function POST(request: NextRequest) {
   const { sceneId, description, emotion, characterDescriptions } = await request.json()
 
@@ -29,8 +29,8 @@ export async function POST(request: NextRequest) {
   })
 
   try {
-    // 构建分镜图片提示词
-    let prompt = `漫漫画风，分镜画面，${description}`
+    // 构建真人实拍风格分镜提示词
+    let prompt = `真人实拍风格，短剧视频分镜画面，${description}`
 
     if (emotion) {
       prompt += `，${emotion}的氛围`
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       prompt += `，画面中的角色：${characterDescriptions.join("、")}`
     }
 
-    prompt += "，高质量，专业漫画风格，细节丰富，构图精美"
+    prompt += "，专业影视剧画面，电影级构图，高清摄影，4K画质，细节丰富"
 
     // 更新状态为生成中
     const supabase = getSupabaseClient()

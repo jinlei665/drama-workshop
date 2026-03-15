@@ -153,7 +153,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
     }
   }
 
-  // 生成三视图
+  // 生成角色造型图
   const handleGenerateViews = async (character: Character) => {
     if (!character.appearance) {
       toast.error("请先填写人物外貌描述")
@@ -177,11 +177,11 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         throw new Error(data.error || "生成失败")
       }
 
-      toast.success("人物三视图生成成功")
+      toast.success("角色造型图生成成功")
       onUpdate()
     } catch (error) {
-      console.error("生成三视图失败:", error)
-      toast.error("生成三视图失败")
+      console.error("生成角色造型图失败:", error)
+      toast.error("生成角色造型图失败")
     } finally {
       setGenerating(null)
     }
@@ -406,7 +406,7 @@ function CharacterCard({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onGenerateViews} disabled={generating}>
                 <Sparkles className="w-4 h-4 mr-2" />
-                生成三视图
+                生成角色造型图
               </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive" onClick={onDelete}>
                 <Trash2 className="w-4 h-4 mr-2" />
@@ -439,7 +439,7 @@ function CharacterCard({
                   onClick={onGenerateViews}
                 >
                   <ImageIcon className="w-8 h-8 text-muted-foreground" />
-                  <span className="text-xs">点击生成三视图</span>
+                  <span className="text-xs">点击生成角色造型图</span>
                 </Button>
               )}
             </div>

@@ -178,8 +178,8 @@ export default function Home() {
               <BookOpen className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground">漫剧创作工坊</h1>
-              <p className="text-xs text-muted-foreground">将文字故事转化为精美漫剧</p>
+              <h1 className="text-xl font-bold text-foreground">短剧漫剧创作工坊</h1>
+              <p className="text-xs text-muted-foreground">将文字故事转化为精美短剧视频</p>
             </div>
           </div>
           

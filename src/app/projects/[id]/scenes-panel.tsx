@@ -29,8 +29,7 @@ import {
   Sparkles, 
   Loader2,
   Image as ImageIcon,
-  ChevronRight,
-  ChevronLeft
+  Video
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -45,6 +44,10 @@ interface Scene {
   character_ids: string[]
   image_key: string | null
   status: string
+  metadata: {
+    shotType?: string
+    cameraMovement?: string
+  } | null
 }
 
 interface Character {
@@ -73,6 +76,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     dialogue: "",
     action: "",
     emotion: "",
+    shotType: "",
+    cameraMovement: "",
     characterIds: [] as string[]
   })
 
@@ -95,7 +100,11 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
           dialogue: formData.dialogue,
           action: formData.action,
           emotion: formData.emotion,
-          characterIds: formData.characterIds
+          characterIds: formData.characterIds,
+          metadata: {
+            shotType: formData.shotType,
+            cameraMovement: formData.cameraMovement,
+          }
         })
       })
 
@@ -113,6 +122,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
         dialogue: "",
         action: "",
         emotion: "",
+        shotType: "",
+        cameraMovement: "",
         characterIds: []
       })
       onUpdate()
@@ -133,7 +144,13 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       const res = await fetch(`/api/scenes/${selectedScene.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          metadata: {
+            shotType: formData.shotType,
+            cameraMovement: formData.cameraMovement,
+          }
+        })
       })
 
       if (!res.ok) {
@@ -225,6 +242,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       dialogue: scene.dialogue || "",
       action: scene.action || "",
       emotion: scene.emotion || "",
+      shotType: scene.metadata?.shotType || "",
+      cameraMovement: scene.metadata?.cameraMovement || "",
       characterIds: scene.character_ids || []
     })
     setEditDialogOpen(true)
@@ -250,9 +269,9 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">分镜管理</h2>
+          <h2 className="text-lg font-semibold">视频分镜管理</h2>
           <p className="text-sm text-muted-foreground">
-            管理漫剧分镜，生成每个分镜的画面
+            管理短剧视频分镜，生成每个分镜的画面参考
           </p>
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -264,9 +283,9 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
           </DialogTrigger>
           <DialogContent className="max-w-xl">
             <DialogHeader>
-              <DialogTitle>添加分镜</DialogTitle>
+              <DialogTitle>添加视频分镜</DialogTitle>
               <DialogDescription>
-                创建新的分镜画面
+                创建新的视频分镜画面
               </DialogDescription>
             </DialogHeader>
             <SceneForm
@@ -284,7 +303,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
           <DialogContent className="max-w-xl">
             <DialogHeader>
-              <DialogTitle>编辑分镜</DialogTitle>
+              <DialogTitle>编辑视频分镜</DialogTitle>
               <DialogDescription>
                 修改分镜信息
               </DialogDescription>
@@ -304,7 +323,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       {scenes.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
-            <ImageIcon className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <Video className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
             <p className="text-muted-foreground">还没有分镜，点击上方按钮添加</p>
           </CardContent>
         </Card>
@@ -366,6 +385,41 @@ function SceneForm({
           />
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="shot-type">景别</Label>
+          <select
+            id="shot-type"
+            className="w-full h-10 px-3 rounded-md border border-input bg-background"
+            value={formData.shotType}
+            onChange={(e) => setFormData({ ...formData, shotType: e.target.value })}
+          >
+            <option value="">选择景别</option>
+            <option value="远景">远景</option>
+            <option value="全景">全景</option>
+            <option value="中景">中景</option>
+            <option value="近景">近景</option>
+            <option value="特写">特写</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="camera-movement">镜头运动</Label>
+          <select
+            id="camera-movement"
+            className="w-full h-10 px-3 rounded-md border border-input bg-background"
+            value={formData.cameraMovement}
+            onChange={(e) => setFormData({ ...formData, cameraMovement: e.target.value })}
+          >
+            <option value="">选择镜头运动</option>
+            <option value="固定">固定</option>
+            <option value="推镜">推镜</option>
+            <option value="拉镜">拉镜</option>
+            <option value="摇镜">摇镜</option>
+            <option value="跟拍">跟拍</option>
+            <option value="移镜">移镜</option>
+          </select>
+        </div>
+      </div>
       <div className="space-y-2">
         <Label htmlFor="scene-title">分镜标题</Label>
         <Input
@@ -398,12 +452,12 @@ function SceneForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="scene-action">动作描述</Label>
+        <Label htmlFor="scene-action">动作/表演描述</Label>
         <Textarea
           id="scene-action"
           value={formData.action}
           onChange={(e) => setFormData({ ...formData, action: e.target.value })}
-          placeholder="人物动作描述"
+          placeholder="人物动作和表演描述"
         />
       </div>
       <div className="space-y-2">
@@ -524,7 +578,7 @@ function SceneCard({
                   onClick={onGenerateImage}
                 >
                   <ImageIcon className="w-8 h-8 text-muted-foreground" />
-                  <span className="text-xs">点击生成图片</span>
+                  <span className="text-xs">点击生成分镜图</span>
                 </Button>
               )}
             </div>
@@ -534,9 +588,15 @@ function SceneCard({
         {/* 内容区域 */}
         <div className="flex-1 p-4">
           <div className="flex items-start justify-between mb-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline">第 {scene.scene_number} 镜</Badge>
               {getStatusBadge(scene.status)}
+              {scene.metadata?.shotType && (
+                <Badge variant="secondary">{scene.metadata.shotType}</Badge>
+              )}
+              {scene.metadata?.cameraMovement && (
+                <Badge variant="secondary">{scene.metadata.cameraMovement}</Badge>
+              )}
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -551,7 +611,7 @@ function SceneCard({
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={onGenerateImage} disabled={generating}>
                   <Sparkles className="w-4 h-4 mr-2" />
-                  生成图片
+                  生成分镜图
                 </DropdownMenuItem>
                 <DropdownMenuItem className="text-destructive" onClick={onDelete}>
                   <Trash2 className="w-4 h-4 mr-2" />
@@ -577,9 +637,9 @@ function SceneCard({
             </div>
           )}
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
             {scene.emotion && (
-              <Badge variant="secondary" className="text-xs">{scene.emotion}</Badge>
+              <Badge variant="outline" className="text-xs">{scene.emotion}</Badge>
             )}
             {sceneCharacters.length > 0 && (
               <span>出场：{sceneCharacters.join("、")}</span>

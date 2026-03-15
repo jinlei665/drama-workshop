@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { LLMClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 
-// POST /api/analyze - 分析文本内容，提取人物和分镜
+// POST /api/analyze - 分析文本内容，提取人物和视频分镜
 export async function POST(request: NextRequest) {
   const { projectId, content } = await request.json()
 
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   const config = new Config()
   const client = new LLMClient(config, customHeaders)
 
-  const systemPrompt = `你是一个专业的漫剧创作助手。你的任务是分析小说或脚本内容，提取出人物信息和分镜信息。
+  const systemPrompt = `你是一个专业的短剧视频创作助手。你的任务是分析小说或脚本内容，提取出人物信息和视频分镜信息。
 
 请严格按照以下 JSON 格式输出，不要输出任何其他内容：
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     {
       "name": "人物名称",
       "description": "人物简介（50字以内）",
-      "appearance": "外貌特征描述（包括发型、眼睛、服装风格等，用于AI生成图片）",
+      "appearance": "外貌特征描述（包括发型、眼睛、体型、服装风格等，用于生成角色造型参考图）",
       "personality": "性格特点",
       "tags": ["主角", "配角", "反派"]
     }
@@ -32,20 +32,24 @@ export async function POST(request: NextRequest) {
     {
       "sceneNumber": 1,
       "title": "分镜标题",
-      "description": "场景画面描述（详细描述环境、构图、光线等，用于AI生成图片）",
+      "description": "场景画面描述（详细描述环境、光线、构图，用于生成视频分镜参考图）",
       "dialogue": "对白内容",
-      "action": "动作描述",
+      "action": "动作/表演描述",
       "emotion": "情绪氛围（如：紧张、温馨、悲伤）",
+      "shotType": "景别（如：远景、全景、中景、近景、特写）",
+      "cameraMovement": "镜头运动（如：固定、推镜、拉镜、摇镜、跟拍）",
       "characterNames": ["出场人物名称"]
     }
   ]
 }
 
 注意：
-1. 每个场景应该是一个独立的分镜画面
-2. 场景描述要详细，包含视觉元素
-3. 人物外貌描述要具体，便于AI生成一致性角色
-4. 分镜数量根据内容合理拆分，一般每个场景2-5个分镜`
+1. 每个场景应该是一个独立的视频分镜
+2. 场景描述要详细，包含视觉元素、光影效果
+3. 人物外貌描述要具体，便于生成真人风格的角色造型图
+4. 分镜数量根据内容合理拆分，一般每个场景2-5个分镜
+5. 景别和镜头运动要符合影视剧拍摄规范
+6. 这是短剧视频分镜，不是漫画`
 
   try {
     const messages = [
@@ -115,6 +119,10 @@ export async function POST(request: NextRequest) {
           character_ids: (scene.characterNames || [])
             .map((name: string) => nameToId.get(name))
             .filter(Boolean),
+          metadata: {
+            shotType: scene.shotType,
+            cameraMovement: scene.cameraMovement,
+          },
         }))
 
         await supabase.from("scenes").insert(scenesData)
