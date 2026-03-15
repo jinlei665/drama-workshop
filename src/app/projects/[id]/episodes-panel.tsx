@@ -106,16 +106,29 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
     return acc
   }, {} as Record<number, Episode[]>)
 
-  // 计算下一集的季数和集数
+  // 计算下一集的季数和集数（智能计算，避免冲突）
   const getNextEpisodeNumber = () => {
-    const lastEpisode = episodes[episodes.length - 1]
-    if (lastEpisode) {
-      return {
-        seasonNumber: lastEpisode.season_number,
-        episodeNumber: lastEpisode.episode_number + 1,
+    if (episodes.length === 0) {
+      return { seasonNumber: 1, episodeNumber: 1 }
+    }
+    
+    // 找到最大的季数
+    const maxSeason = Math.max(...episodes.map(ep => ep.season_number))
+    
+    // 找到最大季的所有集数
+    const maxSeasonEpisodes = episodes.filter(ep => ep.season_number === maxSeason)
+    const maxEpisode = Math.max(...maxSeasonEpisodes.map(ep => ep.episode_number))
+    
+    // 检查是否有缺失的集数（比如删除了中间的集）
+    for (let ep = 1; ep <= maxEpisode; ep++) {
+      if (!maxSeasonEpisodes.some(e => e.episode_number === ep)) {
+        // 找到第一个缺失的集数
+        return { seasonNumber: maxSeason, episodeNumber: ep }
       }
     }
-    return { seasonNumber: 1, episodeNumber: 1 }
+    
+    // 没有缺失，返回下一集
+    return { seasonNumber: maxSeason, episodeNumber: maxEpisode + 1 }
   }
 
   const handleCreate = async () => {
