@@ -32,7 +32,8 @@ echo ""
 echo "[2/5] 复制项目文件..."
 cp package.json $TEMP_DIR/app/
 cp pnpm-lock.yaml $TEMP_DIR/app/
-cp next.config.ts $TEMP_DIR/app/
+cp next.config.mjs $TEMP_DIR/app/
+rm -f $TEMP_DIR/app/next.config.ts 2>/dev/null || true
 cp tsconfig.json $TEMP_DIR/app/
 cp .babelrc $TEMP_DIR/app/ 2>/dev/null || true
 cp tailwind.config.ts $TEMP_DIR/app/ 2>/dev/null || true
