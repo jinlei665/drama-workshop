@@ -235,7 +235,7 @@ export default function Home() {
                   <Textarea
                     id="content"
                     placeholder="粘贴你的小说或脚本内容..."
-                    className="min-h-[200px] font-serif"
+                    className="h-[200px] resize-none overflow-y-auto font-serif"
                     value={formData.sourceContent}
                     onChange={(e) => setFormData({ ...formData, sourceContent: e.target.value })}
                   />
