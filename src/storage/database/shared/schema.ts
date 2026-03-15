@@ -54,6 +54,35 @@ export const projects = pgTable(
 )
 
 /**
+ * 剧集表 - 存储分集信息
+ */
+export const episodes = pgTable(
+  "episodes",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    projectId: varchar("project_id", { length: 36 }).notNull(),
+    seasonNumber: integer("season_number").default(1).notNull(), // 季数
+    episodeNumber: integer("episode_number").notNull(), // 集数
+    title: varchar("title", { length: 255 }).notNull(), // 剧集标题，如"1.病房惊变"
+    description: text("description"), // 剧集简介
+    // 合成视频
+    mergedVideoUrl: text("merged_video_url"), // 合成后的剧集视频URL
+    mergedVideoStatus: varchar("merged_video_status", { length: 20 }).default("pending"), // pending | merging | completed | failed
+    mergedVideoKey: text("merged_video_key"), // 合成视频存储key
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("episodes_project_id_idx").on(table.projectId),
+    index("episodes_season_episode_idx").on(table.seasonNumber, table.episodeNumber),
+  ]
+)
+
+/**
  * 人物表 - 存储人物信息和角色造型图
  */
 export const characters = pgTable(
@@ -72,6 +101,10 @@ export const characters = pgTable(
     sideViewKey: text("side_view_key"), // 侧面图 key
     backViewKey: text("back_view_key"), // 背面图 key
     referenceImageKey: text("reference_image_key"),
+    // 人物配音
+    voiceId: varchar("voice_id", { length: 100 }), // 语音ID
+    voiceUrl: text("voice_url"), // 配音样本URL
+    voiceStyle: varchar("voice_style", { length: 50 }), // 语音风格（如：温柔、霸气、活泼）
     // 人物标签
     tags: jsonb("tags").default([]),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -95,6 +128,7 @@ export const scenes = pgTable(
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     projectId: varchar("project_id", { length: 36 }).notNull(),
+    episodeId: varchar("episode_id", { length: 36 }), // 所属剧集ID
     sceneNumber: integer("scene_number").notNull(), // 分镜序号
     // 分镜内容
     title: varchar("title", { length: 255 }), // 分镜标题
@@ -122,6 +156,7 @@ export const scenes = pgTable(
   },
   (table) => [
     index("scenes_project_id_idx").on(table.projectId),
+    index("scenes_episode_id_idx").on(table.episodeId),
     index("scenes_scene_number_idx").on(table.sceneNumber),
     index("scenes_status_idx").on(table.status),
   ]
@@ -174,6 +209,9 @@ export const updateCharacterSchema = createCoercedInsertSchema(characters)
     sideViewKey: true,
     backViewKey: true,
     referenceImageKey: true,
+    voiceId: true,
+    voiceUrl: true,
+    voiceStyle: true,
     tags: true,
   })
   .partial()
@@ -181,6 +219,7 @@ export const updateCharacterSchema = createCoercedInsertSchema(characters)
 // Scene schemas
 export const insertSceneSchema = createCoercedInsertSchema(scenes).pick({
   projectId: true,
+  episodeId: true,
   sceneNumber: true,
   title: true,
   description: true,
@@ -200,6 +239,7 @@ export const updateSceneSchema = createCoercedInsertSchema(scenes)
     action: true,
     emotion: true,
     characterIds: true,
+    episodeId: true,
     imageKey: true,
     imageUrl: true,
     videoUrl: true,
@@ -207,6 +247,27 @@ export const updateSceneSchema = createCoercedInsertSchema(scenes)
     lastFrameUrl: true,
     status: true,
     metadata: true,
+  })
+  .partial()
+
+// Episode schemas
+export const insertEpisodeSchema = createCoercedInsertSchema(episodes).pick({
+  projectId: true,
+  seasonNumber: true,
+  episodeNumber: true,
+  title: true,
+  description: true,
+})
+
+export const updateEpisodeSchema = createCoercedInsertSchema(episodes)
+  .pick({
+    seasonNumber: true,
+    episodeNumber: true,
+    title: true,
+    description: true,
+    mergedVideoUrl: true,
+    mergedVideoStatus: true,
+    mergedVideoKey: true,
   })
   .partial()
 
@@ -224,6 +285,10 @@ export type UpdateCharacter = z.infer<typeof updateCharacterSchema>
 export type Scene = typeof scenes.$inferSelect
 export type InsertScene = z.infer<typeof insertSceneSchema>
 export type UpdateScene = z.infer<typeof updateSceneSchema>
+
+export type Episode = typeof episodes.$inferSelect
+export type InsertEpisode = z.infer<typeof insertEpisodeSchema>
+export type UpdateEpisode = z.infer<typeof updateEpisodeSchema>
 
 // ============================================
 // 用户配置表
@@ -254,6 +319,13 @@ export const userSettings = pgTable(
     videoResolution: varchar("video_resolution", { length: 20 }).default("720p"),
     videoRatio: varchar("video_ratio", { length: 20 }).default("16:9"),
     
+    // 语音生成配置
+    voiceProvider: varchar("voice_provider", { length: 50 }).default("doubao"),
+    voiceModel: varchar("voice_model", { length: 100 }).default("doubao-tts"),
+    voiceApiKey: text("voice_api_key"),
+    voiceBaseUrl: varchar("voice_base_url", { length: 255 }),
+    voiceDefaultStyle: varchar("voice_default_style", { length: 50 }).default("natural"),
+    
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   }
@@ -277,6 +349,11 @@ export const updateUserSettingsSchema = createCoercedInsertSchema(userSettings)
     videoBaseUrl: true,
     videoResolution: true,
     videoRatio: true,
+    voiceProvider: true,
+    voiceModel: true,
+    voiceApiKey: true,
+    voiceBaseUrl: true,
+    voiceDefaultStyle: true,
   })
   .partial()
 

@@ -36,6 +36,11 @@ export async function GET() {
         video_base_url: null,
         video_resolution: "720p",
         video_ratio: "16:9",
+        voice_provider: "doubao",
+        voice_model: "doubao-tts",
+        voice_api_key: null,
+        voice_base_url: null,
+        voice_default_style: "natural",
       }
     })
   }
@@ -76,6 +81,11 @@ export async function PUT(request: NextRequest) {
   if (parsed.data.videoBaseUrl !== undefined) dbData.video_base_url = parsed.data.videoBaseUrl
   if (parsed.data.videoResolution !== undefined) dbData.video_resolution = parsed.data.videoResolution
   if (parsed.data.videoRatio !== undefined) dbData.video_ratio = parsed.data.videoRatio
+  if (parsed.data.voiceProvider !== undefined) dbData.voice_provider = parsed.data.voiceProvider
+  if (parsed.data.voiceModel !== undefined) dbData.voice_model = parsed.data.voiceModel
+  if (parsed.data.voiceApiKey !== undefined) dbData.voice_api_key = parsed.data.voiceApiKey
+  if (parsed.data.voiceBaseUrl !== undefined) dbData.voice_base_url = parsed.data.voiceBaseUrl
+  if (parsed.data.voiceDefaultStyle !== undefined) dbData.voice_default_style = parsed.data.voiceDefaultStyle
 
   // 使用 upsert 确保配置存在
   const { data, error } = await client

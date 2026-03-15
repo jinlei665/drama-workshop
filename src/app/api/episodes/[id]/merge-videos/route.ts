@@ -1,0 +1,196 @@
+import { NextRequest, NextResponse } from "next/server"
+import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { S3Storage } from "coze-coding-dev-sdk"
+import axios from "axios"
+import { exec } from "child_process"
+import { promisify } from "util"
+import fs from "fs/promises"
+import path from "path"
+
+const execAsync = promisify(exec)
+
+/**
+ * POST /api/episodes/[id]/merge-videos
+ * 将剧集下的所有分镜视频合成为一个完整视频
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const client = getSupabaseClient()
+
+  // 获取剧集信息
+  const { data: episode, error: episodeError } = await client
+    .from("episodes")
+    .select("*")
+    .eq("id", id)
+    .single()
+
+  if (episodeError || !episode) {
+    return NextResponse.json({ error: "剧集不存在" }, { status: 404 })
+  }
+
+  // 获取该剧集下所有已生成视频的分镜，按序号排序
+  const { data: scenes, error: scenesError } = await client
+    .from("scenes")
+    .select("id, scene_number, title, video_url")
+    .eq("episode_id", id)
+    .eq("video_status", "completed")
+    .order("scene_number", { ascending: true })
+
+  if (scenesError) {
+    return NextResponse.json({ error: "获取分镜失败" }, { status: 500 })
+  }
+
+  if (!scenes || scenes.length === 0) {
+    return NextResponse.json({ error: "没有可合成的视频分镜" }, { status: 400 })
+  }
+
+  // 更新状态为合成中
+  await client
+    .from("episodes")
+    .update({ merged_video_status: "merging", updated_at: new Date().toISOString() })
+    .eq("id", id)
+
+  try {
+    // 创建临时目录
+    const tempDir = `/tmp/merge_${id}_${Date.now()}`
+    await fs.mkdir(tempDir, { recursive: true })
+
+    // 下载所有视频文件
+    const videoFiles: string[] = []
+    for (let i = 0; i < scenes.length; i++) {
+      const scene = scenes[i]
+      const videoPath = path.join(tempDir, `video_${i}.mp4`)
+      
+      const response = await axios.get(scene.video_url, {
+        responseType: "arraybuffer",
+      })
+      
+      await fs.writeFile(videoPath, Buffer.from(response.data))
+      videoFiles.push(videoPath)
+    }
+
+    // 创建文件列表用于 FFmpeg concat
+    const listPath = path.join(tempDir, "filelist.txt")
+    const fileListContent = videoFiles.map(f => `file '${f}'`).join("\n")
+    await fs.writeFile(listPath, fileListContent)
+
+    // 使用 FFmpeg 合并视频
+    const outputPath = path.join(tempDir, "merged.mp4")
+    await execAsync(`ffmpeg -f concat -safe 0 -i "${listPath}" -c copy "${outputPath}"`)
+
+    // 读取合并后的视频
+    const mergedVideo = await fs.readFile(outputPath)
+
+    // 上传到对象存储
+    const storage = new S3Storage({
+      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+      accessKey: "",
+      secretKey: "",
+      bucketName: process.env.COZE_BUCKET_NAME,
+      region: "cn-beijing",
+    })
+
+    const fileKey = await storage.uploadFile({
+      fileContent: mergedVideo,
+      fileName: `episodes/${id}/merged_${Date.now()}.mp4`,
+      contentType: "video/mp4",
+    })
+
+    // 生成访问 URL
+    const viewUrl = await storage.generatePresignedUrl({
+      key: fileKey,
+      expireTime: 86400 * 30, // 30天有效
+    })
+
+    // 更新数据库
+    const { error: updateError } = await client
+      .from("episodes")
+      .update({
+        merged_video_url: viewUrl,
+        merged_video_key: fileKey,
+        merged_video_status: "completed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+
+    if (updateError) {
+      throw new Error("更新数据库失败")
+    }
+
+    // 清理临时文件
+    await fs.rm(tempDir, { recursive: true, force: true })
+
+    return NextResponse.json({
+      success: true,
+      videoUrl: viewUrl,
+      sceneCount: scenes.length,
+    })
+  } catch (error) {
+    console.error("视频合成失败:", error)
+    
+    // 更新状态为失败
+    await client
+      .from("episodes")
+      .update({ merged_video_status: "failed", updated_at: new Date().toISOString() })
+      .eq("id", id)
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "视频合成失败" },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * GET /api/episodes/[id]/merge-videos
+ * 下载合成后的剧集视频
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const client = getSupabaseClient()
+
+  // 获取剧集信息
+  const { data: episode, error } = await client
+    .from("episodes")
+    .select("id, title, season_number, episode_number, merged_video_url, merged_video_status")
+    .eq("id", id)
+    .single()
+
+  if (error || !episode) {
+    return NextResponse.json({ error: "剧集不存在" }, { status: 404 })
+  }
+
+  if (episode.merged_video_status !== "completed" || !episode.merged_video_url) {
+    return NextResponse.json({ error: "该剧集尚未合成视频" }, { status: 400 })
+  }
+
+  try {
+    // 下载视频文件
+    const response = await axios.get(episode.merged_video_url, {
+      responseType: "arraybuffer",
+    })
+
+    const videoBuffer = Buffer.from(response.data)
+    
+    // 生成文件名
+    const fileName = `S${episode.season_number}E${episode.episode_number}_${episode.title || 'episode'}.mp4`
+
+    // 返回视频文件
+    return new NextResponse(videoBuffer, {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        "Content-Length": videoBuffer.length.toString(),
+      },
+    })
+  } catch (error) {
+    console.error("下载视频失败:", error)
+    return NextResponse.json({ error: "下载视频失败" }, { status: 500 })
+  }
+}

@@ -31,7 +31,8 @@ import {
   Image as ImageIcon,
   Video,
   Play,
-  Film
+  Film,
+  Download
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -616,6 +617,7 @@ function SceneCard({
   getVideoStatusBadge: (status: string) => React.ReactNode
 }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState(false)
 
   // 获取图片 URL
   useEffect(() => {
@@ -628,6 +630,30 @@ function SceneCard({
         .catch(console.error)
     }
   }, [scene.image_key, scene.image_url])
+
+  // 下载视频
+  const handleDownloadVideo = async () => {
+    if (!scene.video_url) return
+    
+    setDownloading(true)
+    try {
+      const res = await fetch(`/api/scenes/${scene.id}/download`)
+      if (!res.ok) throw new Error("下载失败")
+      
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `scene_${scene.scene_number}_${scene.title || 'untitled'}.mp4`
+      link.click()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("下载视频失败:", error)
+      toast.error("下载视频失败")
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   // 计算预估视频时长（秒）
   const calculateDuration = () => {
@@ -761,6 +787,12 @@ function SceneCard({
                   <Film className="w-4 h-4 mr-2" />
                   {hasVideo ? "重新生成视频" : "生成视频"}
                 </DropdownMenuItem>
+                {hasVideo && (
+                  <DropdownMenuItem onClick={handleDownloadVideo} disabled={downloading}>
+                    <Download className="w-4 h-4 mr-2" />
+                    {downloading ? "下载中..." : "下载视频"}
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className="text-destructive" onClick={onDelete}>
                   <Trash2 className="w-4 h-4 mr-2" />
                   删除

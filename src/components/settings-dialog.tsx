@@ -23,7 +23,8 @@ import {
   Loader2,
   Key,
   Server,
-  Sparkles
+  Sparkles,
+  Mic
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -44,6 +45,11 @@ interface Settings {
   video_base_url: string | null
   video_resolution: string
   video_ratio: string
+  voice_provider: string
+  voice_model: string
+  voice_api_key: string | null
+  voice_base_url: string | null
+  voice_default_style: string
 }
 
 // 预设模型列表
@@ -73,11 +79,35 @@ const VIDEO_MODELS = [
   { value: "pika-2.0", label: "Pika 2.0", provider: "pika" },
 ]
 
+const VOICE_MODELS = [
+  { value: "doubao-tts", label: "Doubao TTS", provider: "doubao" },
+  { value: "cosyvoice", label: "CosyVoice", provider: "alibaba" },
+  { value: "tts-1", label: "OpenAI TTS-1", provider: "openai" },
+  { value: "tts-1-hd", label: "OpenAI TTS-1 HD", provider: "openai" },
+  { value: "eleven-monolingual-v1", label: "ElevenLabs Monolingual", provider: "elevenlabs" },
+  { value: "eleven-multilingual-v2", label: "ElevenLabs Multilingual v2", provider: "elevenlabs" },
+]
+
+const VOICE_STYLES = [
+  { value: "natural", label: "自然" },
+  { value: "gentle", label: "温柔" },
+  { value: "energetic", label: "活力" },
+  { value: "serious", label: "严肃" },
+  { value: "cheerful", label: "欢快" },
+  { value: "sad", label: "悲伤" },
+  { value: "angry", label: "愤怒" },
+  { value: "calm", label: "平静" },
+  { value: "domineering", label: "霸气" },
+  { value: "cute", label: "可爱" },
+]
+
 const PROVIDERS = [
   { value: "doubao", label: "豆包 / 字节跳动" },
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic" },
   { value: "deepseek", label: "DeepSeek" },
+  { value: "alibaba", label: "阿里云" },
+  { value: "elevenlabs", label: "ElevenLabs" },
   { value: "stability", label: "Stability AI" },
   { value: "runway", label: "Runway" },
   { value: "pika", label: "Pika" },
@@ -142,6 +172,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           videoBaseUrl: settings.video_base_url,
           videoResolution: settings.video_resolution,
           videoRatio: settings.video_ratio,
+          voiceProvider: settings.voice_provider,
+          voiceModel: settings.voice_model,
+          voiceApiKey: settings.voice_api_key,
+          voiceBaseUrl: settings.voice_base_url,
+          voiceDefaultStyle: settings.voice_default_style,
         })
       })
 
@@ -184,7 +219,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
         ) : settings ? (
           <Tabs defaultValue="llm" className="mt-4">
-            <TabsList className="grid grid-cols-3 w-full">
+            <TabsList className="grid grid-cols-4 w-full">
               <TabsTrigger value="llm" className="gap-2">
                 <Brain className="w-4 h-4" />
                 LLM模型
@@ -196,6 +231,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               <TabsTrigger value="video" className="gap-2">
                 <Video className="w-4 h-4" />
                 视频模型
+              </TabsTrigger>
+              <TabsTrigger value="voice" className="gap-2">
+                <Mic className="w-4 h-4" />
+                语音模型
               </TabsTrigger>
             </TabsList>
 
@@ -436,6 +475,86 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       placeholder="如: https://api.openai.com/v1"
                       value={settings.video_base_url || ""}
                       onChange={(e) => updateSetting("video_base_url", e.target.value || null)}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* 语音配置 */}
+            <TabsContent value="voice" className="space-y-6 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Mic className="w-4 h-4" />
+                    语音合成模型配置
+                  </CardTitle>
+                  <CardDescription>
+                    用于角色配音、对白朗读等任务
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>服务商</Label>
+                      <select
+                        className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                        value={settings.voice_provider}
+                        onChange={(e) => updateSetting("voice_provider", e.target.value)}
+                      >
+                        {PROVIDERS.filter(p => ['doubao', 'openai', 'alibaba', 'elevenlabs', 'custom'].includes(p.value)).map((p) => (
+                          <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>模型</Label>
+                      <select
+                        className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                        value={settings.voice_model}
+                        onChange={(e) => updateSetting("voice_model", e.target.value)}
+                      >
+                        {VOICE_MODELS.map((m) => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>默认语音风格</Label>
+                      <select
+                        className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                        value={settings.voice_default_style}
+                        onChange={(e) => updateSetting("voice_default_style", e.target.value)}
+                      >
+                        {VOICE_STYLES.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Key className="w-4 h-4" />
+                      API Key
+                    </Label>
+                    <Input
+                      type="password"
+                      placeholder="留空使用系统默认"
+                      value={settings.voice_api_key || ""}
+                      onChange={(e) => updateSetting("voice_api_key", e.target.value || null)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Server className="w-4 h-4" />
+                      Base URL
+                    </Label>
+                    <Input
+                      placeholder="如: https://api.openai.com/v1"
+                      value={settings.voice_base_url || ""}
+                      onChange={(e) => updateSetting("voice_base_url", e.target.value || null)}
                     />
                   </div>
                 </CardContent>

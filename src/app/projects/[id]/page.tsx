@@ -38,11 +38,14 @@ import {
   Film,
   Pause,
   SkipBack,
-  SkipForward
+  SkipForward,
+  Package,
+  FolderOpen
 } from "lucide-react"
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
 import { ScenesPanel } from "./scenes-panel"
+import { EpisodesPanel } from "./episodes-panel"
 
 interface Project {
   id: string
@@ -97,6 +100,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [generatingVideos, setGeneratingVideos] = useState(false)
   const [videoProgress, setVideoProgress] = useState(0)
   const [videoMode, setVideoMode] = useState<'fast' | 'continuous'>('continuous')
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -171,7 +176,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const res = await fetch("/api/generate/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id, mode })
+        body: JSON.stringify({ projectId: id, mode, episodeId: selectedEpisodeId })
       })
       
       // 检查响应类型
@@ -201,6 +206,33 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     } finally {
       setGeneratingVideos(false)
       setVideoProgress(0)
+    }
+  }
+
+  // 导出项目
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch(`/api/projects/${id}/export`)
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "导出失败")
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `${project?.name || 'project'}_export.zip`
+      link.click()
+      window.URL.revokeObjectURL(url)
+
+      toast.success("项目导出成功")
+    } catch (error) {
+      console.error("导出项目失败:", error)
+      toast.error(error instanceof Error ? error.message : "导出项目失败")
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -249,6 +281,23 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 <Video className="w-3 h-3" />
                 {scenes.length} 分镜
               </Badge>
+              <Button
+                variant="outline"
+                onClick={handleExport}
+                disabled={exporting}
+              >
+                {exporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    导出中...
+                  </>
+                ) : (
+                  <>
+                    <Package className="w-4 h-4 mr-2" />
+                    导出项目
+                  </>
+                )}
+              </Button>
               <Button
                 onClick={handleBatchGenerate}
                 disabled={generating || scenes.length === 0}
@@ -320,8 +369,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
       {/* 主内容 */}
       <main className="max-w-7xl mx-auto px-6 py-6">
-        <Tabs defaultValue="characters" className="space-y-6">
+        <Tabs defaultValue="episodes" className="space-y-6">
           <TabsList className="bg-card/50 border border-border/50">
+            <TabsTrigger value="episodes" className="gap-2">
+              <FolderOpen className="w-4 h-4" />
+              剧集管理
+            </TabsTrigger>
             <TabsTrigger value="characters" className="gap-2">
               <Users className="w-4 h-4" />
               人物管理
@@ -335,6 +388,15 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               视频预览
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="episodes">
+            <EpisodesPanel
+              projectId={id}
+              onUpdate={fetchData}
+              onSelectEpisode={setSelectedEpisodeId}
+              selectedEpisodeId={selectedEpisodeId}
+            />
+          </TabsContent>
 
           <TabsContent value="characters">
             <CharactersPanel
