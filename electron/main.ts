@@ -20,7 +20,7 @@ const getAppPath = () => {
   if (isDev) {
     return join(__dirname, '..')
   }
-  return join(process.resourcesPath, 'app')
+  return process.resourcesPath
 }
 
 // 启动 Next.js 服务器
@@ -37,7 +37,8 @@ const startNextServer = (): Promise<void> => {
       })
     } else {
       // 生产模式：使用 standalone 服务器
-      const serverPath = join(appPath, '.next', 'standalone', 'server.js')
+      const standalonePath = join(appPath, 'app')
+      const serverPath = join(standalonePath, 'server.js')
       
       if (!existsSync(serverPath)) {
         reject(new Error('未找到构建产物，请先运行 pnpm build'))
@@ -45,7 +46,7 @@ const startNextServer = (): Promise<void> => {
       }
       
       nextServer = spawn('node', [serverPath], {
-        cwd: join(appPath, '.next', 'standalone'),
+        cwd: standalonePath,
         env: {
           ...process.env,
           PORT: PORT.toString(),

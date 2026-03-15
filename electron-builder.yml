@@ -14,16 +14,26 @@ files:
   - .next/standalone/**/*
   - .next/static/**/*
   - public/**/*
-  - electron/**/*
+  - dist/electron-compiled/**/*
   - package.json
-  - .coze
+  - .env.example
 
 # 额外资源
 extraResources:
-  - from: node_modules
-    to: node_modules
+  - from: .next/standalone
+    to: app
     filter:
       - "**/*"
+  - from: .next/static
+    to: app/.next/static
+    filter:
+      - "**/*"
+  - from: public
+    to: app/public
+    filter:
+      - "**/*"
+  - from: .env.example
+    to: app/.env.example
 
 # Windows 配置
 win:
@@ -64,9 +74,10 @@ linux:
   category: AudioVideo
   maintainer: drama-studio@example.com
   desktop:
-    Name: 短剧漫剧创作工坊
-    Comment: AI powered drama video creation tool
-    Categories: AudioVideo;Video
+    entry:
+      Name: 短剧漫剧创作工坊
+      Comment: AI powered drama video creation tool
+      Categories: AudioVideo;Video
 
 # macOS 配置 (可选)
 mac:

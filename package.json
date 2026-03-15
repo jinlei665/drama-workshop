@@ -5,6 +5,7 @@
   "private": true,
   "author": "Drama Studio Team",
   "license": "MIT",
+  "main": "dist/electron-compiled/main.js",
   "scripts": {
     "build": "bash ./scripts/build.sh",
     "dev": "bash ./scripts/dev.sh",
@@ -89,12 +90,15 @@
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "only-allow": "^1.2.2",
     "react-dev-inspector": "^2.0.1",
     "shadcn": "latest",
     "tailwindcss": "^4",
+    "tsx": "^4.19.0",
     "typescript": "^5"
   },
   "packageManager": "pnpm@9.0.0",
