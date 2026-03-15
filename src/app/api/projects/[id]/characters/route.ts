@@ -1,0 +1,68 @@
+import { NextRequest, NextResponse } from "next/server"
+import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { insertCharacterSchema } from "@/storage/database/shared/schema"
+
+// GET /api/projects/[id]/characters - 获取项目人物列表
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const client = getSupabaseClient()
+
+  const { data, error } = await client
+    .from("characters")
+    .select("*")
+    .eq("project_id", id)
+    .order("created_at", { ascending: true })
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ characters: data })
+}
+
+// POST /api/projects/[id]/characters - 创建人物
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const body = await request.json()
+  const client = getSupabaseClient()
+
+  const parsed = insertCharacterSchema.safeParse({
+    ...body,
+    projectId: id,
+  })
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid input", details: parsed.error.issues },
+      { status: 400 }
+    )
+  }
+
+  // 转换字段名为数据库格式（snake_case）
+  const dbData = {
+    project_id: parsed.data.projectId,
+    name: parsed.data.name,
+    description: parsed.data.description,
+    appearance: parsed.data.appearance,
+    personality: parsed.data.personality,
+    tags: parsed.data.tags || [],
+  }
+
+  const { data, error } = await client
+    .from("characters")
+    .insert(dbData)
+    .select()
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ character: data })
+}

@@ -1,90 +1,99 @@
-node_modules
-dist
-.DS_Store
-*.swp
-.git/*
-__pycache__/
-*.pyc
-.venv/*
-*.o
-*.a
-/vendor
-*.egg-info/
-/.env
-.env
-
-# JS/TS bundlers & build outputs
 .next
-.nuxt
-.turbo
-.vercel
-.parcel-cache
-.cache
-coverage
-storybook-static
 
-# Package manager artifacts
-pnpm-lock.yaml
-package-lock.json
-yarn.lock
-.pnp*
-.npm
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
 
-# Python tooling
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.tox/
+# Production build
+dist/
+build/
+out/
+.next/
+.rsbuild/
 
-# Go tooling
-bin/
-*.test
+# Testing
+coverage/
+*.lcov
+.nyc_output
 
-# Editor / IDE
-.vscode/
-.idea/
-*.iml
-
-# OS / misc
-Thumbs.db
-ehthumbs.db
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Logs
-output.log
-*.log
-*.log.*
 logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# 视频文件
-*.mp4
-*.avi
-*.mov
-*.wmv
-*.flv
-*.mkv
-*.webm
-*.m4v
-*.mpeg
-*.mpg
-*.3gp
-*.f4v
-*.rmvb
-*.vob
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
 
-# 归档文件
-*.iso
-*.dmg
-*.rar
-*.zip
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.npm
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Optional files
+*.tgz
 *.gz
+*.zip
+*.tar
 
-# 文档类也默认加入
-*.pdf
-*.docx
-*.doc
-*.xlsx
-*.xls
-*.ppt
-*.pptx
-*.xlsx
-*.csv
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+.vercel
+.turbo
+
+.coze-logs
