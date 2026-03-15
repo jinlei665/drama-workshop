@@ -417,8 +417,33 @@ mkdir C:\minio-data
 
 3. **启动 MinIO**
 
+**方式1: 直接启动（测试用）**
 ```cmd
+# CMD
+set MINIO_ROOT_USER=minioadmin
+set MINIO_ROOT_PASSWORD=minioadmin123
 C:\minio\minio.exe server C:\minio-data --console-address ":9001"
+```
+
+**方式2: PowerShell**
+```powershell
+$env:MINIO_ROOT_USER="minioadmin"
+$env:MINIO_ROOT_PASSWORD="minioadmin123"
+C:\minio\minio.exe server C:\minio-data --console-address ":9001"
+```
+
+**方式3: 创建启动脚本（推荐）**
+
+创建 `C:\minio\start-minio.bat`：
+```cmd
+@echo off
+set MINIO_ROOT_USER=minioadmin
+set MINIO_ROOT_PASSWORD=minioadmin123
+C:\minio\minio.exe server C:\minio-data --console-address ":9001"
+pause
+```
+
+双击运行即可启动。
 ```
 
 4. **配置为 Windows 服务（可选）**

@@ -232,6 +232,8 @@ mysql -u drama_user -p drama_studio < sql/init-mysql.sql
 
 ### 4. 安装对象存储（MinIO）
 
+#### 方式一：直接安装（推荐，无需 Docker）
+
 ```bash
 # 下载 MinIO
 wget https://dl.min.io/server/minio/release/linux-amd64/minio
@@ -251,9 +253,9 @@ After=network.target
 [Service]
 User=your_username
 Group=your_username
-ExecStart=/usr/local/bin/minio server /data/minio --console-address ":9001"
 Environment="MINIO_ROOT_USER=minioadmin"
 Environment="MINIO_ROOT_PASSWORD=minioadmin123"
+ExecStart=/usr/local/bin/minio server /data/minio --console-address ":9001"
 Restart=always
 
 [Install]
@@ -264,8 +266,14 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now minio
 
-# 创建存储桶（首次使用）
-# 访问 http://localhost:9001 创建 bucket: drama-studio
+# 检查状态
+sudo systemctl status minio
+```
+
+#### 方式二：Docker 部署
+
+```bash
+docker compose -f docker-compose.local.yml up -d minio
 ```
 
 ### 5. 克隆并配置项目

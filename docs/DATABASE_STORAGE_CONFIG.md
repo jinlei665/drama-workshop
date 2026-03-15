@@ -179,7 +179,7 @@ SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJ...
 
 MinIO 是兼容 S3 协议的本地对象存储，完全免费！
 
-#### 1. Docker 方式（推荐）
+#### 方式一：Docker 部署（推荐）
 
 ```bash
 # 启动 MinIO
@@ -189,7 +189,99 @@ docker compose -f docker-compose.local.yml up -d minio
 docker compose -f docker-compose.local.yml ps
 ```
 
-#### 2. 访问 MinIO 控制台
+#### 方式二：直接安装（无需 Docker）
+
+**Ubuntu/Linux 安装：**
+
+```bash
+# 下载 MinIO
+wget https://dl.min.io/server/minio/release/linux-amd64/minio
+chmod +x minio
+sudo mv minio /usr/local/bin/
+
+# 创建数据目录
+sudo mkdir -p /data/minio
+sudo chown $USER:$USER /data/minio
+
+# 启动 MinIO
+MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin123 \
+  minio server /data/minio --console-address ":9001"
+
+# 后台运行（推荐）
+nohup minio server /data/minio --console-address ":9001" > /var/log/minio.log 2>&1 &
+```
+
+**设置开机自启（systemd）：**
+
+```bash
+sudo tee /etc/systemd/system/minio.service << 'EOF'
+[Unit]
+Description=MinIO Object Storage
+After=network.target
+
+[Service]
+User=your_username
+Group=your_username
+Environment="MINIO_ROOT_USER=minioadmin"
+Environment="MINIO_ROOT_PASSWORD=minioadmin123"
+ExecStart=/usr/local/bin/minio server /data/minio --console-address ":9001"
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now minio
+sudo systemctl status minio
+```
+
+**Windows 安装：**
+
+```powershell
+# 方式1: 使用 PowerShell 下载
+Invoke-WebRequest -Uri "https://dl.min.io/server/minio/release/windows-amd64/minio.exe" -OutFile "C:\minio\minio.exe"
+
+# 方式2: 直接访问下载
+# 浏览器打开: https://dl.min.io/server/minio/release/windows-amd64/minio.exe
+
+# 创建数据目录
+mkdir C:\minio-data
+
+# 启动 MinIO（CMD 或 PowerShell）
+set MINIO_ROOT_USER=minioadmin
+set MINIO_ROOT_PASSWORD=minioadmin123
+C:\minio\minio.exe server C:\minio-data --console-address ":9001"
+```
+
+**Windows 设置开机自启（使用 NSSM）：**
+
+```cmd
+# 1. 下载 NSSM: https://nssm.cc/download
+# 2. 解压后运行（管理员权限）：
+nssm install MinIO "C:\minio\minio.exe" "server C:\minio-data --console-address :9001"
+nssm set MinIO AppEnvironmentExtra "MINIO_ROOT_USER=minioadmin" "MINIO_ROOT_PASSWORD=minioadmin123"
+nssm start MinIO
+```
+
+**macOS 安装：**
+
+```bash
+# 使用 Homebrew
+brew install minio/stable/minio
+
+# 或手动下载
+wget https://dl.min.io/server/minio/release/darwin-amd64/minio
+chmod +x minio
+sudo mv minio /usr/local/bin/
+
+# 启动
+mkdir -p ~/minio-data
+MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin123 \
+  minio server ~/minio-data --console-address ":9001"
+```
+
+#### 访问 MinIO 控制台
 
 - **API 地址**：http://localhost:9000
 - **控制台地址**：http://localhost:9001
