@@ -214,67 +214,64 @@ npm start
 EOF
 chmod +x $TEMP_DIR/start.sh
 
-# Windows 启动脚本
+# Windows 启动脚本 (纯英文避免编码问题)
 cat > $TEMP_DIR/start.bat << 'EOF'
 @echo off
-chcp 65001 >nul 2>&1
-title 短剧漫剧创作工坊
+title Drama Studio
 
 echo ========================================
-echo 短剧漫剧创作工坊 v1.0.0
+echo Drama Studio v1.0.0
 echo ========================================
 echo.
 
-REM 检查 Node.js
+REM Check Node.js
 where node >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 未找到 Node.js，请先安装 Node.js v20+
-    echo 下载地址: https://nodejs.org/
+    echo [ERROR] Node.js not found! Please install Node.js v20+
+    echo Download: https://nodejs.org/
     goto :end
 )
 
-echo [信息] Node.js 版本:
+echo [INFO] Node.js version:
 node --version
 echo.
 
 cd /d "%~dp0app"
 
-REM 检查 node_modules
+REM Check node_modules
 if not exist "node_modules" (
     echo ========================================
-    echo [信息] 首次运行，正在安装依赖...
-    echo 这可能需要几分钟，请耐心等待...
+    echo [INFO] Installing dependencies...
+    echo Please wait a few minutes...
     echo ========================================
     echo.
     
-    REM 使用国内镜像加速
     npm config set registry https://registry.npmmirror.com
     
     npm install --legacy-peer-deps
     if errorlevel 1 (
         echo.
-        echo [错误] 依赖安装失败！
-        echo 请检查网络连接后重试
-        echo 或尝试手动执行: npm install --legacy-peer-deps
+        echo [ERROR] Failed to install dependencies!
+        echo Please check your network and try again.
         goto :end
     )
     
     echo.
-    echo [信息] 依赖安装完成！
+    echo [INFO] Dependencies installed!
     echo.
 )
 
 echo ========================================
-echo [信息] 正在启动服务...
-echo 启动后请访问: http://localhost:5000
-echo 按 Ctrl+C 可停止服务
+echo [INFO] Starting server...
+echo Visit: http://localhost:5000
+echo Press Ctrl+C to stop
 echo ========================================
 echo.
 
-REM 检查 .env 文件
+REM Check .env file
 if not exist ".env" (
-    echo [警告] 未找到 .env 配置文件！
-    echo 请复制 .env.example 为 .env 并配置必要参数
+    echo [WARNING] .env file not found!
+    echo Please copy .env.example to .env and configure it.
     echo.
 )
 
@@ -286,74 +283,73 @@ npm start
 :end
 echo.
 echo ========================================
-echo 按任意键退出...
+echo Press any key to exit...
 echo ========================================
 pause >nul
 EOF
 
-# 环境检查脚本 (Windows)
+# 环境检查脚本 (Windows, 纯英文)
 cat > $TEMP_DIR/check.bat << 'EOF'
 @echo off
-chcp 65001 >nul 2>&1
-title 环境检查
+title Environment Check
 
 echo ========================================
-echo 短剧漫剧创作工坊 - 环境检查
+echo Drama Studio - Environment Check
 echo ========================================
 echo.
 
-echo [1] 检查 Node.js...
+echo [1] Checking Node.js...
 where node >nul 2>&1
 if errorlevel 1 (
-    echo     [X] 未安装 Node.js
-    echo     请从 https://nodejs.org/ 下载安装
+    echo     [X] Node.js not installed
+    echo     Download from https://nodejs.org/
 ) else (
-    echo     [√] Node.js 已安装
+    echo     [OK] Node.js installed
     node --version
 )
 echo.
 
-echo [2] 检查 npm...
+echo [2] Checking npm...
 where npm >nul 2>&1
 if errorlevel 1 (
-    echo     [X] 未安装 npm
+    echo     [X] npm not installed
 ) else (
-    echo     [√] npm 已安装
+    echo     [OK] npm installed
     npm --version
 )
 echo.
 
-echo [3] 检查项目文件...
+echo [3] Checking project files...
 if exist "app\package.json" (
-    echo     [√] package.json 存在
+    echo     [OK] package.json exists
 ) else (
-    echo     [X] package.json 不存在
+    echo     [X] package.json NOT found
 )
 
 if exist "app\.next" (
-    echo     [√] .next 目录存在
+    echo     [OK] .next directory exists
 ) else (
-    echo     [X] .next 目录不存在
+    echo     [X] .next directory NOT found
 )
 
 if exist "app\node_modules" (
-    echo     [√] node_modules 已安装
+    echo     [OK] node_modules installed
 ) else (
-    echo     [!] node_modules 未安装，首次运行会自动安装
+    echo     [!] node_modules not installed (will auto-install on first run)
 )
 echo.
 
-echo [4] 检查配置文件...
+echo [4] Checking config file...
 if exist "app\.env" (
-    echo     [√] .env 配置文件存在
+    echo     [OK] .env config file exists
 ) else (
-    echo     [!] .env 配置文件不存在
-    echo     请复制 app\.env.example 为 app\.env 并配置
+    echo     [!] .env config file NOT found
+    echo     Please copy app\.env.example to app\.env
 )
 echo.
 
 echo ========================================
-echo 检查完成
+echo Check completed
 echo ========================================
 echo.
 pause
