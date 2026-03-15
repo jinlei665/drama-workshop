@@ -80,11 +80,23 @@ const results = await executeSql('SELECT * FROM projects');
 
 #### 4. 初始化数据库表
 
-```bash
-# 使用初始化脚本
-mysql -u drama_user -p drama_studio < docker/init-mysql.sql
+**源码部署（推荐）：**
 
-# 或通过 Docker
+```bash
+# PostgreSQL
+psql -U postgres -f sql/init-postgresql.sql
+
+# MySQL
+mysql -u root -p < sql/init-mysql.sql
+```
+
+**Docker 部署：**
+
+```bash
+# PostgreSQL
+docker exec -i drama-studio-db psql -U postgres -d drama_studio < docker/init-db.sql
+
+# MySQL
 docker exec -i drama-studio-mysql mysql -u drama_user -pdrama123456 drama_studio < docker/init-mysql.sql
 ```
 
@@ -98,7 +110,10 @@ docker exec -i drama-studio-mysql mysql -u drama_user -pdrama123456 drama_studio
 # 使用主 docker-compose.yml
 docker compose up -d db
 
-# 初始化
+# 初始化（源码部署）
+psql -U postgres -f sql/init-postgresql.sql
+
+# 或 Docker 方式
 docker exec -i drama-studio-db psql -U postgres -d drama_studio < docker/init-db.sql
 ```
 
@@ -352,6 +367,8 @@ PORT=5000
 
 ## 快速启动（全本地环境）
 
+**Docker 方式：**
+
 ```bash
 # 1. 启动本地服务（MySQL + MinIO）
 docker compose -f docker-compose.local.yml up -d
@@ -367,6 +384,24 @@ cp .env.docker.example .env
 # 编辑 .env，使用上面的"开发环境"配置
 
 # 5. 安装依赖并启动
+pnpm install
+pnpm dev
+```
+
+**源码部署方式：**
+
+```bash
+# 1. 安装并启动本地数据库（MySQL 或 PostgreSQL）
+# 2. 初始化数据库
+mysql -u root -p < sql/init-mysql.sql
+# 或
+psql -U postgres -f sql/init-postgresql.sql
+
+# 3. 配置环境变量
+cp .env.docker.example .env
+# 编辑 .env
+
+# 4. 安装依赖并启动
 pnpm install
 pnpm dev
 ```

@@ -226,8 +226,8 @@ GRANT ALL PRIVILEGES ON drama_studio.* TO 'drama_user'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 
-# 初始化表结构
-mysql -u drama_user -p drama_studio < docker/init-mysql.sql
+# 初始化表结构（使用项目提供的 SQL 文件）
+mysql -u drama_user -p drama_studio < sql/init-mysql.sql
 ```
 
 ### 4. 安装对象存储（MinIO）
@@ -383,13 +383,19 @@ pm2 save
 
 **PostgreSQL：**
 ```bash
-# 使用项目初始化脚本
+# 方式1: 直接执行 SQL 文件（源码部署推荐）
+psql -U postgres -f sql/init-postgresql.sql
+
+# 方式2: Docker 容器内执行
 docker exec -i drama-studio-db psql -U postgres -d drama_studio < docker/init-db.sql
 ```
 
 **MySQL：**
 ```bash
-# 使用项目初始化脚本
+# 方式1: 直接执行 SQL 文件（源码部署推荐）
+mysql -u drama_user -p drama_studio < sql/init-mysql.sql
+
+# 方式2: Docker 容器内执行
 docker exec -i drama-studio-mysql mysql -u drama_user -pdrama123456 drama_studio < docker/init-mysql.sql
 ```
 
