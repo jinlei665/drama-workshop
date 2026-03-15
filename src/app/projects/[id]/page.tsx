@@ -164,6 +164,13 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: id, parallel })
       })
+      
+      // 检查响应类型
+      const contentType = res.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("服务器返回了错误的响应格式")
+      }
+      
       const data = await res.json()
 
       if (!res.ok) {
@@ -171,11 +178,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       }
 
       const completed = data.results.filter((r: any) => r.status === "completed").length
-      toast.success(data.message || `成功生成 ${completed} 个视频片段`)
+      const failed = data.results.filter((r: any) => r.status === "failed").length
+      
+      if (failed > 0) {
+        toast.warning(`生成完成：${completed} 个成功，${failed} 个失败`)
+      } else {
+        toast.success(data.message || `成功生成 ${completed} 个视频片段`)
+      }
       fetchData()
     } catch (error) {
       console.error("视频生成失败:", error)
-      toast.error("视频生成失败")
+      toast.error(error instanceof Error ? error.message : "视频生成失败")
     } finally {
       setGeneratingVideos(false)
       setVideoProgress(0)

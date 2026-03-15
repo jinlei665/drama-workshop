@@ -256,6 +256,12 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
         })
       })
 
+      // 检查响应类型
+      const contentType = res.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("服务器返回了错误的响应格式，请稍后重试")
+      }
+
       const data = await res.json()
 
       if (!res.ok) {
@@ -270,7 +276,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       onUpdate()
     } catch (error) {
       console.error("生成视频失败:", error)
-      toast.error("生成视频失败")
+      toast.error(error instanceof Error ? error.message : "生成视频失败")
     } finally {
       setGeneratingVideo(null)
     }
@@ -619,6 +625,31 @@ function SceneCard({
     }
   }, [scene.image_key, scene.image_url])
 
+  // 计算预估视频时长（秒）
+  const calculateDuration = () => {
+    let duration = 6; // 基础6秒
+    
+    // 根据对白长度计算
+    if (scene.dialogue) {
+      const len = scene.dialogue.length;
+      if (len > 50) duration += 4;
+      else if (len > 30) duration += 3;
+      else if (len > 15) duration += 2;
+      else if (len > 0) duration += 1;
+    }
+    
+    // 有动作描述增加时长
+    if (scene.action && scene.action.length > 20) duration += 2;
+    else if (scene.action && scene.action.length > 0) duration += 1;
+    
+    // 场景描述很长时也增加时长
+    if (scene.description && scene.description.length > 100) duration += 1;
+    
+    return Math.min(Math.max(duration, 6), 12);
+  }
+
+  const estimatedDuration = calculateDuration();
+
   // 获取出场人物名称
   const sceneCharacters = scene.character_ids
     .map(id => characters.find(c => c.id === id)?.name)
@@ -760,7 +791,7 @@ function SceneCard({
           </div>
 
           {/* 快捷操作按钮 */}
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-2 mt-3 items-center">
             {!hasImage && (
               <Button 
                 size="sm" 
@@ -777,19 +808,24 @@ function SceneCard({
               </Button>
             )}
             {hasImage && !hasVideo && (
-              <Button 
-                size="sm" 
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-                onClick={onGenerateVideo}
-                disabled={generatingVideo}
-              >
-                {generatingVideo ? (
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                ) : (
-                  <Film className="w-4 h-4 mr-1" />
-                )}
-                生成视频
-              </Button>
+              <>
+                <Button 
+                  size="sm" 
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={onGenerateVideo}
+                  disabled={generatingVideo}
+                >
+                  {generatingVideo ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Film className="w-4 h-4 mr-1" />
+                  )}
+                  生成视频
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  预估 {estimatedDuration} 秒
+                </span>
+              </>
             )}
           </div>
         </div>

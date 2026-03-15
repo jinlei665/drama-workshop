@@ -167,10 +167,13 @@ async function generateSequential(
         text: videoPrompt,
       });
 
+      // 计算视频时长（基于内容复杂度）
+      const duration = calculateDuration(scene);
+
       // 生成视频
       const response = await client.videoGeneration(contentItems, {
         model: 'doubao-seedance-1-5-pro-251215',
-        duration: 5,
+        duration: duration,
         ratio: '16:9',
         resolution: '720p',
         returnLastFrame: true,
@@ -220,8 +223,8 @@ async function generateParallel(
   storage: S3Storage,
   supabase: any
 ): Promise<any[]> {
-  // 并发控制：最多同时生成2个视频
-  const maxConcurrent = 2;
+  // 并发控制：最多同时生成1个视频（避免403错误）
+  const maxConcurrent = 1;
   const results: any[] = [];
 
   for (let i = 0; i < scenesWithImages.length; i += maxConcurrent) {
@@ -247,10 +250,13 @@ async function generateParallel(
           },
         ];
 
+        // 计算视频时长（基于内容复杂度）
+        const duration = calculateDuration(scene);
+
         // 生成视频
         const response = await client.videoGeneration(contentItems, {
           model: 'doubao-seedance-1-5-pro-251215',
-          duration: 5,
+          duration: duration,
           ratio: '16:9',
           resolution: '720p',
           returnLastFrame: false, // 并行模式不需要最后一帧
@@ -335,6 +341,50 @@ async function updateSceneVideo(
       updated_at: new Date().toISOString(),
     })
     .eq('id', sceneId);
+}
+
+/**
+ * 计算视频时长（基于内容复杂度）
+ * - 基础时长：6秒
+ * - 有对白：根据对白长度增加1-4秒
+ * - 有动作描述：增加1-2秒
+ * - 最长12秒，最短6秒
+ */
+function calculateDuration(scene: {
+  dialogue?: string | null;
+  action?: string | null;
+  description?: string;
+}): number {
+  let duration = 6; // 基础6秒
+
+  // 根据对白长度计算
+  if (scene.dialogue) {
+    const dialogueLength = scene.dialogue.length;
+    if (dialogueLength > 50) {
+      duration += 4;
+    } else if (dialogueLength > 30) {
+      duration += 3;
+    } else if (dialogueLength > 15) {
+      duration += 2;
+    } else if (dialogueLength > 0) {
+      duration += 1;
+    }
+  }
+
+  // 有动作描述增加时长
+  if (scene.action && scene.action.length > 20) {
+    duration += 2;
+  } else if (scene.action && scene.action.length > 0) {
+    duration += 1;
+  }
+
+  // 场景描述很长时也增加时长
+  if (scene.description && scene.description.length > 100) {
+    duration += 1;
+  }
+
+  // 限制在6-12秒范围内
+  return Math.min(Math.max(duration, 6), 12);
 }
 
 /**
