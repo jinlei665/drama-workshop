@@ -40,12 +40,14 @@ import {
   SkipBack,
   SkipForward,
   Package,
-  FolderOpen
+  FolderOpen,
+  Settings
 } from "lucide-react"
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
 import { ScenesPanel } from "./scenes-panel"
 import { EpisodesPanel } from "./episodes-panel"
+import { VideoGenerationProgress } from "@/components/video-generation-progress"
 
 interface Project {
   id: string
@@ -102,6 +104,21 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [videoMode, setVideoMode] = useState<'fast' | 'continuous'>('continuous')
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const [videoGenerationSession, setVideoGenerationSession] = useState<{
+    isGenerating: boolean
+    total: number
+    completed: number
+    currentScene: number | null
+    canPause: boolean
+    isPaused: boolean
+  }>({
+    isGenerating: false,
+    total: 0,
+    completed: 0,
+    currentScene: null,
+    canPause: false,
+    isPaused: false
+  })
 
   const fetchData = async () => {
     try {
@@ -162,50 +179,124 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
-  // 生成视频片段（支持两种模式）
+  // 生成视频片段（使用流式API）
   const handleGenerateVideos = async (mode: 'fast' | 'continuous' = 'continuous') => {
     if (completedScenes.length === 0) {
       toast.error("请先生成分镜图片")
       return
     }
 
-    setGeneratingVideos(true)
-    setVideoProgress(0)
+    setVideoGenerationSession({
+      isGenerating: true,
+      total: completedScenes.length,
+      completed: 0,
+      currentScene: null,
+      canPause: false,
+      isPaused: false
+    })
 
     try {
-      const res = await fetch("/api/generate/videos", {
+      const res = await fetch("/api/generate/videos-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId: id, mode, episodeId: selectedEpisodeId })
       })
       
-      // 检查响应类型
-      const contentType = res.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("服务器返回了错误的响应格式")
-      }
-      
-      const data = await res.json()
-
       if (!res.ok) {
-        throw new Error(data.error || "视频生成失败")
+        throw new Error("视频生成请求失败")
       }
-
-      const completed = data.results.filter((r: any) => r.status === "completed").length
-      const failed = data.results.filter((r: any) => r.status === "failed").length
       
-      if (failed > 0) {
-        toast.warning(`生成完成：${completed} 个成功，${failed} 个失败`)
-      } else {
-        toast.success(data.message || `成功生成 ${completed} 个视频片段`)
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+      
+      if (!reader) {
+        throw new Error("无法读取响应流")
       }
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.type === 'progress') {
+                setVideoGenerationSession(prev => ({
+                  ...prev,
+                  completed: data.completed,
+                  currentScene: data.sceneNumber,
+                  canPause: data.canPause || false
+                }))
+              } else if (data.type === 'error') {
+                toast.error(`分镜 ${data.sceneNumber} 生成失败: ${data.error}`)
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+      
+      toast.success("视频生成完成")
       fetchData()
     } catch (error) {
       console.error("视频生成失败:", error)
       toast.error(error instanceof Error ? error.message : "视频生成失败")
     } finally {
-      setGeneratingVideos(false)
-      setVideoProgress(0)
+      setVideoGenerationSession({
+        isGenerating: false,
+        total: 0,
+        completed: 0,
+        currentScene: null,
+        canPause: false,
+        isPaused: false
+      })
+    }
+  }
+
+  // 暂停/继续视频生成
+  const handlePauseVideoGeneration = async () => {
+    try {
+      const res = await fetch("/api/generate/videos-stream", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: videoGenerationSession.isPaused ? "resume" : "pause" })
+      })
+      
+      if (res.ok) {
+        setVideoGenerationSession(prev => ({ ...prev, isPaused: !prev.isPaused }))
+        toast.success(videoGenerationSession.isPaused ? "已继续生成" : "已暂停生成")
+      }
+    } catch (error) {
+      toast.error("操作失败")
+    }
+  }
+
+  // 取消视频生成
+  const handleCancelVideoGeneration = async () => {
+    try {
+      const res = await fetch("/api/generate/videos-stream", {
+        method: "DELETE"
+      })
+      
+      if (res.ok) {
+        setVideoGenerationSession({
+          isGenerating: false,
+          total: 0,
+          completed: 0,
+          currentScene: null,
+          canPause: false,
+          isPaused: false
+        })
+        toast.success("已取消生成")
+      }
+    } catch (error) {
+      toast.error("取消失败")
     }
   }
 
@@ -318,10 +409,10 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
-                    disabled={generatingVideos || completedScenes.length === 0}
+                    disabled={videoGenerationSession.isGenerating || completedScenes.length === 0}
                     variant="default"
                   >
-                    {generatingVideos ? (
+                    {videoGenerationSession.isGenerating ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         合成中...
@@ -417,6 +508,19 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
           <TabsContent value="preview">
             <div className="space-y-6">
+              {/* 视频生成进度可视化 */}
+              {videoGenerationSession.isGenerating && (
+                <VideoGenerationProgress
+                  total={videoGenerationSession.total}
+                  completed={videoGenerationSession.completed}
+                  currentScene={videoGenerationSession.currentScene}
+                  isPaused={videoGenerationSession.isPaused}
+                  canPause={videoGenerationSession.canPause}
+                  onPause={handlePauseVideoGeneration}
+                  onCancel={handleCancelVideoGeneration}
+                />
+              )}
+              
               {/* 视频进度卡片 */}
               <Card>
                 <CardHeader>
@@ -435,16 +539,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {generatingVideos && (
-                    <div className="space-y-2 mb-4">
-                      <div className="flex items-center justify-between text-sm">
-                        <span>正在生成视频片段（每个间隔3秒避免限流）...</span>
-                        <span className="text-muted-foreground">这可能需要几分钟</span>
-                      </div>
-                      <Progress value={videoProgress} className="h-2" />
-                    </div>
-                  )}
-                  
                   <div className="grid grid-cols-3 gap-4 text-center mb-4">
                     <div className="p-4 rounded-lg bg-secondary/50">
                       <div className="text-2xl font-bold text-primary">{completedScenes.length}</div>
@@ -461,13 +555,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   </div>
 
                   {/* 合成按钮区域 */}
-                  {pendingVideoScenes.length > 0 && !generatingVideos && (
+                  {pendingVideoScenes.length > 0 && !videoGenerationSession.isGenerating && (
                     <div className="flex gap-3 justify-center pt-2">
                       <Button
                         onClick={() => handleGenerateVideos('continuous')}
-                        disabled={generatingVideos}
-                        variant="default"
-                        className="gap-2"
+                        className="amber-gradient text-white border-0 gap-2"
                       >
                         <Film className="w-4 h-4" />
                         开始合成视频
