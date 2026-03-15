@@ -22,7 +22,7 @@ export const healthCheck = pgTable("health_check", {
 })
 
 // ============================================
-// 漫剧生成系统表
+// 短剧视频生成系统表
 // ============================================
 
 /**
@@ -39,6 +39,9 @@ export const projects = pgTable(
     sourceContent: text("source_content").notNull(), // 原始小说/脚本内容
     sourceType: varchar("source_type", { length: 20 }).default("novel").notNull(), // novel | script
     status: varchar("status", { length: 20 }).default("draft").notNull(), // draft | processing | completed
+    // 最终合成视频
+    finalVideoUrl: text("final_video_url"), // 合成后的最终视频URL
+    finalVideoStatus: varchar("final_video_status", { length: 20 }).default("pending"), // pending | generating | completed | failed
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -51,7 +54,7 @@ export const projects = pgTable(
 )
 
 /**
- * 人物表 - 存储人物信息和三视图
+ * 人物表 - 存储人物信息和角色造型图
  */
 export const characters = pgTable(
   "characters",
@@ -64,13 +67,12 @@ export const characters = pgTable(
     description: text("description"), // 人物描述
     appearance: text("appearance"), // 外貌特征
     personality: text("personality"), // 性格特点
-    // 三视图 - 存储对象存储的 key
+    // 角色造型图
     frontViewKey: text("front_view_key"), // 正面图 key
     sideViewKey: text("side_view_key"), // 侧面图 key
     backViewKey: text("back_view_key"), // 背面图 key
-    // 人物一致性参考图
     referenceImageKey: text("reference_image_key"),
-    // 人物标签（如：主角、配角、反派等）
+    // 人物标签
     tags: jsonb("tags").default([]),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -84,7 +86,7 @@ export const characters = pgTable(
 )
 
 /**
- * 分镜表 - 存储分镜内容和生成的图片
+ * 分镜表 - 存储分镜内容和生成的图片/视频
  */
 export const scenes = pgTable(
   "scenes",
@@ -104,10 +106,15 @@ export const scenes = pgTable(
     characterIds: jsonb("character_ids").default([]), // 出场人物ID列表
     // 生成的图片
     imageKey: text("image_key"), // 生成的分镜图片 key
-    // 状态
+    imageUrl: text("image_url"), // 分镜图片URL（直接存储）
+    // 生成的视频片段
+    videoUrl: text("video_url"), // 生成的视频片段URL
+    videoStatus: varchar("video_status", { length: 20 }).default("pending"), // pending | generating | completed | failed
+    lastFrameUrl: text("last_frame_url"), // 视频最后一帧URL（用于连续生成）
+    // 图片状态
     status: varchar("status", { length: 20 }).default("pending").notNull(), // pending | generating | completed | failed
     // 元数据
-    metadata: jsonb("metadata"), // 额外的元数据
+    metadata: jsonb("metadata"), // 额外的元数据（景别、镜头运动等）
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -142,6 +149,8 @@ export const updateProjectSchema = createCoercedInsertSchema(projects)
     sourceContent: true,
     sourceType: true,
     status: true,
+    finalVideoUrl: true,
+    finalVideoStatus: true,
   })
   .partial()
 
@@ -192,6 +201,10 @@ export const updateSceneSchema = createCoercedInsertSchema(scenes)
     emotion: true,
     characterIds: true,
     imageKey: true,
+    imageUrl: true,
+    videoUrl: true,
+    videoStatus: true,
+    lastFrameUrl: true,
     status: true,
     metadata: true,
   })

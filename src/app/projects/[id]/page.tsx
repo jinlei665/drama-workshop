@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, use, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import {
   Dialog,
   DialogContent,
@@ -25,7 +26,11 @@ import {
   ZoomIn,
   Download,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Film,
+  Pause,
+  SkipBack,
+  SkipForward
 } from "lucide-react"
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
@@ -63,6 +68,9 @@ interface Scene {
   emotion: string | null
   character_ids: string[]
   image_key: string | null
+  image_url: string | null
+  video_url: string | null
+  video_status: string
   status: string
   metadata: {
     shotType?: string
@@ -78,6 +86,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [characters, setCharacters] = useState<Character[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
   const [generating, setGenerating] = useState(false)
+  const [generatingVideos, setGeneratingVideos] = useState(false)
+  const [videoProgress, setVideoProgress] = useState(0)
 
   const fetchData = async () => {
     try {
@@ -138,6 +148,40 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     }
   }
 
+  // 生成视频片段
+  const handleGenerateVideos = async () => {
+    if (completedScenes.length === 0) {
+      toast.error("请先生成分镜图片")
+      return
+    }
+
+    setGeneratingVideos(true)
+    setVideoProgress(0)
+
+    try {
+      const res = await fetch("/api/generate/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: id })
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "视频生成失败")
+      }
+
+      const completed = data.results.filter((r: any) => r.status === "completed").length
+      toast.success(data.message || `成功生成 ${completed} 个视频片段`)
+      fetchData()
+    } catch (error) {
+      console.error("视频生成失败:", error)
+      toast.error("视频生成失败")
+    } finally {
+      setGeneratingVideos(false)
+      setVideoProgress(0)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -150,8 +194,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return null
   }
 
-  // 获取已完成的分镜
+  // 获取已完成图片的分镜
   const completedScenes = scenes.filter(s => s.status === "completed")
+  // 获取已完成视频的分镜
+  completedScenes.sort((a, b) => a.scene_number - b.scene_number)
+  const videoScenes = completedScenes.filter(s => s.video_status === "completed")
+  const pendingVideoScenes = completedScenes.filter(s => s.video_status === "pending" || s.video_status === "failed")
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
@@ -191,8 +239,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    批量生成分镜
+                    <Image className="w-4 h-4 mr-2" />
+                    生成分镜图
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleGenerateVideos}
+                disabled={generatingVideos || completedScenes.length === 0}
+                variant="default"
+              >
+                {generatingVideos ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    合成中...
+                  </>
+                ) : (
+                  <>
+                    <Film className="w-4 h-4 mr-2" />
+                    合成视频
                   </>
                 )}
               </Button>
@@ -237,37 +302,249 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </TabsContent>
 
           <TabsContent value="preview">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>短剧视频预览</CardTitle>
-                    <CardDescription>
-                      预览生成的视频分镜效果，点击图片可查看大图
-                    </CardDescription>
+            <div className="space-y-6">
+              {/* 视频进度卡片 */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>视频合成进度</CardTitle>
+                      <CardDescription>
+                        将分镜图片转换为动态视频片段
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <Badge variant={videoScenes.length === completedScenes.length && completedScenes.length > 0 ? "default" : "outline"}>
+                        {videoScenes.length} / {completedScenes.length} 已完成
+                      </Badge>
+                    </div>
                   </div>
-                  {completedScenes.length > 0 && (
-                    <Badge variant="outline">
-                      共 {completedScenes.length} 个分镜
-                    </Badge>
+                </CardHeader>
+                <CardContent>
+                  {generatingVideos && (
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span>正在生成视频片段...</span>
+                        <span className="text-muted-foreground">这可能需要几分钟</span>
+                      </div>
+                      <Progress value={videoProgress} className="h-2" />
+                    </div>
                   )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {completedScenes.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Video className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>暂无已生成的分镜，请先生成分镜图片</p>
+                  
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="p-4 rounded-lg bg-secondary/50">
+                      <div className="text-2xl font-bold text-primary">{completedScenes.length}</div>
+                      <div className="text-sm text-muted-foreground">分镜图片</div>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/50">
+                      <div className="text-2xl font-bold text-green-500">{videoScenes.length}</div>
+                      <div className="text-sm text-muted-foreground">视频片段</div>
+                    </div>
+                    <div className="p-4 rounded-lg bg-secondary/50">
+                      <div className="text-2xl font-bold text-amber-500">{pendingVideoScenes.length}</div>
+                      <div className="text-sm text-muted-foreground">待生成</div>
+                    </div>
                   </div>
-                ) : (
-                  <ScenePreviewGallery scenes={completedScenes} />
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* 视频播放器 */}
+              {videoScenes.length > 0 ? (
+                <VideoPlayer scenes={videoScenes} />
+              ) : (
+                <Card>
+                  <CardContent className="py-12">
+                    <div className="text-center text-muted-foreground">
+                      <Film className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                      <p className="text-lg mb-2">暂无视频片段</p>
+                      <p className="text-sm">请先生成分镜图片，然后点击"合成视频"按钮</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 分镜预览 */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>分镜预览</CardTitle>
+                  <CardDescription>查看所有生成的分镜图片</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {completedScenes.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Image className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>暂无已生成的分镜</p>
+                    </div>
+                  ) : (
+                    <ScenePreviewGallery scenes={completedScenes} />
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </main>
     </div>
+  )
+}
+
+// 视频播放器组件
+function VideoPlayer({ scenes }: { scenes: Scene[] }) {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  const currentScene = scenes[currentIndex]
+
+  const handlePlayPause = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause()
+      } else {
+        videoRef.current.play()
+      }
+      setIsPlaying(!isPlaying)
+    }
+  }
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1)
+      setIsPlaying(false)
+    }
+  }
+
+  const handleNext = () => {
+    if (currentIndex < scenes.length - 1) {
+      setCurrentIndex(currentIndex + 1)
+      setIsPlaying(false)
+    }
+  }
+
+  const handleVideoEnd = () => {
+    setIsPlaying(false)
+    // 自动播放下一个
+    if (currentIndex < scenes.length - 1) {
+      setTimeout(() => {
+        setCurrentIndex(currentIndex + 1)
+        setIsPlaying(true)
+      }, 500)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <div className="relative">
+          {/* 视频区域 */}
+          <div className="aspect-video bg-black relative">
+            {currentScene?.video_url ? (
+              <video
+                ref={videoRef}
+                src={currentScene.video_url}
+                className="w-full h-full object-contain"
+                onEnded={handleVideoEnd}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-white" />
+              </div>
+            )}
+
+            {/* 分镜序号 */}
+            <div className="absolute top-4 left-4">
+              <Badge className="bg-black/70 text-white">
+                第 {currentScene?.scene_number} 镜
+              </Badge>
+            </div>
+
+            {/* 播放计数 */}
+            <div className="absolute top-4 right-4">
+              <Badge variant="secondary">
+                {currentIndex + 1} / {scenes.length}
+              </Badge>
+            </div>
+          </div>
+
+          {/* 控制栏 */}
+          <div className="bg-card border-t p-4">
+            <div className="flex items-center justify-between">
+              {/* 分镜信息 */}
+              <div className="flex-1">
+                <h4 className="font-medium">{currentScene?.title || `分镜 ${currentScene?.scene_number}`}</h4>
+                <p className="text-sm text-muted-foreground line-clamp-1">
+                  {currentScene?.description}
+                </p>
+              </div>
+
+              {/* 控制按钮 */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handlePrev}
+                  disabled={currentIndex === 0}
+                >
+                  <SkipBack className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="default"
+                  size="icon"
+                  onClick={handlePlayPause}
+                  className="w-12 h-12"
+                >
+                  {isPlaying ? (
+                    <Pause className="w-5 h-5" />
+                  ) : (
+                    <Play className="w-5 h-5 ml-0.5" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleNext}
+                  disabled={currentIndex === scenes.length - 1}
+                >
+                  <SkipForward className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* 时间线缩略图 */}
+            <div className="mt-4 flex gap-2 overflow-x-auto pb-2">
+              {scenes.map((scene, index) => (
+                <button
+                  key={scene.id}
+                  onClick={() => {
+                    setCurrentIndex(index)
+                    setIsPlaying(false)
+                  }}
+                  className={`flex-shrink-0 w-20 h-12 rounded border-2 overflow-hidden transition-all ${
+                    index === currentIndex
+                      ? "border-primary"
+                      : "border-transparent hover:border-border"
+                  }`}
+                >
+                  {scene.video_url ? (
+                    <video
+                      src={scene.video_url}
+                      className="w-full h-full object-cover"
+                      muted
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-secondary flex items-center justify-center">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -281,7 +558,10 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
     const fetchUrls = async () => {
       const urls: Record<string, string> = {}
       for (const scene of scenes) {
-        if (scene.image_key) {
+        // 优先使用直接存储的URL
+        if (scene.image_url) {
+          urls[scene.id] = scene.image_url
+        } else if (scene.image_key) {
           try {
             const res = await fetch(`/api/images?key=${scene.image_key}`)
             const data = await res.json()
@@ -330,7 +610,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {scenes.map((scene, index) => (
           <Card 
             key={scene.id} 
@@ -349,35 +629,26 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
               )}
-              {/* 悬停遮罩 */}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <Button variant="secondary" size="sm">
-                  <ZoomIn className="w-4 h-4 mr-1" />
-                  查看大图
-                </Button>
-              </div>
+              {/* 视频状态 */}
+              {scene.video_url && (
+                <div className="absolute top-2 right-2">
+                  <Badge variant="default" className="bg-green-500 text-white text-xs">
+                    <Play className="w-3 h-3 mr-1" />
+                    视频
+                  </Badge>
+                </div>
+              )}
               {/* 分镜序号 */}
               <div className="absolute top-2 left-2">
-                <Badge variant="secondary" className="bg-black/60 text-white">
-                  第 {scene.scene_number} 镜
+                <Badge variant="secondary" className="bg-black/60 text-white text-xs">
+                  {scene.scene_number}
                 </Badge>
               </div>
             </div>
-            <CardContent className="p-3">
-              <h4 className="font-medium text-sm line-clamp-1">
-                {scene.title || "分镜标题"}
-              </h4>
-              <p className="text-xs text-muted-foreground line-clamp-1 mt-1">
-                {scene.description}
+            <CardContent className="p-2">
+              <p className="text-xs text-muted-foreground line-clamp-1">
+                {scene.title || scene.description}
               </p>
-              <div className="flex items-center gap-1 mt-2 flex-wrap">
-                {scene.metadata?.shotType && (
-                  <Badge variant="outline" className="text-xs">{scene.metadata.shotType}</Badge>
-                )}
-                {scene.metadata?.cameraMovement && (
-                  <Badge variant="outline" className="text-xs">{scene.metadata.cameraMovement}</Badge>
-                )}
-              </div>
             </CardContent>
           </Card>
         ))}
@@ -394,9 +665,15 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                 </DialogTitle>
               </DialogHeader>
               <div className="relative w-full h-full flex">
-                {/* 图片区域 */}
+                {/* 图片/视频区域 */}
                 <div className="flex-1 relative bg-black flex items-center justify-center">
-                  {imageUrls[scenes[selectedIndex].id] ? (
+                  {scenes[selectedIndex].video_url ? (
+                    <video
+                      src={scenes[selectedIndex].video_url}
+                      controls
+                      className="max-w-full max-h-full"
+                    />
+                  ) : imageUrls[scenes[selectedIndex].id] ? (
                     <img 
                       src={imageUrls[scenes[selectedIndex].id]} 
                       alt={scenes[selectedIndex].title || `分镜 ${scenes[selectedIndex].scene_number}`}
