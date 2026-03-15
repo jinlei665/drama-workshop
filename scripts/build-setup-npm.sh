@@ -150,25 +150,66 @@ PKGEOF
 # Linux 启动脚本
 cat > $TEMP_DIR/start.sh << 'EOF'
 #!/bin/bash
+
+echo "========================================"
+echo "短剧漫剧创作工坊 v1.0.0"
+echo "========================================"
+echo
+
+# 检查 Node.js
+if ! command -v node &> /dev/null; then
+    echo "[错误] 未找到 Node.js，请先安装 Node.js v20+"
+    echo "下载地址: https://nodejs.org/"
+    exit 1
+fi
+
+echo "[信息] Node.js 版本:"
+node --version
+echo
+
 cd "$(dirname "$0")/app"
 
 # 检查 node_modules
 if [ ! -d "node_modules" ]; then
     echo "========================================"
-    echo "首次运行，正在安装依赖..."
+    echo "[信息] 首次运行，正在安装依赖..."
     echo "这可能需要几分钟，请耐心等待..."
     echo "========================================"
+    echo
+    
+    # 使用国内镜像加速
+    npm config set registry https://registry.npmmirror.com
+    
     npm install --legacy-peer-deps
     if [ $? -ne 0 ]; then
-        echo "依赖安装失败，请检查网络连接后重试"
+        echo
+        echo "[错误] 依赖安装失败！"
+        echo "请检查网络连接后重试"
         exit 1
     fi
-    echo "依赖安装完成！"
+    
+    echo
+    echo "[信息] 依赖安装完成！"
+    echo
 fi
 
-echo "启动短剧漫剧创作工坊..."
+echo "========================================"
+echo "[信息] 正在启动服务..."
+echo "启动后请访问: http://localhost:5000"
+echo "按 Ctrl+C 可停止服务"
+echo "========================================"
+echo
+
+# 检查 .env 文件
+if [ ! -f ".env" ]; then
+    echo "[警告] 未找到 .env 配置文件！"
+    echo "请复制 .env.example 为 .env 并配置必要参数"
+    echo
+fi
+
 export PORT=5000
 export HOSTNAME="0.0.0.0"
+
 npm start
 EOF
 chmod +x $TEMP_DIR/start.sh
@@ -176,27 +217,145 @@ chmod +x $TEMP_DIR/start.sh
 # Windows 启动脚本
 cat > $TEMP_DIR/start.bat << 'EOF'
 @echo off
+chcp 65001 >nul 2>&1
+title 短剧漫剧创作工坊
+
+echo ========================================
+echo 短剧漫剧创作工坊 v1.0.0
+echo ========================================
+echo.
+
+REM 检查 Node.js
+where node >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 未找到 Node.js，请先安装 Node.js v20+
+    echo 下载地址: https://nodejs.org/
+    goto :end
+)
+
+echo [信息] Node.js 版本:
+node --version
+echo.
+
 cd /d "%~dp0app"
 
 REM 检查 node_modules
 if not exist "node_modules" (
     echo ========================================
-    echo 首次运行，正在安装依赖...
+    echo [信息] 首次运行，正在安装依赖...
     echo 这可能需要几分钟，请耐心等待...
     echo ========================================
+    echo.
+    
+    REM 使用国内镜像加速
+    npm config set registry https://registry.npmmirror.com
+    
     npm install --legacy-peer-deps
     if errorlevel 1 (
-        echo 依赖安装失败，请检查网络连接后重试
-        pause
-        exit /b 1
+        echo.
+        echo [错误] 依赖安装失败！
+        echo 请检查网络连接后重试
+        echo 或尝试手动执行: npm install --legacy-peer-deps
+        goto :end
     )
-    echo 依赖安装完成！
+    
+    echo.
+    echo [信息] 依赖安装完成！
+    echo.
 )
 
-echo 启动短剧漫剧创作工坊...
+echo ========================================
+echo [信息] 正在启动服务...
+echo 启动后请访问: http://localhost:5000
+echo 按 Ctrl+C 可停止服务
+echo ========================================
+echo.
+
+REM 检查 .env 文件
+if not exist ".env" (
+    echo [警告] 未找到 .env 配置文件！
+    echo 请复制 .env.example 为 .env 并配置必要参数
+    echo.
+)
+
 set PORT=5000
 set HOSTNAME=0.0.0.0
+
 npm start
+
+:end
+echo.
+echo ========================================
+echo 按任意键退出...
+echo ========================================
+pause >nul
+EOF
+
+# 环境检查脚本 (Windows)
+cat > $TEMP_DIR/check.bat << 'EOF'
+@echo off
+chcp 65001 >nul 2>&1
+title 环境检查
+
+echo ========================================
+echo 短剧漫剧创作工坊 - 环境检查
+echo ========================================
+echo.
+
+echo [1] 检查 Node.js...
+where node >nul 2>&1
+if errorlevel 1 (
+    echo     [X] 未安装 Node.js
+    echo     请从 https://nodejs.org/ 下载安装
+) else (
+    echo     [√] Node.js 已安装
+    node --version
+)
+echo.
+
+echo [2] 检查 npm...
+where npm >nul 2>&1
+if errorlevel 1 (
+    echo     [X] 未安装 npm
+) else (
+    echo     [√] npm 已安装
+    npm --version
+)
+echo.
+
+echo [3] 检查项目文件...
+if exist "app\package.json" (
+    echo     [√] package.json 存在
+) else (
+    echo     [X] package.json 不存在
+)
+
+if exist "app\.next" (
+    echo     [√] .next 目录存在
+) else (
+    echo     [X] .next 目录不存在
+)
+
+if exist "app\node_modules" (
+    echo     [√] node_modules 已安装
+) else (
+    echo     [!] node_modules 未安装，首次运行会自动安装
+)
+echo.
+
+echo [4] 检查配置文件...
+if exist "app\.env" (
+    echo     [√] .env 配置文件存在
+) else (
+    echo     [!] .env 配置文件不存在
+    echo     请复制 app\.env.example 为 app\.env 并配置
+)
+echo.
+
+echo ========================================
+echo 检查完成
+echo ========================================
+echo.
 pause
 EOF
 
