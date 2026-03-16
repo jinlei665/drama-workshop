@@ -43,6 +43,18 @@ fi
 cp -r .next/static $LINUX_DIR/app/.next/
 cp -r public $LINUX_DIR/app/
 
+# 复制缺失的依赖 (styled-jsx 等在 standalone 中可能缺失)
+# 需要在 node_modules 下创建实际的目录，而不是符号链接
+if [ -d "node_modules/.pnpm" ]; then
+    # 找到 styled-jsx 的实际目录
+    STYLED_JSX_DIR=$(find node_modules/.pnpm -type d -name "styled-jsx" | grep "node_modules/styled-jsx$" | head -1)
+    if [ -n "$STYLED_JSX_DIR" ] && [ -d "$STYLED_JSX_DIR" ]; then
+        mkdir -p $LINUX_DIR/app/node_modules/styled-jsx
+        cp -r "$STYLED_JSX_DIR"/* $LINUX_DIR/app/node_modules/styled-jsx/
+        echo "  Copied styled-jsx for Linux"
+    fi
+fi
+
 # Windows 版本
 WIN_DIR="$BUILD_DIR/$PROJECT_NAME-win-x64"
 mkdir -p $WIN_DIR/app
@@ -55,6 +67,18 @@ else
 fi
 cp -r .next/static $WIN_DIR/app/.next/
 cp -r public $WIN_DIR/app/
+
+# 复制缺失的依赖 (styled-jsx 等在 standalone 中可能缺失)
+# 需要在 node_modules 下创建实际的目录，而不是符号链接
+if [ -d "node_modules/.pnpm" ]; then
+    # 找到 styled-jsx 的实际目录
+    STYLED_JSX_DIR=$(find node_modules/.pnpm -type d -name "styled-jsx" | grep "node_modules/styled-jsx$" | head -1)
+    if [ -n "$STYLED_JSX_DIR" ] && [ -d "$STYLED_JSX_DIR" ]; then
+        mkdir -p $WIN_DIR/app/node_modules/styled-jsx
+        cp -r "$STYLED_JSX_DIR"/* $WIN_DIR/app/node_modules/styled-jsx/
+        echo "  Copied styled-jsx for Windows"
+    fi
+fi
 
 # 下载 Node.js 便携版
 echo ""
