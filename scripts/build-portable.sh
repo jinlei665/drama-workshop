@@ -43,7 +43,7 @@ fi
 cp -r .next/static $LINUX_DIR/app/.next/
 cp -r public $LINUX_DIR/app/
 
-# 复制缺失的依赖 (styled-jsx 等在 standalone 中可能缺失)
+# 复制缺失的依赖 (styled-jsx, @swc/helpers 等在 standalone 中可能缺失)
 # 需要在 node_modules 下创建实际的目录，而不是符号链接
 if [ -d "node_modules/.pnpm" ]; then
     # 找到 styled-jsx 的实际目录
@@ -52,6 +52,14 @@ if [ -d "node_modules/.pnpm" ]; then
         mkdir -p $LINUX_DIR/app/node_modules/styled-jsx
         cp -r "$STYLED_JSX_DIR"/* $LINUX_DIR/app/node_modules/styled-jsx/
         echo "  Copied styled-jsx for Linux"
+    fi
+    
+    # 找到 @swc/helpers 的实际目录 (pnpm 格式: @swc+helpers@版本/node_modules/@swc/helpers)
+    SWC_HELPERS_DIR=$(ls -d node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers 2>/dev/null | head -1)
+    if [ -n "$SWC_HELPERS_DIR" ] && [ -d "$SWC_HELPERS_DIR" ]; then
+        mkdir -p $LINUX_DIR/app/node_modules/@swc/helpers
+        cp -r "$SWC_HELPERS_DIR"/* $LINUX_DIR/app/node_modules/@swc/helpers/
+        echo "  Copied @swc/helpers for Linux"
     fi
 fi
 
@@ -68,7 +76,7 @@ fi
 cp -r .next/static $WIN_DIR/app/.next/
 cp -r public $WIN_DIR/app/
 
-# 复制缺失的依赖 (styled-jsx 等在 standalone 中可能缺失)
+# 复制缺失的依赖 (styled-jsx, @swc/helpers 等在 standalone 中可能缺失)
 # 需要在 node_modules 下创建实际的目录，而不是符号链接
 if [ -d "node_modules/.pnpm" ]; then
     # 找到 styled-jsx 的实际目录
@@ -77,6 +85,14 @@ if [ -d "node_modules/.pnpm" ]; then
         mkdir -p $WIN_DIR/app/node_modules/styled-jsx
         cp -r "$STYLED_JSX_DIR"/* $WIN_DIR/app/node_modules/styled-jsx/
         echo "  Copied styled-jsx for Windows"
+    fi
+    
+    # 找到 @swc/helpers 的实际目录 (pnpm 格式: @swc+helpers@版本/node_modules/@swc/helpers)
+    SWC_HELPERS_DIR=$(ls -d node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers 2>/dev/null | head -1)
+    if [ -n "$SWC_HELPERS_DIR" ] && [ -d "$SWC_HELPERS_DIR" ]; then
+        mkdir -p $WIN_DIR/app/node_modules/@swc/helpers
+        cp -r "$SWC_HELPERS_DIR"/* $WIN_DIR/app/node_modules/@swc/helpers/
+        echo "  Copied @swc/helpers for Windows"
     fi
 fi
 

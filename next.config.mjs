@@ -6,14 +6,12 @@ const nextConfig = {
   // 确保这些包不被外部化
   serverExternalPackages: [],
   
-  // 包含必要的依赖
-  experimental: {
-    // 确保所有依赖都被打包
-    outputFileTracingIncludes: {
-      '/*': [
-        './node_modules/styled-jsx/**/*',
-      ],
-    },
+  // 包含必要的依赖 (Next.js 16 移到顶层)
+  outputFileTracingIncludes: {
+    '/*': [
+      './node_modules/styled-jsx/**/*',
+      './node_modules/@swc/helpers/**/*',
+    ],
   },
   
   allowedDevOrigins: ['*.dev.coze.site'],
