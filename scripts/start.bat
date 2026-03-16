@@ -1,43 +1,39 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 
 echo.
-echo ╔════════════════════════════════════════════════════════════╗
-echo ║           短剧漫剧创作工坊 - 启动中...                       ║
-echo ╚════════════════════════════════════════════════════════════╝
+echo ========================================
+echo   Drama Studio - Starting...
+echo ========================================
 echo.
 
-REM 设置默认端口
 if not defined PORT set PORT=5000
 
-REM 检查 .env 文件
 if exist ".env" (
-    echo [1/3] 加载 .env 配置文件...
+    echo [1/3] Loading .env file...
     for /f "usebackq eol=# tokens=1,* delims==" %%a in (".env") do (
         set "key=%%a"
         set "val=%%b"
         if defined key if defined val (
-            REM 去除前后空格
             for /f "tokens=* delims= " %%c in ("!val!") do set "val=%%c"
             set "!key!=!val!"
         )
     )
-    echo       √ 配置已加载
+    echo       OK - Config loaded
 ) else (
-    echo       × 未找到 .env 文件
+    echo       ERROR - .env file not found
     echo.
-    echo 请先配置 .env 文件：
-    echo   1. 复制 .env.example 为 .env
-    echo   2. 编辑 .env 填入数据库和 API 配置
+    echo Please create .env file:
+    echo   1. Copy .env.example to .env
+    echo   2. Edit .env with your database and API settings
     echo.
     if exist ".env.example" (
-        echo 是否复制 .env.example 为 .env? [Y/N]
-        choice /c YN /n /m "请选择: "
+        echo Copy .env.example to .env? [Y/N]
+        choice /c YN /n /m "Select: "
         if !errorlevel! equ 1 (
             copy ".env.example" ".env" >nul
-            echo       √ 已创建 .env 文件，请编辑后重新启动
+            echo       OK - .env created, please edit and restart
         )
     )
     pause
@@ -45,43 +41,39 @@ if exist ".env" (
 )
 
 echo.
-echo [2/3] 检查环境配置...
+echo [2/3] Checking configuration...
 echo       DATABASE_TYPE: !DATABASE_TYPE!
-echo       DATABASE_URL: !DATABASE_URL!
-if defined NEXT_PUBLIC_SUPABASE_URL (
-    echo       SUPABASE_URL: !NEXT_PUBLIC_SUPABASE_URL!
-)
+if defined DATABASE_URL echo       DATABASE_URL: !DATABASE_URL!
+if defined NEXT_PUBLIC_SUPABASE_URL echo       SUPABASE_URL: !NEXT_PUBLIC_SUPABASE_URL!
 
-REM 检查必要的数据库配置
 if "!DATABASE_TYPE!"=="mysql" (
     if not defined DATABASE_URL (
         echo.
-        echo       × 错误: 未配置 DATABASE_URL
-        echo       请在 .env 中设置 DATABASE_URL=mysql://user:pass@host:port/db
+        echo       ERROR - DATABASE_URL not set
+        echo       Set DATABASE_URL=mysql://user:pass@host:port/db in .env
         pause
         exit /b 1
     )
 ) else (
     if not defined NEXT_PUBLIC_SUPABASE_URL if not defined COZE_SUPABASE_URL (
         echo.
-        echo       × 错误: 未配置数据库
-        echo       请在 .env 中设置:
-        echo         - DATABASE_TYPE=mysql 和 DATABASE_URL (本地 MySQL)
-        echo         或
-        echo         - NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY (Supabase)
+        echo       ERROR - Database not configured
+        echo       Set in .env:
+        echo         DATABASE_TYPE=mysql + DATABASE_URL (for MySQL)
+        echo         OR
+        echo         NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY (for Supabase)
         pause
         exit /b 1
     )
 )
 
-echo       √ 数据库配置正确
+echo       OK - Database configured
 
 echo.
-echo [3/3] 启动服务器...
-echo       端口: !PORT!
+echo [3/3] Starting server...
+echo       Port: !PORT!
 echo.
 
-REM 检查 server.js 位置
 if exist "app\server.js" (
     cd app
     set HOSTNAME=0.0.0.0
@@ -91,8 +83,8 @@ if exist "app\server.js" (
     set HOSTNAME=0.0.0.0
     ..\..\..\node\node.exe server.js
 ) else (
-    echo       × 错误: 未找到 server.js
-    echo       请确认应用已正确安装
+    echo       ERROR - server.js not found
+    echo       Please reinstall the application
     pause
     exit /b 1
 )
