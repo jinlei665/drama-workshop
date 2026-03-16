@@ -22,24 +22,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getSupabaseClient();
-
     // 获取用户配置
-    const { data: settings } = await supabase
-      .from('user_settings')
-      .select('*')
-      .limit(1)
-      .single();
+    let settings: any = null
+    try {
+      const supabase = getSupabaseClient();
+      const result = await supabase
+        .from('user_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+      settings = result.data;
+    } catch (dbError) {
+      console.warn("Failed to fetch user settings:", dbError)
+    }
 
     // 使用用户配置的模型，如果没有配置则使用默认模型
-    const videoModel = settings?.video_model || 'doubao-seedance-1-5-pro-251215';
+    const videoModel = settings?.video_model || process.env.VIDEO_MODEL || 'doubao-seedance-1-5-pro-251215';
+
+    const supabase = getSupabaseClient();
 
     // 获取项目信息
     const { data: project, error: projectError } = await supabase
       .from('projects')
       .select('*')
       .eq('id', projectId)
-      .single();
+      .maybeSingle();
 
     if (projectError || !project) {
       return NextResponse.json(
@@ -53,7 +60,7 @@ export async function POST(request: NextRequest) {
       .from('scenes')
       .select('*')
       .eq('project_id', projectId)
-      .order('scene_number', { ascending: true });
+      .order('scene_number', 'asc');
 
     if (sceneIds && sceneIds.length > 0) {
       query = query.in('id', sceneIds);
@@ -86,10 +93,11 @@ export async function POST(request: NextRequest) {
       .update({ video_status: 'generating', updated_at: new Date().toISOString() })
       .in('id', sceneIdsToUpdate);
 
-    // 初始化视频生成客户端
+    // 初始化视频生成客户端，增加超时时间到 300 秒（视频生成需要更长时间）
     const config = new Config({
       apiKey: settings?.video_api_key || process.env.VIDEO_API_KEY,
       baseUrl: settings?.video_base_url || process.env.VIDEO_BASE_URL,
+      timeout: 300000, // 300 秒超时
     });
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
     const client = new VideoGenerationClient(config, customHeaders);

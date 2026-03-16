@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     .from('scenes')
     .select('*')
     .eq('project_id', projectId)
-    .order('scene_number', { ascending: true })
+    .order('scene_number', 'asc')
 
   if (sceneIds && sceneIds.length > 0) {
     query = query.in('id', sceneIds)
@@ -69,16 +69,33 @@ export async function POST(request: NextRequest) {
       })
 
       // 获取用户配置
-      const { data: settings } = await supabase
-        .from('user_settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle()
+      let settings: any = null
+      try {
+        const result = await supabase
+          .from('user_settings')
+          .select('*')
+          .limit(1)
+          .maybeSingle()
+        settings = result.data
+      } catch (dbError) {
+        console.warn("Failed to fetch user settings:", dbError)
+      }
 
-      // 初始化客户端
+      // 检查 API 配置
+      const apiKey = settings?.video_api_key || process.env.VIDEO_API_KEY
+      const baseUrl = settings?.video_base_url || process.env.VIDEO_BASE_URL
+
+      if (!apiKey) {
+        sendEvent('error', { error: '视频 API Key 未配置。请在设置页面或 .env 文件中配置 VIDEO_API_KEY' })
+        controller.close()
+        return
+      }
+
+      // 初始化客户端，增加超时时间
       const config = new Config({
-        apiKey: settings?.video_api_key || process.env.VIDEO_API_KEY,
-        baseUrl: settings?.video_base_url || process.env.VIDEO_BASE_URL,
+        apiKey,
+        baseUrl,
+        timeout: 300000, // 300 秒超时
       })
       const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
       const client = new VideoGenerationClient(config, customHeaders)

@@ -11,25 +11,50 @@ export async function POST(request: NextRequest) {
   }
 
   // 获取用户配置
-  const supabase = getSupabaseClient()
-  const { data: settings } = await supabase
-    .from('user_settings')
-    .select('*')
-    .limit(1)
-    .maybeSingle()
+  let settings: any = null
+  try {
+    const supabase = getSupabaseClient()
+    const result = await supabase
+      .from('user_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle()
+    settings = result.data
+  } catch (dbError) {
+    console.warn("Failed to fetch user settings:", dbError)
+    // 继续使用环境变量
+  }
+
+  // 检查 API 配置
+  const apiKey = settings?.llm_api_key || process.env.LLM_API_KEY
+  const baseUrl = settings?.llm_base_url || process.env.LLM_BASE_URL
+
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "LLM API Key 未配置。请在设置页面或 .env 文件中配置 LLM_API_KEY" },
+      { status: 500 }
+    )
+  }
+
+  console.log("LLM Config:", {
+    hasApiKey: !!apiKey,
+    baseUrl: baseUrl || 'default',
+    model: settings?.llm_model || 'doubao-seed-2-0-pro'
+  })
 
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  
-  // 使用用户配置的 API Key 和 Base URL
+
+  // 使用用户配置的 API Key 和 Base URL，增加超时时间到 120 秒
   const config = new Config({
-    apiKey: settings?.llm_api_key || process.env.LLM_API_KEY,
-    baseUrl: settings?.llm_base_url || process.env.LLM_BASE_URL,
+    apiKey,
+    baseUrl,
+    timeout: 120000, // 120 秒超时
   })
-  
+
   const client = new LLMClient(config, customHeaders)
-  
+
   // 使用用户配置的模型，如果没有配置则使用默认模型
-  const modelName = settings?.llm_model || 'doubao-seed-2-0-pro'
+  const modelName = settings?.llm_model || process.env.LLM_MODEL || 'doubao-seed-2-0-pro'
 
   const systemPrompt = `你是一个专业的短剧视频创作助手。你的任务是分析小说或脚本内容，提取出人物信息和视频分镜信息。
 
@@ -147,10 +172,30 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(result)
-  } catch (error) {
+  } catch (error: any) {
     console.error("Analyze error:", error)
+
+    // 检查是否是超时错误
+    if (error?.name === 'TimeoutError' || error?.message?.includes('timed out')) {
+      return NextResponse.json(
+        { error: "请求超时，请检查网络连接或稍后重试。如果问题持续，请检查 API Base URL 是否正确。" },
+        { status: 504 }
+      )
+    }
+
+    // 检查是否是 API 错误
+    if (error instanceof APIError) {
+      console.error("API Error:", error.message, error.statusCode)
+      return NextResponse.json(
+        { error: `API 错误: ${error.message}` },
+        { status: error.statusCode || 500 }
+      )
+    }
+
+    // 其他错误
+    const errorMessage = error?.message || "分析失败，请重试"
     return NextResponse.json(
-      { error: "分析失败，请重试" },
+      { error: errorMessage },
       { status: 500 }
     )
   }
