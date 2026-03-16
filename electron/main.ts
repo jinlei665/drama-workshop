@@ -5,8 +5,8 @@
 
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
-import { join } from 'path'
-import { existsSync } from 'fs'
+import { join, dirname } from 'path'
+import { existsSync, readFileSync } from 'fs'
 
 let mainWindow: BrowserWindow | null = null
 let nextServer: ChildProcess | null = null
@@ -23,10 +23,51 @@ const getAppPath = () => {
   return process.resourcesPath
 }
 
+// 加载 .env 文件
+const loadEnvFile = () => {
+  const appPath = getAppPath()
+  const envPath = join(appPath, '.env')
+  
+  if (existsSync(envPath)) {
+    console.log('Loading .env file from:', envPath)
+    const content = readFileSync(envPath, 'utf-8')
+    const lines = content.split('\n')
+    
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      
+      const eqIndex = trimmed.indexOf('=')
+      if (eqIndex > 0) {
+        const key = trimmed.substring(0, eqIndex).trim()
+        let value = trimmed.substring(eqIndex + 1).trim()
+        
+        // 移除引号
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1)
+        }
+        
+        // 设置环境变量
+        if (!process.env[key]) {
+          process.env[key] = value
+        }
+      }
+    }
+    
+    console.log('.env file loaded successfully')
+  } else {
+    console.warn('.env file not found at:', envPath)
+  }
+}
+
 // 启动 Next.js 服务器
 const startNextServer = (): Promise<void> => {
   return new Promise((resolve, reject) => {
     const appPath = getAppPath()
+    
+    // 加载环境变量
+    loadEnvFile()
     
     if (isDev) {
       // 开发模式：使用 next dev
@@ -45,6 +86,8 @@ const startNextServer = (): Promise<void> => {
         return
       }
       
+      console.log('Starting standalone server from:', standalonePath)
+      
       nextServer = spawn('node', [serverPath], {
         cwd: standalonePath,
         env: {
@@ -52,7 +95,16 @@ const startNextServer = (): Promise<void> => {
           PORT: PORT.toString(),
           HOSTNAME: '0.0.0.0'
         },
-        stdio: 'inherit'
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
+      
+      // 输出服务器日志
+      nextServer.stdout?.on('data', (data) => {
+        console.log('[Server]', data.toString())
+      })
+      
+      nextServer.stderr?.on('data', (data) => {
+        console.error('[Server Error]', data.toString())
       })
     }
     
@@ -62,7 +114,7 @@ const startNextServer = (): Promise<void> => {
     })
     
     // 等待服务器启动
-    setTimeout(resolve, 2000)
+    setTimeout(resolve, 3000)
   })
 }
 
@@ -93,7 +145,14 @@ const createWindow = async () => {
     ? `http://localhost:${PORT}` 
     : `http://localhost:${PORT}`
   
-  await mainWindow.loadURL(url)
+  try {
+    await mainWindow.loadURL(url)
+  } catch (error) {
+    console.error('加载页面失败:', error)
+    dialog.showErrorBox('加载失败', `无法加载应用页面: ${error}`)
+    app.quit()
+    return
+  }
   
   // 开发模式下打开 DevTools
   if (isDev) {
@@ -114,6 +173,10 @@ const createWindow = async () => {
 // 应用启动
 app.whenReady().then(async () => {
   try {
+    console.log('========================================')
+    console.log('短剧漫剧创作工坊 - 启动中...')
+    console.log('========================================')
+    
     await startNextServer()
     await createWindow()
     

@@ -57,24 +57,37 @@ npm --version
 **必须配置的项目：**
 
 ```env
-# Supabase 数据库配置（推荐使用云服务）
+# ==================== 数据库配置 ====================
+# 数据库类型：postgresql（当前仅支持 PostgreSQL/Supabase）
+DATABASE_TYPE=postgresql
+
+# Supabase 云服务配置（推荐）
+# 注册地址: https://supabase.com
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-# 或使用本地数据库
-DATABASE_URL=mysql://root:password@localhost:3306/drama_studio
-
-# 对象存储（本地 MinIO 或云存储）
+# ==================== 对象存储配置 ====================
+# MinIO 本地存储
 S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin123
+S3_SECRET_KEY=minioadmin
 S3_BUCKET=drama-studio
+S3_REGION=us-east-1
 
-# API 密钥
+# ==================== API 密钥配置 ====================
+# 豆包/字节跳动大模型 API
+# 获取地址: https://console.volcengine.com/ark
 LLM_API_KEY=your-llm-api-key
+LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+
+# 图像生成 API
 IMAGE_API_KEY=your-image-api-key
+
+# 视频生成 API
 VIDEO_API_KEY=your-video-api-key
+
+# 语音合成 API
 VOICE_API_KEY=your-voice-api-key
 ```
 

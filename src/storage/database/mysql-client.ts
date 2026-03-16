@@ -1,6 +1,4 @@
-import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
-import { execSync } from 'child_process';
 
 let envLoaded = false;
 
@@ -18,7 +16,6 @@ function loadEnv(): void {
 }
 
 let pool: mysql.Pool | null = null;
-let db: ReturnType<typeof drizzle> | null = null;
 
 /**
  * 获取 MySQL 数据库连接池
@@ -53,17 +50,6 @@ export function getMysqlPool(): mysql.Pool {
 }
 
 /**
- * 获取 Drizzle ORM 实例（MySQL）
- */
-export function getMysqlClient(): ReturnType<typeof drizzle> {
-  if (!db) {
-    const pool = getMysqlPool();
-    db = drizzle(pool);
-  }
-  return db;
-}
-
-/**
  * 获取原生 MySQL 连接（用于执行原生 SQL）
  */
 export async function getMysqlConnection(): Promise<mysql.PoolConnection> {
@@ -87,7 +73,6 @@ export async function closeMysqlConnection(): Promise<void> {
   if (pool) {
     await pool.end();
     pool = null;
-    db = null;
   }
 }
 

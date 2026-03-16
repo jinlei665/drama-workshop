@@ -52,9 +52,10 @@ cp -r public $WIN_DIR/app/
 echo ""
 echo "[4/6] 下载 Node.js 运行时..."
 
+mkdir -p cache
+
 # Linux Node.js
 if [ ! -f "cache/node-v$NODE_VERSION-linux-x64.tar.xz" ]; then
-    mkdir -p cache
     echo "下载 Node.js for Linux..."
     wget -q "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz" \
         -O "cache/node-v$NODE_VERSION-linux-x64.tar.xz"
@@ -86,9 +87,24 @@ echo "[6/6] 创建启动脚本..."
 # Linux 启动脚本
 cat > $LINUX_DIR/start.sh << 'EOF'
 #!/bin/bash
-cd "$(dirname "$0")/app"
-export PORT=5000
+cd "$(dirname "$0")"
+
+# 加载 .env 文件
+if [ -f ".env" ]; then
+    echo "加载 .env 文件..."
+    export $(grep -v '^#' .env | xargs)
+fi
+
+# 设置默认值
+export PORT=${PORT:-5000}
 export HOSTNAME="0.0.0.0"
+
+echo "========================================"
+echo "短剧漫剧创作工坊 - 启动中..."
+echo "端口: $PORT"
+echo "========================================"
+
+cd app
 ../node/bin/node server.js
 EOF
 chmod +x $LINUX_DIR/start.sh
@@ -96,56 +112,145 @@ chmod +x $LINUX_DIR/start.sh
 # Windows 启动脚本
 cat > $WIN_DIR/start.bat << 'EOF'
 @echo off
-cd /d "%~dp0app"
-set PORT=5000
+cd /d "%~dp0"
+
+REM 加载 .env 文件
+if exist .env (
+    echo 加载 .env 文件...
+    for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
+        set "line=%%a"
+        if not "!line:~0,1!"=="#" (
+            set "%%a=%%b"
+        )
+    )
+)
+
+REM 设置默认值
+if not defined PORT set PORT=5000
 set HOSTNAME=0.0.0.0
+
+echo ========================================
+echo 短剧漫剧创作工坊 - 启动中...
+echo 端口: %PORT%
+echo ========================================
+
+cd app
 ..\node\node.exe server.js
 pause
 EOF
 
 # 创建环境变量配置文件
 cat > $LINUX_DIR/.env.example << 'EOF'
-# 数据库配置
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/drama_studio
+# ==================== 数据库配置 ====================
+# 数据库类型：postgresql（推荐）
+DATABASE_TYPE=postgresql
 
-# API 密钥
+# Supabase 云服务配置（推荐）
+# 注册地址: https://supabase.com
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJ...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJ...
+
+# 本地 PostgreSQL 连接
+# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/drama_studio
+
+# ==================== 对象存储配置 ====================
+S3_ENDPOINT=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=drama-studio
+S3_REGION=us-east-1
+
+# ==================== LLM API 配置 ====================
+# 豆包/字节跳动大模型 API
+# 获取地址: https://console.volcengine.com/ark
 LLM_API_KEY=your-llm-api-key
+LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+
+# ==================== 图像生成 API 配置 ====================
 IMAGE_API_KEY=your-image-api-key
+IMAGE_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+
+# ==================== 视频生成 API 配置 ====================
 VIDEO_API_KEY=your-video-api-key
+VIDEO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+
+# ==================== 其他配置 ====================
+PORT=5000
 EOF
 
 cp $LINUX_DIR/.env.example $WIN_DIR/.env.example
 
 # 创建说明文件
-cat > $LINUX_DIR/README.md << EOF
-# 短剧漫剧创作工坊 v$VERSION
+cat > $LINUX_DIR/README.md << 'EOF'
+# 短剧漫剧创作工坊
+
+将文字故事转化为精美短剧视频的 AI 创作工具。
 
 ## 快速开始
 
-1. 复制 \`.env.example\` 为 \`.env\` 并配置环境变量
-2. 运行启动脚本：
-   \`\`\`bash
-   ./start.sh
-   \`\`\`
-3. 打开浏览器访问 http://localhost:5000
+### 1. 配置环境变量
+
+```bash
+# 复制环境变量示例文件
+cp .env.example .env
+
+# 编辑 .env 文件，填入以下配置：
+# - Supabase 数据库 URL 和密钥（推荐）
+# - LLM API 密钥（豆包/字节跳动）
+# - 图像生成 API 密钥
+# - 视频生成 API 密钥
+```
+
+### 2. 启动应用
+
+```bash
+./start.sh
+```
+
+### 3. 访问应用
+
+打开浏览器访问 http://localhost:5000
+
+## 获取 API 密钥
+
+### Supabase（数据库）
+
+1. 访问 https://supabase.com 注册账号
+2. 创建新项目
+3. 在项目设置中获取 URL 和 anon key
+
+### 豆包/字节跳动（AI 服务）
+
+1. 访问 https://console.volcengine.com/ark
+2. 创建推理接入点
+3. 获取 API Key
 
 ## 系统要求
 
 - Linux x64
-- 内存：至少 2GB
-- 磁盘：至少 1GB 可用空间
+- 内存：至少 4GB
+- 磁盘：至少 2GB 可用空间
 
-## 文件说明
+## 故障排除
 
-- \`app/\` - 应用程序文件
-- \`node/\` - Node.js 运行时
-- \`start.sh\` - 启动脚本
-- \`.env.example\` - 环境变量示例
+### 端口被占用
 
-## 注意事项
+修改 .env 文件中的 PORT 值。
 
-- 首次运行前请确保已配置数据库连接
-- 默认端口为 5000，可在 .env 中修改
+### 数据库连接失败
+
+1. 确认 Supabase 项目已启动
+2. 检查 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY 是否正确
+
+### 页面无法访问
+
+1. 等待几秒钟让服务完全启动
+2. 检查控制台是否有错误信息
+
+## 技术支持
+
+- GitHub: https://github.com/jinlei665/drama-workshop
 EOF
 
 cp $LINUX_DIR/README.md $WIN_DIR/README.md
@@ -177,4 +282,9 @@ echo ""
 echo "输出文件："
 echo "  - dist/portable/$PROJECT_NAME-linux-x64.tar.gz"
 echo "  - dist/portable/$PROJECT_NAME-win-x64.zip"
+echo ""
+echo "使用说明："
+echo "  1. 解压对应的压缩包"
+echo "  2. 复制 .env.example 为 .env 并配置"
+echo "  3. 运行 start.sh (Linux) 或 start.bat (Windows)"
 echo "========================================"
