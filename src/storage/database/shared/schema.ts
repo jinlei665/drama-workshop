@@ -299,8 +299,8 @@ export const userSettings = pgTable(
     id: varchar("id", { length: 36 }).primaryKey(),
     
     // LLM配置
-    llmProvider: varchar("llm_provider", { length: 50 }).default("doubao"),
-    llmModel: varchar("llm_model", { length: 100 }).default("doubao-seed-2-0-pro"),
+    llmProvider: varchar("llm_provider", { length: 50 }).default("minimax"),
+    llmModel: varchar("llm_model", { length: 100 }).default("MiniMax-Text-01"),
     llmApiKey: text("llm_api_key"),
     llmBaseUrl: varchar("llm_base_url", { length: 255 }),
     

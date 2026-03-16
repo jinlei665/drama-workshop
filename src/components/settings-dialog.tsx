@@ -54,6 +54,10 @@ interface Settings {
 
 // 预设模型列表
 const LLM_MODELS = [
+  { value: "MiniMax-Text-01", label: "MiniMax Text 01", provider: "minimax" },
+  { value: "abab6.5s-chat", label: "MiniMax abab6.5s Chat", provider: "minimax" },
+  { value: "abab6.5g-chat", label: "MiniMax abab6.5g Chat", provider: "minimax" },
+  { value: "abab6.5-chat", label: "MiniMax abab6.5 Chat", provider: "minimax" },
   { value: "doubao-seed-2-0-pro", label: "Doubao Seed 2.0 Pro", provider: "doubao" },
   { value: "doubao-seed-1-6", label: "Doubao Seed 1.6", provider: "doubao" },
   { value: "gpt-4o", label: "GPT-4o", provider: "openai" },

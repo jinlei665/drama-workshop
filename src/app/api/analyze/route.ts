@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
   const client = new LLMClient(config, customHeaders)
 
   // 使用用户配置的模型，如果没有配置则使用默认模型
-  // 对于长文本分析，推荐使用 doubao-seed-2-0-pro
-  const modelName = settings?.llm_model || process.env.LLM_MODEL || 'doubao-seed-2-0-pro'
+  // MiniMax 推荐使用 MiniMax-Text-01
+  const modelName = settings?.llm_model || process.env.LLM_MODEL || 'MiniMax-Text-01'
 
   // 检查内容长度，如果太长则截断
   const maxContentLength = 10000 // 约 1 万字

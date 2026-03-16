@@ -21,10 +21,10 @@ export async function GET() {
     return NextResponse.json({
       settings: {
         id: "default",
-        llm_provider: "doubao",
-        llm_model: "doubao-seed-2-0-pro",
+        llm_provider: "minimax",
+        llm_model: "MiniMax-Text-01",
         llm_api_key: null,
-        llm_base_url: null,
+        llm_base_url: "https://api.minimaxi.com/anthropic",
         image_provider: "doubao",
         image_model: "doubao-seed-3-0",
         image_api_key: null,

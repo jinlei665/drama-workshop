@@ -247,32 +247,74 @@ chmod +x $LINUX_DIR/start.sh
 cp scripts/start.bat $WIN_DIR/start.bat
 
 cat > $LINUX_DIR/.env.example << 'EOF'
+# 短剧漫剧创作工坊 - 桌面应用环境变量配置
+# 复制此文件为 .env 并填入实际值
+
 # ==================== 数据库配置 ====================
+# 数据库类型：mysql 或 postgresql
 DATABASE_TYPE=mysql
+
+# ===== 本地 MySQL 配置（推荐用于本地开发）=====
 DATABASE_URL=mysql://root:password@localhost:3306/drama_studio
+
+# ===== Supabase 云服务配置 =====
+# NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJ...
 
 # ==================== 对象存储配置 ====================
 S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin123
+S3_SECRET_KEY=minioadmin
 S3_BUCKET=drama-studio
 S3_REGION=us-east-1
 
-# ==================== AI 服务配置 ====================
-LLM_API_KEY=your-llm-api-key
-LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-LLM_MODEL=doubao-seed-2-0-pro
+# ==================== LLM API 配置 ====================
+# MiniMax 2.5 API（Anthropic 兼容格式）
+# 获取地址: https://www.minimaxi.com
+LLM_API_KEY=your-minimax-api-key
+LLM_BASE_URL=https://api.minimaxi.com/anthropic
+LLM_MODEL=MiniMax-Text-01
 
+# ==================== 图像生成 API 配置 ====================
 IMAGE_API_KEY=your-image-api-key
 IMAGE_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-IMAGE_MODEL=your-image-model
 
+# ==================== 视频生成 API 配置 ====================
 VIDEO_API_KEY=your-video-api-key
 VIDEO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 VIDEO_MODEL=doubao-seedance-1-5-pro-251215
 EOF
 
 cp $LINUX_DIR/.env.example $WIN_DIR/.env.example
+
+# 创建预配置的 .env 文件（包含用户的 MiniMax API Key）
+cat > $WIN_DIR/.env << 'ENVEOF'
+# 短剧漫剧创作工坊 - 已配置 MiniMax 2.5 API
+# 数据库配置
+DATABASE_TYPE=mysql
+DATABASE_URL=mysql://root:password@localhost:3306/drama_studio
+
+# 对象存储配置
+S3_ENDPOINT=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=drama-studio
+S3_REGION=us-east-1
+
+# LLM API 配置 - MiniMax 2.5
+LLM_API_KEY=sk-cp-mHX1Q4XAXPS_IBiK_0WwAWTx8a1HwJS7eeOU0fm96zs-Y3IDSvnBx__NIZxgwy3xK7WMdjxj4_2natt_XTyN-pAguwxoy4B5dhU9x4tzWPqqsRCsAGK8gcQ
+LLM_BASE_URL=https://api.minimaxi.com/anthropic
+LLM_MODEL=MiniMax-Text-01
+
+# 图像生成 API 配置（需要配置）
+IMAGE_API_KEY=your-image-api-key
+IMAGE_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+
+# 视频生成 API 配置（需要配置）
+VIDEO_API_KEY=your-video-api-key
+VIDEO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+VIDEO_MODEL=doubao-seedance-1-5-pro-251215
+ENVEOF
 
 # 压缩
 echo ""
