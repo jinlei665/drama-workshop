@@ -34,8 +34,12 @@ echo "[3/6] 准备应用文件..."
 LINUX_DIR="$BUILD_DIR/$PROJECT_NAME-linux-x64"
 mkdir -p $LINUX_DIR/app
 
-# 复制构建产物
-cp -r .next/standalone/* $LINUX_DIR/app/
+# 复制构建产物（standalone 输出在 workspace/projects 子目录下）
+if [ -d ".next/standalone/workspace/projects" ]; then
+    cp -r .next/standalone/workspace/projects/* $LINUX_DIR/app/
+else
+    cp -r .next/standalone/* $LINUX_DIR/app/
+fi
 cp -r .next/static $LINUX_DIR/app/.next/
 cp -r public $LINUX_DIR/app/
 
@@ -43,8 +47,12 @@ cp -r public $LINUX_DIR/app/
 WIN_DIR="$BUILD_DIR/$PROJECT_NAME-win-x64"
 mkdir -p $WIN_DIR/app
 
-# 复制构建产物
-cp -r .next/standalone/* $WIN_DIR/app/
+# 复制构建产物（standalone 输出在 workspace/projects 子目录下）
+if [ -d ".next/standalone/workspace/projects" ]; then
+    cp -r .next/standalone/workspace/projects/* $WIN_DIR/app/
+else
+    cp -r .next/standalone/* $WIN_DIR/app/
+fi
 cp -r .next/static $WIN_DIR/app/.next/
 cp -r public $WIN_DIR/app/
 
@@ -89,20 +97,50 @@ cat > $LINUX_DIR/start.sh << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
 
+echo "========================================"
+echo "短剧漫剧创作工坊 - 启动中..."
+echo "========================================"
+
 # 加载 .env 文件
 if [ -f ".env" ]; then
-    echo "加载 .env 文件..."
-    export $(grep -v '^#' .env | xargs)
+    echo "正在加载 .env 文件..."
+    while IFS='=' read -r key value; do
+        # 跳过注释和空行
+        [[ "$key" =~ ^#.*$ ]] && continue
+        [[ -z "$key" ]] && continue
+        
+        # 设置环境变量
+        export "$key=$value"
+        echo "已设置: $key"
+    done < <(grep -v '^#' .env | grep -v '^$')
+else
+    echo "警告: 未找到 .env 文件，请复制 .env.example 为 .env 并配置"
 fi
 
 # 设置默认值
 export PORT=${PORT:-5000}
 export HOSTNAME="0.0.0.0"
 
+echo ""
+echo "当前环境变量:"
+echo "  NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL"
+echo "  DATABASE_TYPE=$DATABASE_TYPE"
+echo "  PORT=$PORT"
+echo ""
+
+# 检查必要的环境变量
+if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+    echo "错误: 未配置 NEXT_PUBLIC_SUPABASE_URL"
+    echo "请在 .env 文件中配置 Supabase 连接信息"
+    echo ""
+    read -p "按 Enter 键退出..."
+    exit 1
+fi
+
 echo "========================================"
-echo "短剧漫剧创作工坊 - 启动中..."
-echo "端口: $PORT"
+echo "启动服务器，端口: $PORT"
 echo "========================================"
+echo ""
 
 cd app
 ../node/bin/node server.js
@@ -110,34 +148,7 @@ EOF
 chmod +x $LINUX_DIR/start.sh
 
 # Windows 启动脚本
-cat > $WIN_DIR/start.bat << 'EOF'
-@echo off
-cd /d "%~dp0"
-
-REM 加载 .env 文件
-if exist .env (
-    echo 加载 .env 文件...
-    for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
-        set "line=%%a"
-        if not "!line:~0,1!"=="#" (
-            set "%%a=%%b"
-        )
-    )
-)
-
-REM 设置默认值
-if not defined PORT set PORT=5000
-set HOSTNAME=0.0.0.0
-
-echo ========================================
-echo 短剧漫剧创作工坊 - 启动中...
-echo 端口: %PORT%
-echo ========================================
-
-cd app
-..\node\node.exe server.js
-pause
-EOF
+cp scripts/start.bat $WIN_DIR/start.bat
 
 # 创建环境变量配置文件
 cat > $LINUX_DIR/.env.example << 'EOF'
