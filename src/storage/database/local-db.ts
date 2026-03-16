@@ -159,8 +159,10 @@ class QueryBuilder {
   /**
    * 排序
    */
-  order(column: string, direction: 'asc' | 'desc' = 'asc'): this {
-    this._orderBy = `ORDER BY ${column} ${direction.toUpperCase()}`;
+  order(column: string, direction: 'asc' | 'desc' | string = 'asc'): this {
+    // 确保 direction 是字符串
+    const dir = typeof direction === 'string' ? direction.toUpperCase() : 'ASC';
+    this._orderBy = `ORDER BY ${column} ${dir}`;
     return this;
   }
   
@@ -244,6 +246,13 @@ class QueryBuilder {
       this.then(resolve);
     });
   }
+  
+  /**
+   * 执行查询并返回单行（允许空结果，兼容 Supabase API）
+   */
+  async maybeSingle(): Promise<{ data: any | null; error: any | null }> {
+    return this.single();
+  }
 }
 
 /**
@@ -281,6 +290,27 @@ class InsertBuilder {
   select(fields: string): this {
     // 兼容 Supabase API，这里不做实际操作
     return this;
+  }
+  
+  /**
+   * 返回单行结果（兼容 Supabase API）
+   */
+  async single(): Promise<{ data: any | null; error: any | null }> {
+    try {
+      const keys = Object.keys(this.data);
+      const values = Object.values(this.data);
+      const placeholders = values.map(() => '?').join(', ');
+      
+      const sql = `INSERT INTO ${this.table} (${keys.join(', ')}) VALUES (${placeholders})`;
+      const [result] = await this.pool.execute(sql, values as any[]);
+      
+      return {
+        data: { id: (result as ResultSetHeader).insertId, ...this.data },
+        error: null
+      };
+    } catch (error) {
+      return { data: null, error };
+    }
   }
 }
 
@@ -328,6 +358,29 @@ class UpdateBuilder {
   
   select(fields: string): this {
     return this;
+  }
+  
+  /**
+   * 返回单行结果（兼容 Supabase API）
+   */
+  async single(): Promise<{ data: any | null; error: any | null }> {
+    try {
+      const keys = Object.keys(this.data);
+      const values = Object.values(this.data);
+      const setClause = keys.map(k => `${k} = ?`).join(', ');
+      
+      let sql = `UPDATE ${this.table} SET ${setClause}`;
+      
+      if (this._where.length > 0) {
+        sql += ` WHERE ${this._where.join(' AND ')}`;
+      }
+      
+      await this.pool.execute(sql, [...values, ...this._params]);
+      
+      return { data: this.data, error: null };
+    } catch (error) {
+      return { data: null, error };
+    }
   }
 }
 
