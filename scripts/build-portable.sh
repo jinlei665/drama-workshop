@@ -137,11 +137,13 @@ LINUX_DIR="$BUILD_DIR/$PROJECT_NAME-linux-x64"
 mkdir -p $LINUX_DIR/app
 
 if [ -d ".next/standalone/workspace/projects" ]; then
-    cp -r .next/standalone/workspace/projects/* $LINUX_DIR/app/
+    cp -r .next/standalone/workspace/projects/. $LINUX_DIR/app/
 else
-    cp -r .next/standalone/* $LINUX_DIR/app/
+    cp -r .next/standalone/. $LINUX_DIR/app/
 fi
-cp -r .next/static $LINUX_DIR/app/.next/
+# 复制静态文件到 .next 目录（合并，不是覆盖）
+mkdir -p $LINUX_DIR/app/.next/static
+cp -r .next/static/. $LINUX_DIR/app/.next/static/
 cp -r public $LINUX_DIR/app/
 
 echo "  Processing Linux package..."
@@ -152,11 +154,13 @@ WIN_DIR="$BUILD_DIR/$PROJECT_NAME-win-x64"
 mkdir -p $WIN_DIR/app
 
 if [ -d ".next/standalone/workspace/projects" ]; then
-    cp -r .next/standalone/workspace/projects/* $WIN_DIR/app/
+    cp -r .next/standalone/workspace/projects/. $WIN_DIR/app/
 else
-    cp -r .next/standalone/* $WIN_DIR/app/
+    cp -r .next/standalone/. $WIN_DIR/app/
 fi
-cp -r .next/static $WIN_DIR/app/.next/
+# 复制静态文件到 .next 目录（合并，不是覆盖）
+mkdir -p $WIN_DIR/app/.next/static
+cp -r .next/static/. $WIN_DIR/app/.next/static/
 cp -r public $WIN_DIR/app/
 
 echo "  Processing Windows package..."
