@@ -87,7 +87,10 @@ export async function POST(request: NextRequest) {
       .in('id', sceneIdsToUpdate);
 
     // 初始化视频生成客户端
-    const config = new Config();
+    const config = new Config({
+      apiKey: settings?.video_api_key || process.env.VIDEO_API_KEY,
+      baseUrl: settings?.video_base_url || process.env.VIDEO_BASE_URL,
+    });
     const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
     const client = new VideoGenerationClient(config, customHeaders);
 

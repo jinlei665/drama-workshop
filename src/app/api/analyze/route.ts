@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { LLMClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
+import { LLMClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 
 // POST /api/analyze - 分析文本内容，提取人物和视频分镜
@@ -16,10 +16,16 @@ export async function POST(request: NextRequest) {
     .from('user_settings')
     .select('*')
     .limit(1)
-    .single()
+    .maybeSingle()
 
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  const config = new Config()
+  
+  // 使用用户配置的 API Key 和 Base URL
+  const config = new Config({
+    apiKey: settings?.llm_api_key || process.env.LLM_API_KEY,
+    baseUrl: settings?.llm_base_url || process.env.LLM_BASE_URL,
+  })
+  
   const client = new LLMClient(config, customHeaders)
   
   // 使用用户配置的模型，如果没有配置则使用默认模型

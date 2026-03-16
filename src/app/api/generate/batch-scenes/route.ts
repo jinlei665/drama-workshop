@@ -41,8 +41,18 @@ export async function POST(request: NextRequest) {
     (characters || []).map((c: any) => [c.id, c])
   )
 
+  // 获取用户配置
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('*')
+    .limit(1)
+    .maybeSingle()
+
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  const config = new Config()
+  const config = new Config({
+    apiKey: settings?.image_api_key || process.env.IMAGE_API_KEY,
+    baseUrl: settings?.image_base_url || process.env.IMAGE_BASE_URL,
+  })
   const imageClient = new ImageGenerationClient(config, customHeaders)
 
   const storage = new S3Storage({

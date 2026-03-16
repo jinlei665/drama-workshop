@@ -68,8 +68,18 @@ export async function POST(request: NextRequest) {
         }))
       })
 
+      // 获取用户配置
+      const { data: settings } = await supabase
+        .from('user_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle()
+
       // 初始化客户端
-      const config = new Config()
+      const config = new Config({
+        apiKey: settings?.video_api_key || process.env.VIDEO_API_KEY,
+        baseUrl: settings?.video_base_url || process.env.VIDEO_BASE_URL,
+      })
       const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
       const client = new VideoGenerationClient(config, customHeaders)
 
@@ -80,13 +90,6 @@ export async function POST(request: NextRequest) {
         bucketName: process.env.COZE_BUCKET_NAME,
         region: 'cn-beijing',
       })
-
-      // 获取用户配置
-      const { data: settings } = await supabase
-        .from('user_settings')
-        .select('*')
-        .limit(1)
-        .single()
 
       const videoModel = settings?.video_model || 'doubao-seedance-1-5-pro-251215'
 

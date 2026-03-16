@@ -24,7 +24,10 @@ export async function POST(request: NextRequest) {
     .single()
 
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  const config = new Config()
+  const config = new Config({
+    apiKey: settings?.image_api_key || process.env.IMAGE_API_KEY,
+    baseUrl: settings?.image_base_url || process.env.IMAGE_BASE_URL,
+  })
   const imageClient = new ImageGenerationClient(config, customHeaders)
 
   // 初始化对象存储
