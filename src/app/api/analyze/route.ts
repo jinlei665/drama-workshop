@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { LLMClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 
+// 增加超时配置 - Next.js API 路由最大执行时间
+export const maxDuration = 300 // 5分钟
+
 // POST /api/analyze - 分析文本内容，提取人物和视频分镜
 export async function POST(request: NextRequest) {
   const { projectId, content } = await request.json()
@@ -44,17 +47,28 @@ export async function POST(request: NextRequest) {
 
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
 
-  // 使用用户配置的 API Key 和 Base URL，增加超时时间到 120 秒
+  // 使用用户配置的 API Key 和 Base URL，增加超时时间和重试配置
   const config = new Config({
     apiKey,
     baseUrl,
-    timeout: 120000, // 120 秒超时
+    timeout: 300000, // 300 秒超时（5分钟）
+    retryTimes: 3,   // 重试3次
+    retryDelay: 5000, // 重试间隔5秒
   })
 
   const client = new LLMClient(config, customHeaders)
 
   // 使用用户配置的模型，如果没有配置则使用默认模型
+  // 对于长文本分析，推荐使用 doubao-seed-2-0-pro
   const modelName = settings?.llm_model || process.env.LLM_MODEL || 'doubao-seed-2-0-pro'
+
+  // 检查内容长度，如果太长则截断
+  const maxContentLength = 10000 // 约 1 万字
+  let processedContent = content
+  if (content.length > maxContentLength) {
+    console.log(`Content too long (${content.length} chars), truncating to ${maxContentLength}`)
+    processedContent = content.substring(0, maxContentLength) + '\n\n...（内容已截断，请分段上传完整内容）'
+  }
 
   const systemPrompt = `你是一个专业的短剧视频创作助手。你的任务是分析小说或脚本内容，提取出人物信息和视频分镜信息。
 
@@ -96,13 +110,44 @@ export async function POST(request: NextRequest) {
   try {
     const messages = [
       { role: "system" as const, content: systemPrompt },
-      { role: "user" as const, content: `请分析以下内容：\n\n${content}` },
+      { role: "user" as const, content: `请分析以下内容：\n\n${processedContent}` },
     ]
 
-    const response = await client.invoke(messages, {
-      model: modelName,
-      temperature: 0.3,
-    })
+    // 带重试的调用
+    let response
+    let lastError: any = null
+    const maxRetries = 3
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`LLM invoke attempt ${attempt}/${maxRetries}`)
+        response = await client.invoke(messages, {
+          model: modelName,
+          temperature: 0.3,
+        })
+        break // 成功则退出循环
+      } catch (err: any) {
+        lastError = err
+        console.error(`LLM invoke attempt ${attempt} failed:`, err.message)
+
+        // 如果是超时错误，等待后重试
+        if (err?.name === 'TimeoutError' || err?.message?.includes('timed out')) {
+          if (attempt < maxRetries) {
+            const waitTime = attempt * 10000 // 10秒、20秒、30秒
+            console.log(`Waiting ${waitTime/1000}s before retry...`)
+            await new Promise(resolve => setTimeout(resolve, waitTime))
+            continue
+          }
+        } else {
+          // 其他错误直接抛出
+          throw err
+        }
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error('LLM response is empty')
+    }
 
     // 解析 JSON 响应
     let result
