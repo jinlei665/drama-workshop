@@ -15,6 +15,101 @@ echo "短剧漫剧创作工坊 - 便携版打包工具"
 echo "版本: $VERSION"
 echo "========================================"
 
+# 函数: 解析 pnpm 符号链接，复制实际文件
+function resolve_pnpm_symlinks() {
+    local TARGET_DIR="$1"
+    local NM_DIR="$TARGET_DIR/node_modules"
+    local PNPM_DIR="$NM_DIR/.pnpm"
+    
+    if [ ! -d "$PNPM_DIR" ]; then
+        echo "  No .pnpm directory found, skipping..."
+        return
+    fi
+    
+    echo "  Resolving pnpm symlinks..."
+    
+    # 保存当前目录
+    pushd "$NM_DIR" > /dev/null
+    
+    # 1. 处理顶层符号链接 (next, react, react-dom 等)
+    for item in *; do
+        [ "$item" = ".pnpm" ] && continue
+        [ -L "$item" ] || continue
+        
+        local link_target=$(readlink "$item")
+        
+        if [[ "$link_target" == .pnpm/* ]]; then
+            local real_path=".pnpm/${link_target#.pnpm/}"
+            if [ -d "$real_path" ]; then
+                echo "    Replacing: $item"
+                rm -f "$item"
+                cp -r "$real_path" "$item"
+            fi
+        fi
+    done
+    
+    # 2. 处理 @scope 目录中的符号链接
+    for scope_dir in @*; do
+        [ -d "$scope_dir" ] || continue
+        [ "$scope_dir" = ".pnpm" ] && continue
+        
+        pushd "$scope_dir" > /dev/null
+        for sub_item in *; do
+            [ -L "$sub_item" ] || continue
+            
+            local sub_link_target=$(readlink "$sub_item")
+            local real_path=""
+            
+            if [[ "$sub_link_target" == ../../.pnpm/* ]]; then
+                real_path="../.pnpm/${sub_link_target#../../.pnpm/}"
+            elif [[ "$sub_link_target" == ../.pnpm/* ]]; then
+                real_path="../.pnpm/${sub_link_target#../.pnpm/}"
+            fi
+            
+            if [ -n "$real_path" ] && [ -d "$real_path" ]; then
+                echo "    Replacing: $scope_dir/$sub_item"
+                rm -f "$sub_item"
+                cp -r "$real_path" "$sub_item"
+            fi
+        done
+        popd > /dev/null
+    done
+    
+    popd > /dev/null
+    
+    # 3. 扫描 .pnpm 目录中缺失的 scoped 包
+    # 例如 @next/env, @swc/helpers 等
+    # 使用绝对路径避免目录切换问题
+    local ABS_NM_DIR=$(cd "$NM_DIR" && pwd)
+    
+    for pnpm_pkg in "$PNPM_DIR"/@*; do
+        [ -d "$pnpm_pkg" ] || continue
+        
+        # 获取包名（不含路径）
+        local pkg_basename=$(basename "$pnpm_pkg")
+        
+        # 解析包名: @next+env@16.1.1 -> @next/env
+        local scope_name="${pkg_basename%%+*}"  # @next
+        local pkg_tail="${pkg_basename#*+}"      # env@16.1.1
+        local pkg_name="${pkg_tail%@*}"          # env
+        
+        # 创建目标目录
+        local target_scope="$ABS_NM_DIR/$scope_name"
+        local target_dir="$target_scope/$pkg_name"
+        
+        # 检查源路径
+        local src_dir="$pnpm_pkg/node_modules/$scope_name/$pkg_name"
+        
+        if [ -d "$src_dir" ] && [ ! -d "$target_dir" ]; then
+            echo "    Creating: $scope_name/$pkg_name"
+            mkdir -p "$target_scope"
+            cp -r "$src_dir" "$target_dir"
+        fi
+    done
+    
+    echo "  Done resolving symlinks"
+}
+
 # 清理旧的构建文件
 echo ""
 echo "[1/6] 清理旧的构建文件..."
@@ -34,7 +129,6 @@ echo "[3/6] 准备应用文件..."
 LINUX_DIR="$BUILD_DIR/$PROJECT_NAME-linux-x64"
 mkdir -p $LINUX_DIR/app
 
-# 复制构建产物（standalone 输出在 workspace/projects 子目录下）
 if [ -d ".next/standalone/workspace/projects" ]; then
     cp -r .next/standalone/workspace/projects/* $LINUX_DIR/app/
 else
@@ -43,31 +137,13 @@ fi
 cp -r .next/static $LINUX_DIR/app/.next/
 cp -r public $LINUX_DIR/app/
 
-# 复制缺失的依赖 (styled-jsx, @swc/helpers 等在 standalone 中可能缺失)
-# 需要在 node_modules 下创建实际的目录，而不是符号链接
-if [ -d "node_modules/.pnpm" ]; then
-    # 找到 styled-jsx 的实际目录
-    STYLED_JSX_DIR=$(find node_modules/.pnpm -type d -name "styled-jsx" | grep "node_modules/styled-jsx$" | head -1)
-    if [ -n "$STYLED_JSX_DIR" ] && [ -d "$STYLED_JSX_DIR" ]; then
-        mkdir -p $LINUX_DIR/app/node_modules/styled-jsx
-        cp -r "$STYLED_JSX_DIR"/* $LINUX_DIR/app/node_modules/styled-jsx/
-        echo "  Copied styled-jsx for Linux"
-    fi
-    
-    # 找到 @swc/helpers 的实际目录 (pnpm 格式: @swc+helpers@版本/node_modules/@swc/helpers)
-    SWC_HELPERS_DIR=$(ls -d node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers 2>/dev/null | head -1)
-    if [ -n "$SWC_HELPERS_DIR" ] && [ -d "$SWC_HELPERS_DIR" ]; then
-        mkdir -p $LINUX_DIR/app/node_modules/@swc/helpers
-        cp -r "$SWC_HELPERS_DIR"/* $LINUX_DIR/app/node_modules/@swc/helpers/
-        echo "  Copied @swc/helpers for Linux"
-    fi
-fi
+echo "  Processing Linux package..."
+resolve_pnpm_symlinks "$LINUX_DIR/app"
 
 # Windows 版本
 WIN_DIR="$BUILD_DIR/$PROJECT_NAME-win-x64"
 mkdir -p $WIN_DIR/app
 
-# 复制构建产物（standalone 输出在 workspace/projects 子目录下）
 if [ -d ".next/standalone/workspace/projects" ]; then
     cp -r .next/standalone/workspace/projects/* $WIN_DIR/app/
 else
@@ -76,25 +152,8 @@ fi
 cp -r .next/static $WIN_DIR/app/.next/
 cp -r public $WIN_DIR/app/
 
-# 复制缺失的依赖 (styled-jsx, @swc/helpers 等在 standalone 中可能缺失)
-# 需要在 node_modules 下创建实际的目录，而不是符号链接
-if [ -d "node_modules/.pnpm" ]; then
-    # 找到 styled-jsx 的实际目录
-    STYLED_JSX_DIR=$(find node_modules/.pnpm -type d -name "styled-jsx" | grep "node_modules/styled-jsx$" | head -1)
-    if [ -n "$STYLED_JSX_DIR" ] && [ -d "$STYLED_JSX_DIR" ]; then
-        mkdir -p $WIN_DIR/app/node_modules/styled-jsx
-        cp -r "$STYLED_JSX_DIR"/* $WIN_DIR/app/node_modules/styled-jsx/
-        echo "  Copied styled-jsx for Windows"
-    fi
-    
-    # 找到 @swc/helpers 的实际目录 (pnpm 格式: @swc+helpers@版本/node_modules/@swc/helpers)
-    SWC_HELPERS_DIR=$(ls -d node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers 2>/dev/null | head -1)
-    if [ -n "$SWC_HELPERS_DIR" ] && [ -d "$SWC_HELPERS_DIR" ]; then
-        mkdir -p $WIN_DIR/app/node_modules/@swc/helpers
-        cp -r "$SWC_HELPERS_DIR"/* $WIN_DIR/app/node_modules/@swc/helpers/
-        echo "  Copied @swc/helpers for Windows"
-    fi
-fi
+echo "  Processing Windows package..."
+resolve_pnpm_symlinks "$WIN_DIR/app"
 
 # 下载 Node.js 便携版
 echo ""
@@ -102,14 +161,12 @@ echo "[4/6] 下载 Node.js 运行时..."
 
 mkdir -p cache
 
-# Linux Node.js
 if [ ! -f "cache/node-v$NODE_VERSION-linux-x64.tar.xz" ]; then
     echo "下载 Node.js for Linux..."
     wget -q "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz" \
         -O "cache/node-v$NODE_VERSION-linux-x64.tar.xz"
 fi
 
-# Windows Node.js
 if [ ! -f "cache/node-v$NODE_VERSION-win-x64.zip" ]; then
     echo "下载 Node.js for Windows..."
     wget -q "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-win-x64.zip" \
@@ -120,11 +177,9 @@ fi
 echo ""
 echo "[5/6] 解压 Node.js 运行时..."
 
-# Linux
 tar -xf "cache/node-v$NODE_VERSION-linux-x64.tar.xz" -C $LINUX_DIR
 mv $LINUX_DIR/node-v$NODE_VERSION-linux-x64 $LINUX_DIR/node
 
-# Windows
 unzip -q "cache/node-v$NODE_VERSION-win-x64.zip" -d $WIN_DIR
 mv $WIN_DIR/node-v$NODE_VERSION-win-x64 $WIN_DIR/node
 
@@ -141,15 +196,11 @@ echo "========================================"
 echo "短剧漫剧创作工坊 - 启动中..."
 echo "========================================"
 
-# 加载 .env 文件
 if [ -f ".env" ]; then
     echo "正在加载 .env 文件..."
     while IFS='=' read -r key value; do
-        # 跳过注释和空行
         [[ "$key" =~ ^#.*$ ]] && continue
         [[ -z "$key" ]] && continue
-        
-        # 设置环境变量
         export "$key=$value"
         echo "已设置: $key"
     done < <(grep -v '^#' .env | grep -v '^$')
@@ -157,37 +208,19 @@ else
     echo "警告: 未找到 .env 文件，请复制 .env.example 为 .env 并配置"
 fi
 
-# 设置默认值
 export PORT=${PORT:-5000}
 export HOSTNAME="0.0.0.0"
 
 echo ""
 echo "当前环境变量:"
 echo "  DATABASE_TYPE=${DATABASE_TYPE:-未设置}"
-if [ "$DATABASE_TYPE" = "mysql" ]; then
-    echo "  DATABASE_URL=${DATABASE_URL:-未设置}"
-else
-    echo "  NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL:-未设置}"
-fi
+[ "$DATABASE_TYPE" = "mysql" ] && echo "  DATABASE_URL=${DATABASE_URL:-未设置}"
 echo "  PORT=$PORT"
 echo ""
 
-# 检查数据库配置
-if [ "$DATABASE_TYPE" = "mysql" ]; then
-    if [ -z "$DATABASE_URL" ]; then
-        echo "错误: 未配置 DATABASE_URL"
-        echo "请在 .env 文件中设置 DATABASE_URL=mysql://user:password@host:port/database"
-        exit 1
-    fi
-else
-    if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] && [ -z "$COZE_SUPABASE_URL" ]; then
-        echo "错误: 未配置数据库"
-        echo "请在 .env 文件中设置:"
-        echo "  - DATABASE_TYPE=mysql 和 DATABASE_URL (本地 MySQL)"
-        echo "  或"
-        echo "  - NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY (Supabase)"
-        exit 1
-    fi
+if [ "$DATABASE_TYPE" = "mysql" ] && [ -z "$DATABASE_URL" ]; then
+    echo "错误: 未配置 DATABASE_URL"
+    exit 1
 fi
 
 echo "========================================"
@@ -200,155 +233,47 @@ cd app
 EOF
 chmod +x $LINUX_DIR/start.sh
 
-# Windows 启动脚本
 cp scripts/start.bat $WIN_DIR/start.bat
 
-# 创建环境变量配置文件
 cat > $LINUX_DIR/.env.example << 'EOF'
 # ==================== 数据库配置 ====================
-# 选择一种数据库方式：
-
-# 方式1: 本地 MySQL（推荐用于本地开发）
 DATABASE_TYPE=mysql
 DATABASE_URL=mysql://root:password@localhost:3306/drama_studio
 
-# 方式2: Supabase 云服务（推荐用于生产环境）
-# DATABASE_TYPE=supabase
-# NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-# NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJ...
-
 # ==================== 对象存储配置 ====================
-# 本地 MinIO 存储
 S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=minioadmin
 S3_SECRET_KEY=minioadmin123
 S3_BUCKET=drama-studio
 S3_REGION=us-east-1
 
-# ==================== LLM API 配置 ====================
-# 豆包/字节跳动大模型 API
-# 获取地址: https://console.volcengine.com/ark
+# ==================== AI 服务配置 ====================
 LLM_API_KEY=your-llm-api-key
 LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+LLM_MODEL=doubao-seed-2-0-pro
 
-# ==================== 图像生成 API 配置 ====================
 IMAGE_API_KEY=your-image-api-key
 IMAGE_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+IMAGE_MODEL=your-image-model
 
-# ==================== 视频生成 API 配置 ====================
 VIDEO_API_KEY=your-video-api-key
 VIDEO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-
-# ==================== 其他配置 ====================
-PORT=5000
+VIDEO_MODEL=doubao-seedance-1-5-pro-251215
 EOF
 
 cp $LINUX_DIR/.env.example $WIN_DIR/.env.example
 
-# 创建说明文件
-cat > $LINUX_DIR/README.md << 'EOF'
-# 短剧漫剧创作工坊
-
-将文字故事转化为精美短剧视频的 AI 创作工具。
-
-## 快速开始
-
-### 1. 配置环境变量
-
-```bash
-# 复制环境变量示例文件
-cp .env.example .env
-
-# 编辑 .env 文件，填入以下配置：
-# - Supabase 数据库 URL 和密钥（推荐）
-# - LLM API 密钥（豆包/字节跳动）
-# - 图像生成 API 密钥
-# - 视频生成 API 密钥
-```
-
-### 2. 启动应用
-
-```bash
-./start.sh
-```
-
-### 3. 访问应用
-
-打开浏览器访问 http://localhost:5000
-
-## 获取 API 密钥
-
-### Supabase（数据库）
-
-1. 访问 https://supabase.com 注册账号
-2. 创建新项目
-3. 在项目设置中获取 URL 和 anon key
-
-### 豆包/字节跳动（AI 服务）
-
-1. 访问 https://console.volcengine.com/ark
-2. 创建推理接入点
-3. 获取 API Key
-
-## 系统要求
-
-- Linux x64
-- 内存：至少 4GB
-- 磁盘：至少 2GB 可用空间
-
-## 故障排除
-
-### 端口被占用
-
-修改 .env 文件中的 PORT 值。
-
-### 数据库连接失败
-
-1. 确认 Supabase 项目已启动
-2. 检查 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY 是否正确
-
-### 页面无法访问
-
-1. 等待几秒钟让服务完全启动
-2. 检查控制台是否有错误信息
-
-## 技术支持
-
-- GitHub: https://github.com/jinlei665/drama-workshop
-EOF
-
-cp $LINUX_DIR/README.md $WIN_DIR/README.md
-
-# 打包
+# 压缩
 echo ""
-echo "========================================"
-echo "打包压缩文件..."
-
+echo "正在压缩..."
 cd $BUILD_DIR
-
-# Linux 压缩包
 tar -czf $PROJECT_NAME-linux-x64.tar.gz $PROJECT_NAME-linux-x64
-echo "✓ Linux 版本: $PROJECT_NAME-linux-x64.tar.gz"
-
-# Windows 压缩包
 zip -rq $PROJECT_NAME-win-x64.zip $PROJECT_NAME-win-x64
-echo "✓ Windows 版本: $PROJECT_NAME-win-x64.zip"
-
-# 清理解压目录
-rm -rf $PROJECT_NAME-linux-x64 $PROJECT_NAME-win-x64
-
-cd ../..
+cd -
 
 echo ""
 echo "========================================"
 echo "打包完成！"
-echo ""
-echo "输出文件："
-echo "  - dist/portable/$PROJECT_NAME-linux-x64.tar.gz"
-echo "  - dist/portable/$PROJECT_NAME-win-x64.zip"
-echo ""
-echo "使用说明："
-echo "  1. 解压对应的压缩包"
-echo "  2. 复制 .env.example 为 .env 并配置"
-echo "  3. 运行 start.sh (Linux) 或 start.bat (Windows)"
 echo "========================================"
+echo ""
+ls -lh $BUILD_DIR/*.tar.gz $BUILD_DIR/*.zip
