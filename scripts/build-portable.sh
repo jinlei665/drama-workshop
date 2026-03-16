@@ -28,10 +28,8 @@ function resolve_pnpm_symlinks() {
     
     echo "  Resolving pnpm symlinks..."
     
-    # 保存当前目录
+    # 1. 处理顶层符号链接
     pushd "$NM_DIR" > /dev/null
-    
-    # 1. 处理顶层符号链接 (next, react, react-dom 等)
     for item in *; do
         [ "$item" = ".pnpm" ] && continue
         [ -L "$item" ] || continue
@@ -41,14 +39,16 @@ function resolve_pnpm_symlinks() {
         if [[ "$link_target" == .pnpm/* ]]; then
             local real_path=".pnpm/${link_target#.pnpm/}"
             if [ -d "$real_path" ]; then
-                echo "    Replacing: $item"
+                echo "    Replacing symlink: $item"
                 rm -f "$item"
                 cp -r "$real_path" "$item"
             fi
         fi
     done
+    popd > /dev/null
     
     # 2. 处理 @scope 目录中的符号链接
+    pushd "$NM_DIR" > /dev/null
     for scope_dir in @*; do
         [ -d "$scope_dir" ] || continue
         [ "$scope_dir" = ".pnpm" ] && continue
@@ -67,43 +67,50 @@ function resolve_pnpm_symlinks() {
             fi
             
             if [ -n "$real_path" ] && [ -d "$real_path" ]; then
-                echo "    Replacing: $scope_dir/$sub_item"
+                echo "    Replacing symlink: $scope_dir/$sub_item"
                 rm -f "$sub_item"
                 cp -r "$real_path" "$sub_item"
             fi
         done
         popd > /dev/null
     done
-    
     popd > /dev/null
     
-    # 3. 扫描 .pnpm 目录中缺失的 scoped 包
-    # 例如 @next/env, @swc/helpers 等
-    # 使用绝对路径避免目录切换问题
-    local ABS_NM_DIR=$(cd "$NM_DIR" && pwd)
+    # 3. 扫描 .pnpm 目录，复制所有缺失的包
+    echo "  Scanning for missing packages..."
     
-    for pnpm_pkg in "$PNPM_DIR"/@*; do
+    for pnpm_pkg in "$PNPM_DIR"/*; do
         [ -d "$pnpm_pkg" ] || continue
         
-        # 获取包名（不含路径）
         local pkg_basename=$(basename "$pnpm_pkg")
         
-        # 解析包名: @next+env@16.1.1 -> @next/env
-        local scope_name="${pkg_basename%%+*}"  # @next
-        local pkg_tail="${pkg_basename#*+}"      # env@16.1.1
-        local pkg_name="${pkg_tail%@*}"          # env
-        
-        # 创建目标目录
-        local target_scope="$ABS_NM_DIR/$scope_name"
-        local target_dir="$target_scope/$pkg_name"
-        
-        # 检查源路径
-        local src_dir="$pnpm_pkg/node_modules/$scope_name/$pkg_name"
-        
-        if [ -d "$src_dir" ] && [ ! -d "$target_dir" ]; then
-            echo "    Creating: $scope_name/$pkg_name"
-            mkdir -p "$target_scope"
-            cp -r "$src_dir" "$target_dir"
+        # 处理 @scope/name 格式的包
+        if [[ "$pkg_basename" == @* ]]; then
+            # 解析包名: @next+env@16.1.1 -> @next/env
+            local scope_name="${pkg_basename%%+*}"  # @next
+            local pkg_tail="${pkg_basename#*+}"      # env@16.1.1
+            local pkg_name="${pkg_tail%@*}"          # env
+            
+            local target_dir="$NM_DIR/$scope_name/$pkg_name"
+            local src_dir="$pnpm_pkg/node_modules/$scope_name/$pkg_name"
+            
+            if [ -d "$src_dir" ] && [ ! -d "$target_dir" ]; then
+                echo "    Creating: $scope_name/$pkg_name"
+                mkdir -p "$NM_DIR/$scope_name"
+                cp -r "$src_dir" "$target_dir"
+            fi
+        else
+            # 处理普通包: styled-jsx@5.1.6 -> styled-jsx
+            local pkg_name="${pkg_basename%%@*}"
+            
+            local target_dir="$NM_DIR/$pkg_name"
+            local src_dir="$pnpm_pkg/node_modules/$pkg_name"
+            
+            # 跳过已存在的目录（包括符号链接已解析的）
+            if [ -d "$src_dir" ] && [ ! -d "$target_dir" ] && [ ! -L "$target_dir" ]; then
+                echo "    Creating: $pkg_name"
+                cp -r "$src_dir" "$target_dir"
+            fi
         fi
     done
     
