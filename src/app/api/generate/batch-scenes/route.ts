@@ -71,7 +71,10 @@ export async function POST(request: NextRequest) {
 
       // 获取出场人物描述
       const charDescriptions = (scene.character_ids || [])
-        .map((id: string) => characterMap.get(id)?.appearance)
+        .map((id: string) => {
+          const char = characterMap.get(id) as { id: string; appearance?: string } | undefined
+          return char?.appearance
+        })
         .filter(Boolean)
 
       // 构建真人实拍风格提示词

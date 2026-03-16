@@ -123,18 +123,31 @@ export HOSTNAME="0.0.0.0"
 
 echo ""
 echo "当前环境变量:"
-echo "  NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL"
-echo "  DATABASE_TYPE=$DATABASE_TYPE"
+echo "  DATABASE_TYPE=${DATABASE_TYPE:-未设置}"
+if [ "$DATABASE_TYPE" = "mysql" ]; then
+    echo "  DATABASE_URL=${DATABASE_URL:-未设置}"
+else
+    echo "  NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL:-未设置}"
+fi
 echo "  PORT=$PORT"
 echo ""
 
-# 检查必要的环境变量
-if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
-    echo "错误: 未配置 NEXT_PUBLIC_SUPABASE_URL"
-    echo "请在 .env 文件中配置 Supabase 连接信息"
-    echo ""
-    read -p "按 Enter 键退出..."
-    exit 1
+# 检查数据库配置
+if [ "$DATABASE_TYPE" = "mysql" ]; then
+    if [ -z "$DATABASE_URL" ]; then
+        echo "错误: 未配置 DATABASE_URL"
+        echo "请在 .env 文件中设置 DATABASE_URL=mysql://user:password@host:port/database"
+        exit 1
+    fi
+else
+    if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ] && [ -z "$COZE_SUPABASE_URL" ]; then
+        echo "错误: 未配置数据库"
+        echo "请在 .env 文件中设置:"
+        echo "  - DATABASE_TYPE=mysql 和 DATABASE_URL (本地 MySQL)"
+        echo "  或"
+        echo "  - NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY (Supabase)"
+        exit 1
+    fi
 fi
 
 echo "========================================"
@@ -153,22 +166,22 @@ cp scripts/start.bat $WIN_DIR/start.bat
 # 创建环境变量配置文件
 cat > $LINUX_DIR/.env.example << 'EOF'
 # ==================== 数据库配置 ====================
-# 数据库类型：postgresql（推荐）
-DATABASE_TYPE=postgresql
+# 选择一种数据库方式：
 
-# Supabase 云服务配置（推荐）
-# 注册地址: https://supabase.com
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJ...
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJ...
+# 方式1: 本地 MySQL（推荐用于本地开发）
+DATABASE_TYPE=mysql
+DATABASE_URL=mysql://root:password@localhost:3306/drama_studio
 
-# 本地 PostgreSQL 连接
-# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/drama_studio
+# 方式2: Supabase 云服务（推荐用于生产环境）
+# DATABASE_TYPE=supabase
+# NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJ...
 
 # ==================== 对象存储配置 ====================
+# 本地 MinIO 存储
 S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=minioadmin
-S3_SECRET_KEY=minioadmin
+S3_SECRET_KEY=minioadmin123
 S3_BUCKET=drama-studio
 S3_REGION=us-east-1
 

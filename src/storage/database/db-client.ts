@@ -1,12 +1,20 @@
 /**
  * 统一数据库客户端
- * 根据 DATABASE_TYPE 环境变量选择使用 Supabase (PostgreSQL) 或 MySQL
+ * 支持本地 MySQL 和 Supabase (PostgreSQL)
+ * 
+ * 使用方法：
+ * 1. 本地 MySQL: 设置 DATABASE_TYPE=mysql 和 DATABASE_URL=mysql://user:pass@host:port/db
+ * 2. Supabase: 设置 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY
  */
 
-import { getSupabaseClient, isSupabaseConfigured } from './supabase-client';
-import { getMysqlPool, executeSql } from './mysql-client';
+import { Pool } from 'mysql2/promise';
 
-export type DatabaseType = 'postgresql' | 'mysql';
+// 数据库类型
+export type DatabaseType = 'mysql' | 'supabase';
+
+// 缓存的客户端
+let cachedPool: Pool | null = null;
+let cachedSupabaseClient: any = null;
 
 /**
  * 获取数据库类型
@@ -16,71 +24,227 @@ export function getDatabaseType(): DatabaseType {
   if (type === 'mysql') {
     return 'mysql';
   }
-  return 'postgresql'; // 默认使用 PostgreSQL
+  
+  // 检查是否配置了 Supabase
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.COZE_SUPABASE_URL) {
+    return 'supabase';
+  }
+  
+  // 默认尝试 MySQL（本地开发优先）
+  if (process.env.DATABASE_URL) {
+    return 'mysql';
+  }
+  
+  return 'supabase';
 }
 
 /**
- * 检查数据库是否已配置
+ * 加载环境变量
  */
-export function isDatabaseConfigured(): { configured: boolean; message: string } {
-  const dbType = getDatabaseType();
-
-  if (dbType === 'mysql') {
-    if (process.env.DATABASE_URL) {
-      return { configured: true, message: 'MySQL 数据库已配置' };
-    }
-    return {
-      configured: false,
-      message: 'MySQL 数据库未配置。请设置 DATABASE_URL 环境变量，格式：mysql://user:password@host:port/database'
-    };
+function loadEnv(): void {
+  try {
+    require('dotenv').config();
+  } catch {
+    // dotenv 不可用
   }
+}
 
-  // PostgreSQL (Supabase)
-  if (isSupabaseConfigured()) {
-    return { configured: true, message: 'PostgreSQL (Supabase) 数据库已配置' };
+/**
+ * 获取 MySQL 连接池
+ */
+async function getMysqlPool(): Promise<Pool> {
+  if (cachedPool) {
+    return cachedPool;
   }
-  return {
-    configured: false,
-    message: 'PostgreSQL 数据库未配置。请设置以下环境变量之一：\n' +
-      '  - COZE_SUPABASE_URL 和 COZE_SUPABASE_ANON_KEY\n' +
-      '  - NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY'
-  };
+  
+  loadEnv();
+  
+  const mysql = await import('mysql2/promise');
+  
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error(
+      'MySQL 数据库未配置。\n' +
+      '请在 .env 文件中设置 DATABASE_URL=mysql://user:password@host:port/database'
+    );
+  }
+  
+  // 解析连接字符串
+  const url = new URL(databaseUrl);
+  
+  cachedPool = mysql.createPool({
+    host: url.hostname || 'localhost',
+    port: parseInt(url.port) || 3306,
+    user: url.username || 'root',
+    password: url.password || '',
+    database: url.pathname.slice(1) || 'drama_studio',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  });
+  
+  return cachedPool;
+}
+
+/**
+ * 获取 Supabase 客户端
+ */
+async function getSupabaseClient() {
+  if (cachedSupabaseClient) {
+    return cachedSupabaseClient;
+  }
+  
+  loadEnv();
+  
+  const url = process.env.COZE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.COZE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  
+  if (!url || !anonKey) {
+    throw new Error(
+      'Supabase 未配置。\n' +
+      '请在 .env 文件中设置以下环境变量：\n' +
+      '  NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\n' +
+      '  NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...\n\n' +
+      '或者使用本地 MySQL 数据库：\n' +
+      '  DATABASE_TYPE=mysql\n' +
+      '  DATABASE_URL=mysql://root:password@localhost:3306/drama_studio'
+    );
+  }
+  
+  const { createClient } = await import('@supabase/supabase-js');
+  
+  cachedSupabaseClient = createClient(url, anonKey, {
+    db: { timeout: 60000 },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+  
+  return cachedSupabaseClient;
 }
 
 /**
  * 获取数据库客户端
- * 对于 PostgreSQL 返回 Supabase 客户端
- * 对于 MySQL 返回连接池
+ * 返回统一的数据库操作接口
  */
-export function getDatabaseClient() {
+export async function getDb() {
   const dbType = getDatabaseType();
-
+  
   if (dbType === 'mysql') {
-    return getMysqlPool();
+    const pool = await getMysqlPool();
+    return {
+      type: 'mysql' as const,
+      pool,
+      // 提供与 Supabase 类似的 API
+      from: (table: string) => new MySqlQueryBuilder(pool, table),
+    };
   }
-
-  return getSupabaseClient();
+  
+  const client = await getSupabaseClient();
+  return {
+    type: 'supabase' as const,
+    client,
+    from: (table: string) => client.from(table),
+  };
 }
 
 /**
- * 获取 Supabase 客户端（兼容现有代码）
- * 如果使用 MySQL，会抛出错误提示
+ * MySQL 查询构建器
+ * 提供与 Supabase 类似的 API
  */
-export function getDb() {
-  const dbType = getDatabaseType();
-
-  if (dbType === 'mysql') {
-    throw new Error(
-      '当前使用 MySQL 数据库，但此操作需要 Supabase 客户端。\n' +
-      '请将 DATABASE_TYPE 设置为 postgresql 或配置 Supabase 环境变量。'
-    );
+class MySqlQueryBuilder {
+  private pool: Pool;
+  private table: string;
+  private conditions: string[] = [];
+  private params: any[] = [];
+  private orderClause: string = '';
+  private limitClause: string = '';
+  private selectFields: string = '*';
+  
+  constructor(pool: Pool, table: string) {
+    this.pool = pool;
+    this.table = table;
   }
-
-  return getSupabaseClient();
+  
+  select(fields: string = '*') {
+    this.selectFields = fields;
+    return this;
+  }
+  
+  eq(column: string, value: any) {
+    this.conditions.push(`${column} = ?`);
+    this.params.push(value);
+    return this;
+  }
+  
+  order(column: string, direction: 'asc' | 'desc' = 'asc') {
+    this.orderClause = `ORDER BY ${column} ${direction.toUpperCase()}`;
+    return this;
+  }
+  
+  limit(count: number) {
+    this.limitClause = `LIMIT ${count}`;
+    return this;
+  }
+  
+  async single() {
+    this.limitClause = 'LIMIT 1';
+    const result = await this.execute();
+    return { data: result[0] || null, error: null };
+  }
+  
+  async execute() {
+    let sql = `SELECT ${this.selectFields} FROM ${this.table}`;
+    
+    if (this.conditions.length > 0) {
+      sql += ` WHERE ${this.conditions.join(' AND ')}`;
+    }
+    
+    if (this.orderClause) {
+      sql += ` ${this.orderClause}`;
+    }
+    
+    if (this.limitClause) {
+      sql += ` ${this.limitClause}`;
+    }
+    
+    const [rows] = await this.pool.execute(sql, this.params);
+    return rows as any[];
+  }
+  
+  // 提供与 Supabase 兼容的 then 方法
+  then(resolve: (value: any) => void, reject?: (reason: any) => void) {
+    return this.execute().then(resolve, reject);
+  }
 }
 
-// 重新导出 Supabase 客户端函数，保持向后兼容
-export { getSupabaseClient, isSupabaseConfigured };
+/**
+ * 执行原生 SQL 查询
+ */
+export async function executeSql(sql: string, params?: any[]): Promise<any> {
+  const dbType = getDatabaseType();
+  
+  if (dbType === 'mysql') {
+    const pool = await getMysqlPool();
+    const [results] = await pool.execute(sql, params);
+    return results;
+  }
+  
+  // Supabase 不支持原生 SQL，使用 RPC
+  throw new Error('Supabase 不支持原生 SQL 查询');
+}
 
-// 导出 MySQL 相关函数
-export { getMysqlPool, executeSql };
+/**
+ * 关闭数据库连接
+ */
+export async function closeDatabase(): Promise<void> {
+  if (cachedPool) {
+    await cachedPool.end();
+    cachedPool = null;
+  }
+  cachedSupabaseClient = null;
+}
+
+// 导出便捷函数
+export { getMysqlPool, getSupabaseClient };
