@@ -1,93 +1,115 @@
-/**
- * 统一数据库客户端
- * 自动检测数据库类型，支持：
- * - 本地 MySQL（推荐用于本地开发）
- * - Supabase（推荐用于云部署）
- */
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { execSync } from 'child_process';
 
-import { Pool } from 'mysql2/promise';
+let envLoaded = false;
 
-// 导出本地数据库客户端
-export { getDb, getPool, executeSql, closeDatabase } from './local-db';
+interface SupabaseCredentials {
+  url: string;
+  anonKey: string;
+}
 
-// 类型定义
-export type { DatabaseType } from './db-client';
-export { getDatabaseType } from './db-client';
-
-// 兼容旧代码的函数
-let cachedClient: any = null;
-
-/**
- * 获取 Supabase 客户端（兼容旧代码）
- * 优先使用本地 MySQL
- */
-export function getSupabaseClient(token?: string): any {
-  if (cachedClient) {
-    return cachedClient;
+function loadEnv(): void {
+  if (envLoaded || (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY)) {
+    return;
   }
-  
-  // 加载环境变量
+
   try {
-    require('dotenv').config();
-  } catch {}
-  
-  // 检查是否使用本地数据库
-  const dbType = process.env.DATABASE_TYPE?.toLowerCase();
-  const databaseUrl = process.env.DATABASE_URL;
-  
-  // 如果配置了 MySQL，返回本地数据库客户端
-  if (dbType === 'mysql' || (databaseUrl && databaseUrl.startsWith('mysql://'))) {
-    const { getDb } = require('./local-db');
-    cachedClient = getDb();
-    return cachedClient;
+    try {
+      require('dotenv').config();
+      if (process.env.COZE_SUPABASE_URL && process.env.COZE_SUPABASE_ANON_KEY) {
+        envLoaded = true;
+        return;
+      }
+    } catch {
+      // dotenv not available
+    }
+
+    const pythonCode = `
+import os
+import sys
+try:
+    from coze_workload_identity import Client
+    client = Client()
+    env_vars = client.get_project_env_vars()
+    client.close()
+    for env_var in env_vars:
+        print(f"{env_var.key}={env_var.value}")
+except Exception as e:
+    print(f"# Error: {e}", file=sys.stderr)
+`;
+
+    const output = execSync(`python3 -c '${pythonCode.replace(/'/g, "'\"'\"'")}'`, {
+      encoding: 'utf-8',
+      timeout: 10000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    const lines = output.trim().split('\n');
+    for (const line of lines) {
+      if (line.startsWith('#')) continue;
+      const eqIndex = line.indexOf('=');
+      if (eqIndex > 0) {
+        const key = line.substring(0, eqIndex);
+        let value = line.substring(eqIndex + 1);
+        if ((value.startsWith("'") && value.endsWith("'")) ||
+            (value.startsWith('"') && value.endsWith('"'))) {
+          value = value.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = value;
+        }
+      }
+    }
+
+    envLoaded = true;
+  } catch {
+    // Silently fail
   }
-  
-  // 使用 Supabase
-  const url = process.env.COZE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.COZE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
-  if (!url || !anonKey) {
-    throw new Error(
-      '数据库未配置！\n\n' +
-      '请在 .env 文件中配置以下任一选项：\n\n' +
-      '选项1: 使用本地 MySQL（推荐用于本地开发）\n' +
-      'DATABASE_TYPE=mysql\n' +
-      'DATABASE_URL=mysql://root:password@localhost:3306/drama_studio\n\n' +
-      '选项2: 使用 Supabase 云服务\n' +
-      'NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\n' +
-      'NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...'
-    );
+}
+
+function getSupabaseCredentials(): SupabaseCredentials {
+  loadEnv();
+
+  const url = process.env.COZE_SUPABASE_URL;
+  const anonKey = process.env.COZE_SUPABASE_ANON_KEY;
+
+  if (!url) {
+    throw new Error('COZE_SUPABASE_URL is not set');
   }
-  
-  const { createClient } = require('@supabase/supabase-js');
-  
-  cachedClient = createClient(url, anonKey, {
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
-    db: { timeout: 60000 },
-    auth: { autoRefreshToken: false, persistSession: false },
+  if (!anonKey) {
+    throw new Error('COZE_SUPABASE_ANON_KEY is not set');
+  }
+
+  return { url, anonKey };
+}
+
+function getSupabaseClient(token?: string): SupabaseClient {
+  const { url, anonKey } = getSupabaseCredentials();
+
+  if (token) {
+    return createClient(url, anonKey, {
+      global: {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+      db: {
+        timeout: 60000,
+      },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+  }
+
+  return createClient(url, anonKey, {
+    db: {
+      timeout: 60000,
+    },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
   });
-  
-  return cachedClient;
 }
 
-/**
- * 检查数据库是否配置
- */
-export function isDatabaseConfigured(): boolean {
-  try {
-    require('dotenv').config();
-  } catch {}
-  
-  const dbType = process.env.DATABASE_TYPE?.toLowerCase();
-  const databaseUrl = process.env.DATABASE_URL;
-  const supabaseUrl = process.env.COZE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  
-  return !!(dbType === 'mysql' || databaseUrl?.startsWith('mysql://') || supabaseUrl);
-}
-
-/**
- * 检查 Supabase 是否配置（兼容旧代码）
- */
-export function isSupabaseConfigured(): boolean {
-  return isDatabaseConfigured();
-}
+export { loadEnv, getSupabaseCredentials, getSupabaseClient };

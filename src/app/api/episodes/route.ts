@@ -16,38 +16,23 @@ export async function GET(request: NextRequest) {
   // 获取剧集列表，按季数和集数排序
   const { data: episodes, error } = await client
     .from("episodes")
-    .select("*")
+    .select(`
+      *,
+      scenes:scenes(count)
+    `)
     .eq("project_id", projectId)
     .order("season_number", { ascending: true })
     .order("episode_number", { ascending: true })
 
   if (error) {
-    console.error("获取剧集失败:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
-  // 获取所有分镜，按 episode_id 分组计数
-  const { data: scenes, error: scenesError } = await client
-    .from("scenes")
-    .select("episode_id")
-    .eq("project_id", projectId)
-
-  if (scenesError) {
-    console.error("获取分镜失败:", scenesError)
-  }
-
-  // 计算每个剧集的分镜数量
-  const sceneCounts: Record<string, number> = {}
-  ;(scenes || []).forEach((scene: any) => {
-    if (scene.episode_id) {
-      sceneCounts[scene.episode_id] = (sceneCounts[scene.episode_id] || 0) + 1
-    }
-  })
 
   // 转换数据格式
   const formattedEpisodes = (episodes || []).map((ep: any) => ({
     ...ep,
-    sceneCount: sceneCounts[ep.id] || 0,
+    sceneCount: ep.scenes?.[0]?.count || 0,
+    scenes: undefined,
   }))
 
   return NextResponse.json({ episodes: formattedEpisodes })

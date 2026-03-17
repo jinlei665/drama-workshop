@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL } from "@/lib/ai"
-import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
-
-// 增加超时配置 - Next.js API 路由最大执行时间
-export const maxDuration = 300 // 5分钟
+import { LLMClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
+import { getSupabaseClient } from "@/storage/database/supabase-client"
 
 // POST /api/analyze - 分析文本内容，提取人物和视频分镜
 export async function POST(request: NextRequest) {
@@ -13,48 +10,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "内容不能为空" }, { status: 400 })
   }
 
-  // 获取用户配置（可选）
-  let userSettings: {
-    llm_model?: string
-    llm_api_key?: string | null
-    llm_base_url?: string | null
-  } | null = null
+  // 获取用户配置
+  const supabase = getSupabaseClient()
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('*')
+    .limit(1)
+    .single()
 
-  if (isDatabaseConfigured()) {
-    try {
-      const supabase = getSupabaseClient()
-      const result = await supabase
-        .from('user_settings')
-        .select('llm_model, llm_api_key, llm_base_url')
-        .limit(1)
-        .maybeSingle()
-      userSettings = result.data
-    } catch (dbError) {
-      console.warn("Failed to fetch user settings, using defaults:", dbError)
-    }
-  }
-
-  // 提取请求头用于转发
-  const customHeaders = extractHeaders(request.headers)
-
-  // 使用用户配置的模型或默认模型
-  const model = userSettings?.llm_model || DEFAULT_LLM_MODEL
-  const apiKey = userSettings?.llm_api_key || undefined
-  const baseUrl = userSettings?.llm_base_url || undefined
-
-  console.log("LLM Config:", {
-    model,
-    hasApiKey: !!apiKey,
-    baseUrl: baseUrl || 'default (system)',
-  })
-
-  // 检查内容长度，如果太长则截断
-  const maxContentLength = 10000 // 约 1 万字
-  let processedContent = content
-  if (content.length > maxContentLength) {
-    console.log(`Content too long (${content.length} chars), truncating to ${maxContentLength}`)
-    processedContent = content.substring(0, maxContentLength) + '\n\n...（内容已截断，请分段上传完整内容）'
-  }
+  const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
+  const config = new Config()
+  const client = new LLMClient(config, customHeaders)
+  
+  // 使用用户配置的模型，如果没有配置则使用默认模型
+  const modelName = settings?.llm_model || 'doubao-seed-2-0-pro'
 
   const systemPrompt = `你是一个专业的短剧视频创作助手。你的任务是分析小说或脚本内容，提取出人物信息和视频分镜信息。
 
@@ -96,45 +65,24 @@ export async function POST(request: NextRequest) {
   try {
     const messages = [
       { role: "system" as const, content: systemPrompt },
-      { role: "user" as const, content: `请分析以下内容：\n\n${processedContent}` },
+      { role: "user" as const, content: `请分析以下内容：\n\n${content}` },
     ]
 
-    // 调用 LLM（使用系统自带模型）
-    const responseContent = await invokeLLM(
-      messages,
-      {
-        model,
-        temperature: 0.3,
-      },
-      apiKey ? { apiKey, baseUrl } : undefined,
-      customHeaders
-    )
+    const response = await client.invoke(messages, {
+      model: modelName,
+      temperature: 0.3,
+    })
 
     // 解析 JSON 响应
     let result
     try {
-      result = parseLLMJson<{
-        characters: Array<{
-          name: string
-          description: string
-          appearance: string
-          personality: string
-          tags: string[]
-        }>
-        scenes: Array<{
-          sceneNumber: number
-          title: string
-          description: string
-          dialogue: string
-          action: string
-          emotion: string
-          shotType: string
-          cameraMovement: string
-          characterNames: string[]
-        }>
-      }>(responseContent)
-    } catch (parseError) {
-      console.error("Failed to parse LLM response:", responseContent)
+      // 提取 JSON 内容（处理可能存在的 markdown 代码块）
+      const jsonMatch = response.content.match(/```json\s*([\s\S]*?)\s*```/) ||
+                        response.content.match(/```\s*([\s\S]*?)\s*```/)
+      const jsonStr = jsonMatch ? jsonMatch[1] : response.content
+      result = JSON.parse(jsonStr)
+    } catch {
+      console.error("Failed to parse LLM response:", response.content)
       return NextResponse.json(
         { error: "解析结果失败，请重试" },
         { status: 500 }
@@ -142,12 +90,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 如果有 projectId，保存到数据库
-    if (projectId && isDatabaseConfigured()) {
+    if (projectId) {
       const supabase = getSupabaseClient()
 
       // 保存人物
       if (result.characters && result.characters.length > 0) {
-        const charactersData = result.characters.map((char) => ({
+        const charactersData = result.characters.map((char: any) => ({
           project_id: projectId,
           name: char.name,
           description: char.description,
@@ -168,10 +116,10 @@ export async function POST(request: NextRequest) {
           .eq("project_id", projectId)
 
         const nameToId = new Map(
-          (existingChars || []).map((c: { id: string; name: string }) => [c.name, c.id])
+          (existingChars || []).map((c: any) => [c.name, c.id])
         )
 
-        const scenesData = result.scenes.map((scene) => ({
+        const scenesData = result.scenes.map((scene: any) => ({
           project_id: projectId,
           scene_number: scene.sceneNumber,
           title: scene.title,
@@ -193,21 +141,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(result)
-  } catch (error: unknown) {
+  } catch (error) {
     console.error("Analyze error:", error)
-
-    const errorMessage = error instanceof Error ? error.message : "分析失败，请重试"
-
-    // 检查是否是超时错误
-    if (errorMessage.includes('timeout') || errorMessage.includes('超时')) {
-      return NextResponse.json(
-        { error: "请求超时，请稍后重试" },
-        { status: 504 }
-      )
-    }
-
     return NextResponse.json(
-      { error: errorMessage },
+      { error: "分析失败，请重试" },
       { status: 500 }
     )
   }

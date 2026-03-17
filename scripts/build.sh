@@ -9,7 +9,6 @@ echo "Installing dependencies..."
 pnpm install --prefer-frozen-lockfile --prefer-offline --loglevel debug --reporter=append-only
 
 echo "Building the project..."
-# 使用 webpack 构建，避免 Turbopack 的模块打包问题
-npx next build --webpack
+npx next build
 
 echo "Build completed successfully!"

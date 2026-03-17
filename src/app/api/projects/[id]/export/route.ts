@@ -77,20 +77,20 @@ export async function GET(
           status: project.status,
           createdAt: project.created_at,
         },
-        characters: characters?.map((c: any) => ({
+        characters: characters?.map(c => ({
           name: c.name,
           description: c.description,
           appearance: c.appearance,
           personality: c.personality,
           voiceStyle: c.voice_style,
         })),
-        episodes: episodes?.map((e: any) => ({
+        episodes: episodes?.map(e => ({
           season: e.season_number,
           episode: e.episode_number,
           title: e.title,
           description: e.description,
         })),
-        scenes: scenes?.map((s: any) => ({
+        scenes: scenes?.map(s => ({
           sceneNumber: s.scene_number,
           title: s.title,
           description: s.description,

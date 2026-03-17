@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
@@ -23,8 +24,7 @@ import {
   Key,
   Server,
   Sparkles,
-  Mic,
-  Info
+  Mic
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -52,34 +52,40 @@ interface Settings {
   voice_default_style: string
 }
 
-// 系统支持的 LLM 模型列表
+// 预设模型列表
 const LLM_MODELS = [
-  { value: "doubao-seed-2-0-pro-260215", label: "Doubao Seed 2.0 Pro (旗舰)", description: "复杂推理、多模态" },
-  { value: "doubao-seed-2-0-lite-260215", label: "Doubao Seed 2.0 Lite", description: "平衡性能与成本" },
-  { value: "doubao-seed-2-0-mini-260215", label: "Doubao Seed 2.0 Mini", description: "快速响应" },
-  { value: "doubao-seed-1-8-251228", label: "Doubao Seed 1.8 (默认)", description: "多模态 Agent 优化" },
-  { value: "doubao-seed-1-6-251015", label: "Doubao Seed 1.6", description: "通用对话" },
-  { value: "doubao-seed-1-6-flash-250615", label: "Doubao Seed 1.6 Flash", description: "快速响应" },
-  { value: "doubao-seed-1-6-thinking-250715", label: "Doubao Seed 1.6 Thinking", description: "深度推理" },
-  { value: "doubao-seed-1-6-vision-250815", label: "Doubao Seed 1.6 Vision", description: "图像/视频理解" },
-  { value: "deepseek-v3-2-251201", label: "DeepSeek V3.2", description: "高级推理" },
-  { value: "deepseek-r1-250528", label: "DeepSeek R1", description: "研究分析" },
-  { value: "kimi-k2-250905", label: "Kimi K2", description: "长上下文处理" },
-  { value: "kimi-k2-5-260127", label: "Kimi K2.5", description: "Agent、代码、多模态" },
+  { value: "doubao-seed-2-0-pro", label: "Doubao Seed 2.0 Pro", provider: "doubao" },
+  { value: "doubao-seed-1-6", label: "Doubao Seed 1.6", provider: "doubao" },
+  { value: "gpt-4o", label: "GPT-4o", provider: "openai" },
+  { value: "gpt-4o-mini", label: "GPT-4o Mini", provider: "openai" },
+  { value: "gpt-4-turbo", label: "GPT-4 Turbo", provider: "openai" },
+  { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet", provider: "anthropic" },
+  { value: "deepseek-chat", label: "DeepSeek Chat", provider: "deepseek" },
+  { value: "deepseek-reasoner", label: "DeepSeek Reasoner", provider: "deepseek" },
 ]
 
 const IMAGE_MODELS = [
-  { value: "doubao-seed-3-0", label: "Doubao Seed 3.0 (默认)", description: "高质量图像生成" },
-  { value: "doubao-seedream-3-0-t2i-250415", label: "Doubao Seedream 3.0", description: "艺术风格图像" },
+  { value: "doubao-seed-3-0", label: "Doubao Seed 3.0", provider: "doubao" },
+  { value: "doubao-seedream-3-0-t2i-250415", label: "Doubao Seedream 3.0", provider: "doubao" },
+  { value: "dall-e-3", label: "DALL-E 3", provider: "openai" },
+  { value: "dall-e-2", label: "DALL-E 2", provider: "openai" },
+  { value: "stable-diffusion-xl-1024-v1-0", label: "Stable Diffusion XL", provider: "stability" },
 ]
 
 const VIDEO_MODELS = [
-  { value: "doubao-seedance-1-5-pro-251215", label: "Doubao Seedance 1.5 Pro (默认)", description: "支持音频生成" },
+  { value: "doubao-seedance-1-5-pro-251215", label: "Doubao Seedance 1.5 Pro", provider: "doubao" },
+  { value: "sora", label: "Sora", provider: "openai" },
+  { value: "runway-gen3-turbo", label: "Runway Gen-3 Turbo", provider: "runway" },
+  { value: "pika-2.0", label: "Pika 2.0", provider: "pika" },
 ]
 
 const VOICE_MODELS = [
-  { value: "doubao-tts", label: "Doubao TTS (默认)", description: "自然语音合成" },
-  { value: "cosyvoice", label: "CosyVoice", description: "情感语音" },
+  { value: "doubao-tts", label: "Doubao TTS", provider: "doubao" },
+  { value: "cosyvoice", label: "CosyVoice", provider: "alibaba" },
+  { value: "tts-1", label: "OpenAI TTS-1", provider: "openai" },
+  { value: "tts-1-hd", label: "OpenAI TTS-1 HD", provider: "openai" },
+  { value: "eleven-monolingual-v1", label: "ElevenLabs Monolingual", provider: "elevenlabs" },
+  { value: "eleven-multilingual-v2", label: "ElevenLabs Multilingual v2", provider: "elevenlabs" },
 ]
 
 const VOICE_STYLES = [
@@ -89,17 +95,22 @@ const VOICE_STYLES = [
   { value: "serious", label: "严肃" },
   { value: "cheerful", label: "欢快" },
   { value: "sad", label: "悲伤" },
+  { value: "angry", label: "愤怒" },
   { value: "calm", label: "平静" },
   { value: "domineering", label: "霸气" },
   { value: "cute", label: "可爱" },
 ]
 
 const PROVIDERS = [
-  { value: "doubao", label: "豆包 / 字节跳动 (系统默认)" },
-  { value: "deepseek", label: "DeepSeek" },
-  { value: "kimi", label: "Kimi / 月之暗面" },
+  { value: "doubao", label: "豆包 / 字节跳动" },
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic" },
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "alibaba", label: "阿里云" },
+  { value: "elevenlabs", label: "ElevenLabs" },
+  { value: "stability", label: "Stability AI" },
+  { value: "runway", label: "Runway" },
+  { value: "pika", label: "Pika" },
   { value: "custom", label: "自定义 (OpenAI兼容)" },
 ]
 
@@ -198,7 +209,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             模型配置
           </DialogTitle>
           <DialogDescription>
-            配置AI模型参数。系统已内置豆包模型，可直接使用。
+            配置AI模型和API参数，支持OpenAI兼容格式的API
           </DialogDescription>
         </DialogHeader>
 
@@ -229,21 +240,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
             {/* LLM配置 */}
             <TabsContent value="llm" className="space-y-6 mt-4">
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="pt-4">
-                  <div className="flex items-start gap-3">
-                    <Info className="w-5 h-5 text-primary mt-0.5" />
-                    <div className="text-sm">
-                      <p className="font-medium">系统已内置豆包模型</p>
-                      <p className="text-muted-foreground mt-1">
-                        默认使用 Doubao Seed 1.8 模型，支持多模态理解。
-                        无需配置 API Key 即可使用。
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -285,7 +281,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Key className="w-4 h-4" />
-                      API Key (可选)
+                      API Key
                     </Label>
                     <Input
                       type="password"
@@ -293,21 +289,21 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       value={settings.llm_api_key || ""}
                       onChange={(e) => updateSetting("llm_api_key", e.target.value || null)}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      仅在使用自定义 API 时需要填写
-                    </p>
                   </div>
 
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Server className="w-4 h-4" />
-                      Base URL (可选)
+                      Base URL
                     </Label>
                     <Input
                       placeholder="如: https://api.openai.com/v1"
                       value={settings.llm_base_url || ""}
                       onChange={(e) => updateSetting("llm_base_url", e.target.value || null)}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      支持OpenAI兼容格式的API端点
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -315,20 +311,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
             {/* 图像配置 */}
             <TabsContent value="image" className="space-y-6 mt-4">
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="pt-4">
-                  <div className="flex items-start gap-3">
-                    <Info className="w-5 h-5 text-primary mt-0.5" />
-                    <div className="text-sm">
-                      <p className="font-medium">系统已内置图像生成模型</p>
-                      <p className="text-muted-foreground mt-1">
-                        默认使用 Doubao Seed 3.0，支持 2K/4K 分辨率。
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -348,7 +330,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         value={settings.image_provider}
                         onChange={(e) => updateSetting("image_provider", e.target.value)}
                       >
-                        {PROVIDERS.filter(p => ['doubao', 'custom'].includes(p.value)).map((p) => (
+                        {PROVIDERS.map((p) => (
                           <option key={p.value} value={p.value}>{p.label}</option>
                         ))}
                       </select>
@@ -382,7 +364,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Key className="w-4 h-4" />
-                      API Key (可选)
+                      API Key
                     </Label>
                     <Input
                       type="password"
@@ -395,7 +377,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Server className="w-4 h-4" />
-                      Base URL (可选)
+                      Base URL
                     </Label>
                     <Input
                       placeholder="如: https://api.openai.com/v1"
@@ -409,20 +391,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
 
             {/* 视频配置 */}
             <TabsContent value="video" className="space-y-6 mt-4">
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="pt-4">
-                  <div className="flex items-start gap-3">
-                    <Info className="w-5 h-5 text-primary mt-0.5" />
-                    <div className="text-sm">
-                      <p className="font-medium">系统已内置视频生成模型</p>
-                      <p className="text-muted-foreground mt-1">
-                        使用 Doubao Seedance 1.5 Pro，支持图生视频、自动音频生成。
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -442,7 +410,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         value={settings.video_provider}
                         onChange={(e) => updateSetting("video_provider", e.target.value)}
                       >
-                        {PROVIDERS.filter(p => ['doubao', 'custom'].includes(p.value)).map((p) => (
+                        {PROVIDERS.map((p) => (
                           <option key={p.value} value={p.value}>{p.label}</option>
                         ))}
                       </select>
@@ -488,7 +456,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Key className="w-4 h-4" />
-                      API Key (可选)
+                      API Key
                     </Label>
                     <Input
                       type="password"
@@ -501,7 +469,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Server className="w-4 h-4" />
-                      Base URL (可选)
+                      Base URL
                     </Label>
                     <Input
                       placeholder="如: https://api.openai.com/v1"
@@ -534,7 +502,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         value={settings.voice_provider}
                         onChange={(e) => updateSetting("voice_provider", e.target.value)}
                       >
-                        {PROVIDERS.filter(p => ['doubao', 'custom'].includes(p.value)).map((p) => (
+                        {PROVIDERS.filter(p => ['doubao', 'openai', 'alibaba', 'elevenlabs', 'custom'].includes(p.value)).map((p) => (
                           <option key={p.value} value={p.value}>{p.label}</option>
                         ))}
                       </select>
@@ -568,7 +536,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Key className="w-4 h-4" />
-                      API Key (可选)
+                      API Key
                     </Label>
                     <Input
                       type="password"
@@ -581,7 +549,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <Server className="w-4 h-4" />
-                      Base URL (可选)
+                      Base URL
                     </Label>
                     <Input
                       placeholder="如: https://api.openai.com/v1"
