@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { ImageGenerationClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
+import { ImageGenerationClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
 import { S3Storage } from "coze-coding-dev-sdk"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import axios from "axios"
@@ -15,8 +15,37 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // 获取用户配置
+  let settings: any = null
+  try {
+    const supabase = getSupabaseClient()
+    const result = await supabase
+      .from('user_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle()
+    settings = result.data
+  } catch (dbError) {
+    console.warn("Failed to fetch user settings:", dbError)
+  }
+
+  // 检查 API 配置
+  const apiKey = settings?.image_api_key || process.env.IMAGE_API_KEY
+  const baseUrl = settings?.image_base_url || process.env.IMAGE_BASE_URL
+
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "图像 API Key 未配置。请在设置页面或 .env 文件中配置 IMAGE_API_KEY" },
+      { status: 500 }
+    )
+  }
+
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  const config = new Config()
+  const config = new Config({
+    apiKey,
+    baseUrl,
+    timeout: 120000, // 120 秒超时
+  })
   const imageClient = new ImageGenerationClient(config, customHeaders)
 
   // 初始化对象存储

@@ -1,0 +1,107 @@
+# 短剧漫剧创作工坊 - Docker Compose 配置
+# 包含所有必要的服务：Web应用、数据库、对象存储
+
+version: '3.8'
+
+services:
+  # ==================== Web 应用 ====================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: drama-studio-web
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/drama_studio
+      - NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+      - SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_BUCKET=drama-studio
+      - LLM_API_KEY=${LLM_API_KEY}
+      - IMAGE_API_KEY=${IMAGE_API_KEY}
+      - VIDEO_API_KEY=${VIDEO_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - drama-network
+
+  # ==================== 数据库 (Supabase/PostgreSQL) ====================
+  db:
+    image: supabase/postgres:15.1.0.147
+    container_name: drama-studio-db
+    ports:
+      - "54322:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: drama_studio
+      JWT_SECRET: your-jwt-secret-at-least-32-characters-long
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d drama_studio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - drama-network
+
+  # ==================== 对象存储 (MinIO) ====================
+  minio:
+    image: minio/minio:latest
+    container_name: drama-studio-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - drama-network
+
+  # ==================== Redis (可选，用于缓存) ====================
+  redis:
+    image: redis:7-alpine
+    container_name: drama-studio-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - drama-network
+
+# ==================== 数据卷 ====================
+volumes:
+  postgres-data:
+    driver: local
+  minio-data:
+    driver: local
+  redis-data:
+    driver: local
+
+# ==================== 网络 ====================
+networks:
+  drama-network:
+    driver: bridge
