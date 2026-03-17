@@ -8,26 +8,37 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ==================== 用户设置表 ====================
 CREATE TABLE IF NOT EXISTS user_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    -- Coze API 配置
+    coze_api_key TEXT,
+    coze_base_url TEXT DEFAULT 'https://api.coze.com',
+    -- LLM 配置
     llm_provider VARCHAR(50) DEFAULT 'doubao',
-    llm_model VARCHAR(100) DEFAULT 'doubao-seed-2-0-pro',
+    llm_model VARCHAR(100) DEFAULT 'doubao-seed-1-8-251228',
     llm_api_key TEXT,
     llm_base_url TEXT,
+    -- 图像配置
     image_provider VARCHAR(50) DEFAULT 'doubao',
     image_model VARCHAR(100) DEFAULT 'doubao-seed-3-0',
     image_api_key TEXT,
     image_base_url TEXT,
     image_size VARCHAR(20) DEFAULT '2K',
+    -- 视频配置
     video_provider VARCHAR(50) DEFAULT 'doubao',
     video_model VARCHAR(100) DEFAULT 'doubao-seedance-1-5-pro-251215',
     video_api_key TEXT,
     video_base_url TEXT,
     video_resolution VARCHAR(20) DEFAULT '720p',
     video_ratio VARCHAR(20) DEFAULT '16:9',
+    -- 语音配置
     voice_provider VARCHAR(50) DEFAULT 'doubao',
     voice_model VARCHAR(100) DEFAULT 'doubao-tts',
     voice_api_key TEXT,
     voice_base_url TEXT,
     voice_default_style VARCHAR(50) DEFAULT 'natural',
+    -- FFmpeg 配置
+    ffmpeg_path TEXT,
+    ffprobe_path TEXT,
+    -- 时间戳
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

@@ -137,6 +137,46 @@ CREATE TABLE IF NOT EXISTS scenes (
 -- ============================================
 INSERT INTO health_check (updated_at) VALUES (NOW());
 
+-- ============================================
+-- 用户设置表
+-- ============================================
+CREATE TABLE IF NOT EXISTS user_settings (
+    id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+    -- Coze API 配置
+    coze_api_key VARCHAR(500),
+    coze_base_url VARCHAR(200) DEFAULT 'https://api.coze.com',
+    -- LLM 配置
+    llm_provider VARCHAR(50) DEFAULT 'doubao',
+    llm_model VARCHAR(100) DEFAULT 'doubao-seed-1-8-251228',
+    llm_api_key VARCHAR(500),
+    llm_base_url VARCHAR(500),
+    -- 图像配置
+    image_provider VARCHAR(50) DEFAULT 'doubao',
+    image_model VARCHAR(100) DEFAULT 'doubao-seed-3-0',
+    image_api_key VARCHAR(500),
+    image_base_url VARCHAR(500),
+    image_size VARCHAR(20) DEFAULT '2K',
+    -- 视频配置
+    video_provider VARCHAR(50) DEFAULT 'doubao',
+    video_model VARCHAR(100) DEFAULT 'doubao-seedance-1-5-pro-251215',
+    video_api_key VARCHAR(500),
+    video_base_url VARCHAR(500),
+    video_resolution VARCHAR(20) DEFAULT '720p',
+    video_ratio VARCHAR(10) DEFAULT '16:9',
+    -- 语音配置
+    voice_provider VARCHAR(50) DEFAULT 'doubao',
+    voice_model VARCHAR(100) DEFAULT 'doubao-tts',
+    voice_api_key VARCHAR(500),
+    voice_base_url VARCHAR(500),
+    voice_default_style VARCHAR(50) DEFAULT 'natural',
+    -- FFmpeg 配置
+    ffmpeg_path VARCHAR(500),
+    ffprobe_path VARCHAR(500),
+    -- 时间戳
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 完成
 SELECT '========================================' AS '';
 SELECT 'Database initialized successfully!' AS 'Message';

@@ -112,9 +112,51 @@ FLUSH PRIVILEGES;
 
 ---
 
-## 三、项目部署
+## 三、AI 服务配置（重要）
 
-### 3.1 克隆项目
+### 3.1 使用 Coze API（推荐）
+
+项目内置豆包系列 AI 模型，自部署时需要配置 Coze API Key。
+
+#### 获取 Coze API Key
+
+1. 访问 [Coze 平台](https://www.coze.cn) 并登录
+2. 点击右上角头像 →「个人设置」
+3. 左侧菜单选择「API 访问令牌」
+4. 点击「创建令牌」，选择权限后生成
+5. 复制生成的 Token（以 `pat-` 开头）
+
+#### 配置方式
+
+**方式一：在应用设置中配置（推荐）**
+
+启动应用后，进入「设置」→「API」标签页，填入 API Key 保存即可。
+
+**方式二：环境变量配置**
+
+```env
+# .env.local
+COZE_API_KEY=pat-xxxxxxxxxxxxx
+COZE_BASE_URL=https://api.coze.com
+```
+
+### 3.2 可用的 AI 模型
+
+配置 Coze API 后可使用：
+
+| 功能 | 模型 | 说明 |
+|------|------|------|
+| LLM | Doubao Seed 2.0 Pro | 复杂推理、多模态 |
+| LLM | DeepSeek V3.2 | 高级推理 |
+| LLM | Kimi K2.5 | 长上下文 |
+| 图像生成 | Doubao Seedream 3.0 | 2K/4K 高质量图像 |
+| 视频生成 | Doubao Seedance 1.5 Pro | 图生视频、音频生成 |
+
+---
+
+## 四、项目部署
+
+### 4.1 克隆项目
 
 ```bash
 # 克隆代码
@@ -122,13 +164,13 @@ git clone <your-repo-url> short-drama-workshop
 cd short-drama-workshop
 ```
 
-### 3.2 安装依赖
+### 4.2 安装依赖
 
 ```bash
 pnpm install
 ```
 
-### 3.3 配置环境变量
+### 4.3 配置环境变量
 
 ```bash
 # 复制环境变量模板
@@ -159,6 +201,10 @@ COZE_SUPABASE_ANON_KEY=your-anon-key
 # 方案三：内存模式（无需配置）
 DATABASE_TYPE=memory
 
+# Coze API 配置（必需，用于 AI 功能）
+COZE_API_KEY=pat-xxxxxxxxxxxxx
+COZE_BASE_URL=https://api.coze.com
+
 # 对象存储（必需，用于存储图片和视频）
 COZE_BUCKET_ENDPOINT_URL=your-endpoint-url
 COZE_BUCKET_NAME=your-bucket-name
@@ -168,7 +214,7 @@ FFMPEG_PATH=/usr/bin/ffmpeg
 FFPROBE_PATH=/usr/bin/ffprobe
 ```
 
-### 3.4 初始化数据库表
+### 4.4 初始化数据库表
 
 如果使用 MySQL 或 Supabase，需要创建数据表：
 
@@ -186,11 +232,37 @@ pnpm run db:migrate
 -- 用户设置表
 CREATE TABLE IF NOT EXISTS user_settings (
     id VARCHAR(36) PRIMARY KEY DEFAULT UUID(),
-    video_model VARCHAR(100) DEFAULT 'video-01',
+    -- Coze API 配置
+    coze_api_key VARCHAR(500),
+    coze_base_url VARCHAR(200) DEFAULT 'https://api.coze.com',
+    -- LLM 配置
+    llm_provider VARCHAR(50) DEFAULT 'doubao',
+    llm_model VARCHAR(100) DEFAULT 'doubao-seed-1-8-251228',
+    llm_api_key VARCHAR(500),
+    llm_base_url VARCHAR(500),
+    -- 图像配置
+    image_provider VARCHAR(50) DEFAULT 'doubao',
+    image_model VARCHAR(100) DEFAULT 'doubao-seed-3-0',
+    image_api_key VARCHAR(500),
+    image_base_url VARCHAR(500),
+    image_size VARCHAR(20) DEFAULT '2K',
+    -- 视频配置
+    video_provider VARCHAR(50) DEFAULT 'doubao',
+    video_model VARCHAR(100) DEFAULT 'doubao-seedance-1-5-pro-251215',
+    video_api_key VARCHAR(500),
+    video_base_url VARCHAR(500),
     video_resolution VARCHAR(20) DEFAULT '720p',
     video_ratio VARCHAR(10) DEFAULT '16:9',
+    -- 语音配置
+    voice_provider VARCHAR(50) DEFAULT 'doubao',
+    voice_model VARCHAR(100) DEFAULT 'doubao-tts',
+    voice_api_key VARCHAR(500),
+    voice_base_url VARCHAR(500),
+    voice_default_style VARCHAR(50) DEFAULT 'natural',
+    -- FFmpeg 配置
     ffmpeg_path VARCHAR(500),
     ffprobe_path VARCHAR(500),
+    -- 时间戳
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -265,7 +337,7 @@ CREATE INDEX idx_episodes_project ON episodes(project_id);
 
 </details>
 
-### 3.5 构建项目
+### 4.5 构建项目
 
 ```bash
 # 类型检查
@@ -275,7 +347,7 @@ pnpm run typecheck
 pnpm run build
 ```
 
-### 3.6 启动服务
+### 4.6 启动服务
 
 ```bash
 # 开发模式（带热更新）

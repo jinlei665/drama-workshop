@@ -144,9 +144,51 @@ FLUSH PRIVILEGES;
 
 ---
 
-## 三、项目部署
+## 三、AI 服务配置（重要）
 
-### 3.1 克隆项目
+### 3.1 使用 Coze API（推荐）
+
+项目内置豆包系列 AI 模型，自部署时需要配置 Coze API Key。
+
+#### 获取 Coze API Key
+
+1. 访问 [Coze 平台](https://www.coze.cn) 并登录
+2. 点击右上角头像 →「个人设置」
+3. 左侧菜单选择「API 访问令牌」
+4. 点击「创建令牌」，选择权限后生成
+5. 复制生成的 Token（以 `pat-` 开头）
+
+#### 配置方式
+
+**方式一：在应用设置中配置（推荐）**
+
+启动应用后，进入「设置」→「API」标签页，填入 API Key 保存即可。
+
+**方式二：环境变量配置**
+
+```env
+# .env.local
+COZE_API_KEY=pat-xxxxxxxxxxxxx
+COZE_BASE_URL=https://api.coze.com
+```
+
+### 3.2 可用的 AI 模型
+
+配置 Coze API 后可使用：
+
+| 功能 | 模型 | 说明 |
+|------|------|------|
+| LLM | Doubao Seed 2.0 Pro | 复杂推理、多模态 |
+| LLM | DeepSeek V3.2 | 高级推理 |
+| LLM | Kimi K2.5 | 长上下文 |
+| 图像生成 | Doubao Seedream 3.0 | 2K/4K 高质量图像 |
+| 视频生成 | Doubao Seedance 1.5 Pro | 图生视频、音频生成 |
+
+---
+
+## 四、项目部署
+
+### 4.1 克隆项目
 
 ```powershell
 # 克隆代码
@@ -154,13 +196,13 @@ git clone <your-repo-url> short-drama-workshop
 cd short-drama-workshop
 ```
 
-### 3.2 安装依赖
+### 4.2 安装依赖
 
 ```powershell
 pnpm install
 ```
 
-### 3.3 配置环境变量
+### 4.3 配置环境变量
 
 ```powershell
 # 复制环境变量模板
@@ -194,6 +236,10 @@ COZE_SUPABASE_ANON_KEY=your-anon-key
 # 方案三：内存模式
 DATABASE_TYPE=memory
 
+# Coze API 配置（必需，用于 AI 功能）
+COZE_API_KEY=pat-xxxxxxxxxxxxx
+COZE_BASE_URL=https://api.coze.com
+
 # 对象存储
 COZE_BUCKET_ENDPOINT_URL=your-endpoint-url
 COZE_BUCKET_NAME=your-bucket-name
@@ -203,7 +249,7 @@ FFMPEG_PATH=C:\ffmpeg\bin\ffmpeg.exe
 FFPROBE_PATH=C:\ffmpeg\bin\ffprobe.exe
 ```
 
-### 3.4 构建项目
+### 4.4 构建项目
 
 ```powershell
 # 类型检查
@@ -213,7 +259,7 @@ pnpm run typecheck
 pnpm run build
 ```
 
-### 3.5 启动服务
+### 4.5 启动服务
 
 ```powershell
 # 开发模式（带热更新）
@@ -230,9 +276,9 @@ $env:PORT=3000; pnpm run start
 
 ---
 
-## 四、使用 PM2 管理进程（生产环境）
+## 五、使用 PM2 管理进程（生产环境）
 
-### 4.1 安装 PM2
+### 5.1 安装 PM2
 
 ```powershell
 npm install -g pm2
@@ -242,7 +288,7 @@ npm install -g pm2-windows-startup
 pm2-startup install
 ```
 
-### 4.2 创建启动脚本
+### 5.2 创建启动脚本
 
 在项目根目录创建 `ecosystem.config.js`：
 
@@ -265,7 +311,7 @@ module.exports = {
 }
 ```
 
-### 4.3 启动和管理
+### 5.3 启动和管理
 
 ```powershell
 # 启动服务
@@ -286,9 +332,9 @@ pm2 save
 
 ---
 
-## 五、Windows 服务方式运行（可选）
+## 六、Windows 服务方式运行（可选）
 
-### 5.1 使用 NSSM（推荐）
+### 6.1 使用 NSSM（推荐）
 
 1. 下载 [NSSM](https://nssm.cc/download)
 2. 解压后，在管理员 PowerShell 中运行：
@@ -319,9 +365,9 @@ nssm remove ShortDramaWorkshop
 
 ---
 
-## 六、创建便捷启动脚本
+## 七、创建便捷启动脚本
 
-### 6.1 开发环境启动脚本
+### 7.1 开发环境启动脚本
 
 创建 `start-dev.bat`：
 
@@ -367,7 +413,7 @@ pnpm run dev
 pause
 ```
 
-### 6.2 生产环境启动脚本
+### 7.2 生产环境启动脚本
 
 创建 `start-prod.bat`：
 
@@ -398,7 +444,7 @@ pnpm run start
 pause
 ```
 
-### 6.3 一键安装脚本
+### 7.3 一键安装脚本
 
 创建 `install.bat`：
 
@@ -480,7 +526,7 @@ pause
 
 ---
 
-## 七、常见问题
+## 八、常见问题
 
 ### Q1: FFmpeg 在应用中无法识别
 
@@ -531,7 +577,7 @@ chcp 65001
 
 ---
 
-## 八、系统资源建议
+## 九、系统资源建议
 
 | 项目 | 最低配置 | 推荐配置 |
 |------|---------|---------|
@@ -541,7 +587,7 @@ chcp 65001
 
 ---
 
-## 九、目录结构
+## 十、目录结构
 
 ```
 short-drama-workshop/
@@ -564,7 +610,7 @@ short-drama-workshop/
 
 ---
 
-## 十、快速启动清单
+## 十一、快速启动清单
 
 ```powershell
 # 1. 克隆项目
