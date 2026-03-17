@@ -35,6 +35,8 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Film,
   Pause,
   SkipBack,
@@ -122,6 +124,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     canPause: false,
     isPaused: false
   })
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -361,11 +364,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <Button variant="ghost" size="icon" onClick={() => router.push("/")}>
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <div>
+              <div className="flex-1 min-w-0">
                 <h1 className="text-xl font-bold">{project.name}</h1>
-                <p className="text-sm text-muted-foreground">
-                  {project.description || "暂无描述"}
-                </p>
+                {project.description && (
+                  <button
+                    onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                    className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors text-left"
+                  >
+                    <span className={descriptionExpanded ? "" : "line-clamp-1"}>
+                      {project.description}
+                    </span>
+                    {project.description.length > 50 && (
+                      descriptionExpanded ? (
+                        <ChevronUp className="w-4 h-4 flex-shrink-0" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 flex-shrink-0" />
+                      )
+                    )}
+                  </button>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-3">
