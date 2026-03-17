@@ -148,30 +148,36 @@ export async function POST(request: NextRequest) {
       
       if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
+        // 使用 snake_case 字段名查询数据库
         const { data } = await db
           .from('scenes')
-          .select('id, sceneNumber, videoUrl')
+          .select('id, scene_number, video_url')
           .eq('project_id', projectId)
           .in('id', sceneIds)
-          .order('sceneNumber', { ascending: true })
+          .order('scene_number', { ascending: true })
         
-        scenes = (data || []).map((s: { id: string; sceneNumber: number; videoUrl?: string }) => ({
+        scenes = (data || []).map((s: { id: string; scene_number: number; video_url?: string }) => ({
           id: s.id,
-          sceneNumber: s.sceneNumber,
-          videoUrl: s.videoUrl || null
+          sceneNumber: s.scene_number,
+          videoUrl: s.video_url || null
         }))
       }
-    } catch {
+    } catch (dbError) {
+      console.error('Database query error:', dbError)
       // 尝试从内存获取
-      const { memoryScenes } = await import('@/lib/memory-storage')
-      scenes = memoryScenes
-        .filter((s) => s.projectId === projectId && sceneIds.includes(s.id))
-        .sort((a, b) => a.sceneNumber - b.sceneNumber)
-        .map((s) => ({
-          id: s.id,
-          sceneNumber: s.sceneNumber,
-          videoUrl: s.videoUrl ?? null
-        }))
+      try {
+        const { memoryScenes } = await import('@/lib/memory-storage')
+        scenes = memoryScenes
+          .filter((s) => s.projectId === projectId && sceneIds.includes(s.id))
+          .sort((a, b) => a.sceneNumber - b.sceneNumber)
+          .map((s) => ({
+            id: s.id,
+            sceneNumber: s.sceneNumber,
+            videoUrl: s.videoUrl ?? null
+          }))
+      } catch (memError) {
+        console.error('Memory storage error:', memError)
+      }
     }
     
     if (scenes.length === 0) {
