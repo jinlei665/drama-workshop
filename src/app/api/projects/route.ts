@@ -1,55 +1,59 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
-import { insertProjectSchema } from "@/storage/database/shared/schema"
+/**
+ * 项目 API 路由
+ * 提供项目的 CRUD 操作
+ */
 
-// GET /api/projects - 获取项目列表
+import { NextRequest } from 'next/server'
+import { ProjectService } from '@/lib/db'
+import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination, validateRequired } from '@/lib/api/response'
+
+/**
+ * GET /api/projects
+ * 获取项目列表
+ */
 export async function GET(request: NextRequest) {
-  const client = getSupabaseClient()
-  
-  const { data, error } = await client
-    .from("projects")
-    .select("*")
-    .order("created_at", { ascending: false })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    const params = getQueryParams(request)
+    const { pageSize, offset } = parsePagination(params)
+    
+    const projects = await ProjectService.list(pageSize, offset)
+    
+    return successResponse({
+      projects,
+      pagination: {
+        page: Math.floor(offset / pageSize) + 1,
+        pageSize,
+      },
+    })
+  } catch (error) {
+    return errorResponse(error)
   }
-
-  return NextResponse.json({ projects: data })
 }
 
-// POST /api/projects - 创建新项目
+/**
+ * POST /api/projects
+ * 创建新项目
+ */
 export async function POST(request: NextRequest) {
-  const body = await request.json()
-  const client = getSupabaseClient()
-
-  // 验证输入
-  const parsed = insertProjectSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid input", details: parsed.error.issues },
-      { status: 400 }
-    )
+  try {
+    const body = await getJSON<{
+      name: string
+      sourceContent: string
+      sourceType?: string
+      description?: string
+    }>(request)
+    
+    validateRequired(body, ['name', 'sourceContent'])
+    
+    const project = await ProjectService.create({
+      name: body.name,
+      sourceContent: body.sourceContent,
+      sourceType: body.sourceType,
+      description: body.description,
+    })
+    
+    return successResponse(project, 201)
+  } catch (error) {
+    return errorResponse(error)
   }
-
-  // 转换字段名为数据库格式（snake_case）
-  const dbData = {
-    name: parsed.data.name,
-    description: parsed.data.description,
-    source_content: parsed.data.sourceContent,
-    source_type: parsed.data.sourceType || "novel",
-    status: "draft",
-  }
-
-  const { data, error } = await client
-    .from("projects")
-    .insert(dbData)
-    .select()
-    .single()
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ project: data })
 }
