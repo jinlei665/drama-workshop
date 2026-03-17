@@ -159,7 +159,7 @@ function FFmpegConfigSection({
 }) {
   const [checking, setChecking] = useState(false)
   const [status, setStatus] = useState<{
-    available: boolean
+    configured: boolean
     version?: string
     path?: string
     error?: string
@@ -172,7 +172,7 @@ function FFmpegConfigSection({
       const data = await res.json()
       setStatus(data.data || data)
     } catch {
-      setStatus({ available: false, error: "检测失败" })
+      setStatus({ configured: false, error: "检测失败" })
     } finally {
       setChecking(false)
     }
@@ -189,7 +189,7 @@ function FFmpegConfigSection({
       })
       const data = await res.json()
       setStatus(data.data || data)
-      if (data.available) {
+      if (data.configured) {
         toast.success(`FFmpeg 检测成功: v${data.version}`)
       } else {
         toast.error(data.error || "FFmpeg 路径无效")
@@ -222,17 +222,17 @@ function FFmpegConfigSection({
   return (
     <div className="space-y-6">
       {/* 状态卡片 */}
-      <Card className={status?.available ? "border-green-500/20 bg-green-500/5" : "border-amber-500/20 bg-amber-500/5"}>
+      <Card className={status?.configured ? "border-green-500/20 bg-green-500/5" : "border-amber-500/20 bg-amber-500/5"}>
         <CardContent className="pt-4">
           <div className="flex items-start gap-3">
-            {status?.available ? (
+            {status?.configured ? (
               <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
             ) : (
               <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
             )}
             <div className="flex-1">
               <p className="font-medium">
-                {status?.available ? "FFmpeg 可用" : "FFmpeg 未检测到"}
+                {status?.configured ? "FFmpeg 可用" : "FFmpeg 未检测到"}
               </p>
               {status?.version && (
                 <p className="text-sm text-muted-foreground mt-1">
@@ -242,7 +242,7 @@ function FFmpegConfigSection({
               {status?.error && (
                 <p className="text-sm text-destructive mt-1">{status.error}</p>
               )}
-              {!status?.available && (
+              {!status?.configured && (
                 <p className="text-sm text-muted-foreground mt-2">
                   视频合并功能需要 FFmpeg。请安装 FFmpeg 或配置自定义路径。
                 </p>

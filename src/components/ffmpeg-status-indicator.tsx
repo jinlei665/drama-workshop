@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react'
 import { CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 
 interface FFmpegStatus {
-  available: boolean
+  configured: boolean
   version?: string
   error?: string
 }
@@ -25,7 +25,7 @@ export function FFmpegStatusIndicator() {
         const data = await res.json()
         setStatus(data.data || data)
       } catch {
-        setStatus({ available: false, error: '检测失败' })
+        setStatus({ configured: false, error: '检测失败' })
       } finally {
         setLoading(false)
       }
@@ -42,7 +42,7 @@ export function FFmpegStatusIndicator() {
     )
   }
 
-  if (status?.available) {
+  if (status?.configured) {
     return (
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         <CheckCircle className="w-3.5 h-3.5" />
