@@ -106,6 +106,7 @@ const VOICE_STYLES = [
 ]
 
 const PROVIDERS = [
+  { value: "minimax", label: "MiniMax" },
   { value: "doubao", label: "豆包 / 字节跳动" },
   { value: "openai", label: "OpenAI" },
   { value: "anthropic", label: "Anthropic" },
