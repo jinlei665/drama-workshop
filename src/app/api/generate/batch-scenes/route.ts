@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { S3Storage } from "coze-coding-dev-sdk"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
-import { ImageGenerationClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
+import { S3Storage, ImageGenerationClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
+import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
+import { memoryScenes, memoryCharacters } from "@/lib/memory-storage"
 import axios from "axios"
 
 // POST /api/generate/batch-scenes - 批量生成分镜图片
@@ -15,90 +15,102 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const supabase = getSupabaseClient()
+  // 获取分镜数据
+  let scenes: any[] = []
+  let characterMap = new Map()
 
-  // 获取项目和分镜数据
-  const { data: scenes, error: scenesError } = await supabase
-    .from("scenes")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("scene_number", "asc")
+  if (isDatabaseConfigured()) {
+    const supabase = getSupabaseClient()
 
-  if (scenesError || !scenes || scenes.length === 0) {
-    return NextResponse.json(
-      { error: "未找到分镜数据" },
-      { status: 404 }
+    const { data: dbScenes, error: scenesError } = await supabase
+      .from("scenes")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("scene_number", { ascending: true })
+
+    if (scenesError || !dbScenes || dbScenes.length === 0) {
+      return NextResponse.json(
+        { error: "未找到分镜数据" },
+        { status: 404 }
+      )
+    }
+    scenes = dbScenes
+
+    // 获取人物数据
+    const { data: characters } = await supabase
+      .from("characters")
+      .select("*")
+      .eq("project_id", projectId)
+
+    characterMap = new Map(
+      (characters || []).map((c: any) => [c.id, c])
     )
+  } else {
+    // 使用内存存储
+    scenes = memoryScenes.filter(s => s.projectId === projectId)
+      .sort((a, b) => a.sceneNumber - b.sceneNumber)
+
+    if (scenes.length === 0) {
+      return NextResponse.json(
+        { error: "未找到分镜数据" },
+        { status: 404 }
+      )
+    }
+
+    memoryCharacters
+      .filter(c => c.projectId === projectId)
+      .forEach(c => characterMap.set(c.id, c))
   }
 
-  // 获取人物数据
-  const { data: characters } = await supabase
-    .from("characters")
-    .select("*")
-    .eq("project_id", projectId)
-
-  const characterMap = new Map(
-    (characters || []).map((c: any) => [c.id, c])
-  )
-
-  // 获取用户配置
-  let settings: any = null
-  try {
-    const result = await supabase
-      .from('user_settings')
-      .select('*')
-      .limit(1)
-      .maybeSingle()
-    settings = result.data
-  } catch (dbError) {
-    console.warn("Failed to fetch user settings:", dbError)
-  }
-
-  // 检查 API 配置
-  const apiKey = settings?.image_api_key || process.env.IMAGE_API_KEY
-  const baseUrl = settings?.image_base_url || process.env.IMAGE_BASE_URL
-
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "图像 API Key 未配置。请在设置页面或 .env 文件中配置 IMAGE_API_KEY" },
-      { status: 500 }
-    )
-  }
-
+  // 使用系统默认配置（无需 API Key）
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  const config = new Config({
-    apiKey,
-    baseUrl,
-    timeout: 120000, // 120 秒超时
-  })
+  const config = new Config()
   const imageClient = new ImageGenerationClient(config, customHeaders)
 
-  const storage = new S3Storage({
-    endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-    accessKey: "",
-    secretKey: "",
-    bucketName: process.env.COZE_BUCKET_NAME,
-    region: "cn-beijing",
-  })
+  // 初始化对象存储（可选）
+  let storage: S3Storage | null = null
+  try {
+    storage = new S3Storage({
+      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+      accessKey: "",
+      secretKey: "",
+      bucketName: process.env.COZE_BUCKET_NAME,
+      region: "cn-beijing",
+    })
+  } catch (e) {
+    console.warn("Storage not available:", e)
+  }
 
   const results = []
+  const supabase = isDatabaseConfigured() ? getSupabaseClient() : null
 
   for (const scene of scenes) {
+    const sceneId = scene.id
+
     // 跳过已完成的
     if (scene.status === "completed") {
-      results.push({ sceneId: scene.id, status: "skipped", message: "已完成" })
+      results.push({ sceneId, status: "skipped", message: "已完成" })
       continue
     }
 
     try {
       // 更新状态为生成中
-      await supabase
-        .from("scenes")
-        .update({ status: "generating" })
-        .eq("id", scene.id)
+      if (supabase) {
+        await supabase
+          .from("scenes")
+          .update({ status: "generating" })
+          .eq("id", sceneId)
+      }
+
+      // 更新内存
+      const idx = memoryScenes.findIndex(s => s.id === sceneId)
+      if (idx !== -1) {
+        memoryScenes[idx].status = "generating"
+      }
 
       // 获取出场人物描述
-      const charDescriptions = (scene.character_ids || [])
+      const charIds = scene.character_ids || scene.characterIds || []
+      const charDescriptions = charIds
         .map((id: string) => {
           const char = characterMap.get(id) as { id: string; appearance?: string } | undefined
           return char?.appearance
@@ -106,10 +118,13 @@ export async function POST(request: NextRequest) {
         .filter(Boolean)
 
       // 构建真人实拍风格提示词
-      let prompt = `真人实拍风格，短剧视频分镜画面，${scene.description}`
+      const description = scene.description
+      const emotion = scene.emotion
 
-      if (scene.emotion) {
-        prompt += `，${scene.emotion}的氛围`
+      let prompt = `真人实拍风格，短剧视频分镜画面，${description}`
+
+      if (emotion) {
+        prompt += `，${emotion}的氛围`
       }
 
       if (charDescriptions.length > 0) {
@@ -117,6 +132,8 @@ export async function POST(request: NextRequest) {
       }
 
       prompt += "，专业影视剧画面，电影级构图，高清摄影，4K画质，细节丰富"
+
+      console.log(`Generating scene ${sceneId}:`, prompt.substring(0, 100))
 
       // 生成图片
       const response = await imageClient.generate({
@@ -128,59 +145,85 @@ export async function POST(request: NextRequest) {
       const helper = imageClient.getResponseHelper(response)
 
       if (!helper.success) {
+        throw new Error(helper.errorMessages.join(", ") || "生成失败")
+      }
+
+      // 下载图片
+      const imageUrl = helper.imageUrls[0]
+      let fileKey: string | null = null
+      let viewUrl: string = imageUrl
+
+      // 尝试上传到存储
+      if (storage) {
+        try {
+          const imageResponse = await axios.get(imageUrl, {
+            responseType: "arraybuffer",
+          })
+          const imageBuffer = Buffer.from(imageResponse.data)
+
+          fileKey = await storage.uploadFile({
+            fileContent: imageBuffer,
+            fileName: `scenes/${sceneId}/image_${Date.now()}.png`,
+            contentType: "image/png",
+          })
+
+          viewUrl = await storage.generatePresignedUrl({
+            key: fileKey,
+            expireTime: 86400 * 7,
+          })
+        } catch (e) {
+          console.warn("Failed to upload to storage:", e)
+        }
+      }
+
+      // 更新数据库
+      if (supabase) {
+        await supabase
+          .from("scenes")
+          .update({
+            image_key: fileKey,
+            image_url: viewUrl,
+            status: "completed",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", sceneId)
+      }
+
+      // 更新内存
+      const completeIdx = memoryScenes.findIndex(s => s.id === sceneId)
+      if (completeIdx !== -1) {
+        memoryScenes[completeIdx].imageKey = fileKey || undefined
+        memoryScenes[completeIdx].imageUrl = viewUrl
+        memoryScenes[completeIdx].status = "completed"
+      }
+
+      results.push({
+        sceneId,
+        status: "completed",
+        imageKey: fileKey,
+        imageUrl: viewUrl,
+      })
+    } catch (error) {
+      console.error(`Scene ${sceneId} generation error:`, error)
+
+      // 更新状态为失败
+      if (supabase) {
         await supabase
           .from("scenes")
           .update({ status: "failed" })
-          .eq("id", scene.id)
-
-        results.push({
-          sceneId: scene.id,
-          status: "failed",
-          error: helper.errorMessages.join(", "),
-        })
-        continue
+          .eq("id", sceneId)
       }
 
-      // 下载并上传
-      const imageUrl = helper.imageUrls[0]
-      const imageResponse = await axios.get(imageUrl, {
-        responseType: "arraybuffer",
-      })
-      const imageBuffer = Buffer.from(imageResponse.data)
-
-      const fileKey = await storage.uploadFile({
-        fileContent: imageBuffer,
-        fileName: `scenes/${scene.id}/image_${Date.now()}.png`,
-        contentType: "image/png",
-      })
-
-      // 更新数据库
-      await supabase
-        .from("scenes")
-        .update({
-          image_key: fileKey,
-          status: "completed",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", scene.id)
+      // 更新内存
+      const failedIndex = memoryScenes.findIndex(s => s.id === sceneId)
+      if (failedIndex !== -1) {
+        memoryScenes[failedIndex].status = "failed"
+      }
 
       results.push({
-        sceneId: scene.id,
-        status: "completed",
-        imageKey: fileKey,
-      })
-    } catch (error) {
-      console.error(`Scene ${scene.id} generation error:`, error)
-
-      await supabase
-        .from("scenes")
-        .update({ status: "failed" })
-        .eq("id", scene.id)
-
-      results.push({
-        sceneId: scene.id,
+        sceneId,
         status: "failed",
-        error: String(error),
+        error: error instanceof Error ? error.message : String(error),
       })
     }
   }

@@ -29,6 +29,9 @@ export const memoryCharacters: Array<{
   imageUrl?: string
   tags: string[]
   status: string
+  frontViewKey?: string
+  sideViewKey?: string
+  backViewKey?: string
   createdAt: string
 }> = []
 
@@ -46,6 +49,9 @@ export const memoryScenes: Array<{
   status: string
   imageUrl?: string
   videoUrl?: string
+  videoStatus?: string
+  imageKey?: string
+  lastFrameUrl?: string
   createdAt: string
 }> = []
 
