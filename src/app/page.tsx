@@ -212,8 +212,8 @@ export default function Home() {
                     新建项目
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogHeader>
+                <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+                  <DialogHeader className="flex-shrink-0">
                     <DialogTitle className="flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-primary" />
                       创建新项目
@@ -222,7 +222,7 @@ export default function Home() {
                       输入小说或脚本内容，AI 将自动分析并提取人物和分镜
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-4 mt-4">
+                  <div className="space-y-4 mt-4 overflow-y-auto flex-1 pr-2 -mr-2">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="name">项目名称 *</Label>
@@ -290,22 +290,22 @@ export default function Home() {
                       <Textarea
                         id="content"
                         placeholder="粘贴你的小说或脚本内容，AI 将自动分析提取人物和分镜..."
-                        className="h-[200px] resize-none"
+                        className="h-[150px] resize-none"
                         value={formData.sourceContent}
                         onChange={(e) => setFormData({ ...formData, sourceContent: e.target.value })}
                       />
                     </div>
-                    <div className="flex justify-end gap-3 pt-4">
-                      <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                        取消
-                      </Button>
-                      <Button 
-                        onClick={handleCreate} 
-                        disabled={creating}
-                      >
-                        {creating ? '创建中...' : '创建项目'}
-                      </Button>
-                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4 border-t flex-shrink-0">
+                    <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                      取消
+                    </Button>
+                    <Button 
+                      onClick={handleCreate} 
+                      disabled={creating}
+                    >
+                      {creating ? '创建中...' : '创建项目'}
+                    </Button>
                   </div>
                 </DialogContent>
               </Dialog>
