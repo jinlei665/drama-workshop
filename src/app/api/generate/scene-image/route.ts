@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { generateImage } from "@/lib/ai"
 import { S3Storage } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
-import { memoryScenes } from "@/lib/memory-storage"
+import { memoryScenes, memoryProjects } from "@/lib/memory-storage"
+import { getStylePrompt } from "@/lib/styles"
 import axios from "axios"
 
 // POST /api/generate/scene-image - 生成分镜图片（短剧视频分镜）
@@ -17,8 +18,48 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // 构建真人实拍风格分镜提示词
-    let prompt = `真人实拍风格，短剧视频分镜画面，${description}`
+    // 获取项目风格
+    let style = 'realistic_cinema'
+    
+    // 从内存获取
+    const sceneIndex = memoryScenes.findIndex(s => s.id === sceneId)
+    if (sceneIndex !== -1) {
+      const projectId = memoryScenes[sceneIndex].projectId
+      const project = memoryProjects.find(p => p.id === projectId)
+      if (project?.style) {
+        style = project.style
+      }
+    }
+    
+    // 从数据库获取
+    if (isDatabaseConfigured()) {
+      const supabase = getSupabaseClient()
+      
+      // 获取分镜所属项目
+      const { data: sceneData } = await supabase
+        .from('scenes')
+        .select('project_id')
+        .eq('id', sceneId)
+        .single()
+      
+      if (sceneData?.project_id) {
+        const { data: projectData } = await supabase
+          .from('projects')
+          .select('style')
+          .eq('id', sceneData.project_id)
+          .single()
+        
+        if (projectData?.style) {
+          style = projectData.style
+        }
+      }
+    }
+
+    // 获取风格提示词
+    const stylePrompt = getStylePrompt(style)
+
+    // 构建分镜提示词
+    let prompt = `${stylePrompt}，${description}`
 
     if (emotion) {
       prompt += `，${emotion}的氛围`
@@ -29,9 +70,9 @@ export async function POST(request: NextRequest) {
       prompt += `，画面中的角色：${characterDescriptions.join("、")}`
     }
 
-    prompt += "，专业影视剧画面，电影级构图，高清摄影，4K画质，细节丰富"
+    prompt += "，4K画质，细节丰富"
 
-    console.log(`Generating scene image for ${sceneId}:`, prompt.substring(0, 100))
+    console.log(`Generating scene image for ${sceneId} with style ${style}:`, prompt.substring(0, 100))
 
     // 更新状态为生成中
     if (isDatabaseConfigured()) {
@@ -43,7 +84,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 更新内存中的状态
-    const sceneIndex = memoryScenes.findIndex(s => s.id === sceneId)
     if (sceneIndex !== -1) {
       memoryScenes[sceneIndex].status = "generating"
     }
@@ -119,6 +159,7 @@ export async function POST(request: NextRequest) {
       success: true,
       imageUrl: viewUrl,
       fileKey,
+      style,
     })
   } catch (error) {
     console.error("Generate scene image error:", error)

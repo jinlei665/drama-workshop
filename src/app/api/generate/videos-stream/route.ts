@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server"
 import { VideoGenerationClient, Config, HeaderUtils, S3Storage, Content } from 'coze-coding-dev-sdk'
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client'
-import { memoryScenes } from '@/lib/memory-storage'
+import { memoryScenes, memoryProjects } from '@/lib/memory-storage'
+import { getVideoStylePrompt } from '@/lib/styles'
 
 export const maxDuration = 300 // 5分钟超时
 
@@ -18,6 +19,32 @@ export async function POST(request: NextRequest) {
   if (!projectId) {
     return new Response(JSON.stringify({ error: '缺少项目ID' }), { status: 400 })
   }
+
+  // 获取项目风格
+  let style = 'realistic_cinema'
+  
+  // 从内存获取
+  const project = memoryProjects.find(p => p.id === projectId)
+  if (project?.style) {
+    style = project.style
+  }
+  
+  // 从数据库获取
+  if (isDatabaseConfigured()) {
+    const supabase = getSupabaseClient()
+    const { data: projectData } = await supabase
+      .from('projects')
+      .select('style')
+      .eq('id', projectId)
+      .single()
+    
+    if (projectData?.style) {
+      style = projectData.style
+    }
+  }
+
+  // 获取视频风格提示词
+  const stylePrompt = getVideoStylePrompt(style)
 
   // 获取分镜列表
   let scenesList: any[] = []
@@ -80,6 +107,7 @@ export async function POST(request: NextRequest) {
 
       sendEvent('start', {
         total: scenesWithImages.length,
+        style,
         scenes: scenesWithImages.map((s: any) => ({
           id: s.id,
           sceneNumber: s.scene_number || s.sceneNumber,
@@ -155,6 +183,9 @@ export async function POST(request: NextRequest) {
             throw new Error('无法获取分镜图片URL')
           }
 
+          // 构建视频提示词，包含风格
+          const videoPrompt = `${stylePrompt}，${buildVideoPrompt(scene)}`
+
           const contentItems: Content[] = [
             {
               type: 'image_url',
@@ -163,13 +194,13 @@ export async function POST(request: NextRequest) {
             },
             {
               type: 'text',
-              text: buildVideoPrompt(scene),
+              text: videoPrompt,
             },
           ]
 
           const duration = calculateDuration(scene)
 
-          console.log(`Generating video for scene ${sceneId}:`, buildVideoPrompt(scene).substring(0, 100))
+          console.log(`Generating video for scene ${sceneId} with style ${style}:`, videoPrompt.substring(0, 100))
 
           // 生成视频
           const response = await client.videoGeneration(contentItems, {
@@ -259,6 +290,7 @@ export async function POST(request: NextRequest) {
         total: scenesWithImages.length,
         completed: completedCount,
         failed: scenesWithImages.length - completedCount,
+        style,
       })
 
       controller.close()
@@ -347,5 +379,5 @@ function buildVideoPrompt(scene: any): string {
     }
   }
   
-  return parts.length > 0 ? parts.join('，') : '流畅的电影镜头，自然的光线变化，细腻的情感表达'
+  return parts.length > 0 ? parts.join('，') : '流畅的镜头，自然的光线变化'
 }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { S3Storage, ImageGenerationClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
-import { memoryScenes, memoryCharacters } from "@/lib/memory-storage"
+import { memoryScenes, memoryCharacters, memoryProjects } from "@/lib/memory-storage"
+import { getStylePrompt } from "@/lib/styles"
 import axios from "axios"
 
 // POST /api/generate/batch-scenes - 批量生成分镜图片
@@ -14,6 +15,32 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     )
   }
+
+  // 获取项目风格
+  let style = 'realistic_cinema'
+  
+  // 从内存获取
+  const project = memoryProjects.find(p => p.id === projectId)
+  if (project?.style) {
+    style = project.style
+  }
+  
+  // 从数据库获取
+  if (isDatabaseConfigured()) {
+    const supabase = getSupabaseClient()
+    const { data: projectData } = await supabase
+      .from('projects')
+      .select('style')
+      .eq('id', projectId)
+      .single()
+    
+    if (projectData?.style) {
+      style = projectData.style
+    }
+  }
+
+  // 获取风格提示词
+  const stylePrompt = getStylePrompt(style)
 
   // 获取分镜数据
   let scenes: any[] = []
@@ -121,7 +148,7 @@ export async function POST(request: NextRequest) {
       const description = scene.description
       const emotion = scene.emotion
 
-      let prompt = `真人实拍风格，短剧视频分镜画面，${description}`
+      let prompt = `${stylePrompt}，${description}`
 
       if (emotion) {
         prompt += `，${emotion}的氛围`
@@ -131,9 +158,9 @@ export async function POST(request: NextRequest) {
         prompt += `，画面中的角色：${charDescriptions.join("、")}`
       }
 
-      prompt += "，专业影视剧画面，电影级构图，高清摄影，4K画质，细节丰富"
+      prompt += "，4K画质，细节丰富"
 
-      console.log(`Generating scene ${sceneId}:`, prompt.substring(0, 100))
+      console.log(`Generating scene ${sceneId} with style ${style}:`, prompt.substring(0, 100))
 
       // 生成图片
       const response = await imageClient.generate({
@@ -214,10 +241,9 @@ export async function POST(request: NextRequest) {
           .eq("id", sceneId)
       }
 
-      // 更新内存
-      const failedIndex = memoryScenes.findIndex(s => s.id === sceneId)
-      if (failedIndex !== -1) {
-        memoryScenes[failedIndex].status = "failed"
+      const failedIdx = memoryScenes.findIndex(s => s.id === sceneId)
+      if (failedIdx !== -1) {
+        memoryScenes[failedIdx].status = "failed"
       }
 
       results.push({
@@ -231,6 +257,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     total: scenes.length,
+    style,
     results,
   })
 }

@@ -10,6 +10,7 @@ export const memoryProjects: Array<{
   description?: string
   sourceContent: string
   sourceType: string
+  style?: string
   status: string
   createdAt: string
   updatedAt: string

@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
             description: p.description,
             sourceContent: p.source_content,
             sourceType: p.source_type,
+            style: p.style || 'realistic_cinema',
             status: p.status || 'draft',
             createdAt: p.created_at,
             updatedAt: p.updated_at,
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
       sourceContent: string
       sourceType?: string
       description?: string
+      style?: string
     }>(request)
     
     if (!body.name?.trim()) {
@@ -96,6 +98,7 @@ export async function POST(request: NextRequest) {
       sourceContent: body.sourceContent,
       sourceType: body.sourceType || 'novel',
       description: body.description,
+      style: body.style || 'realistic_cinema',
       status: 'draft',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -114,6 +117,7 @@ export async function POST(request: NextRequest) {
             source_content: project.sourceContent,
             source_type: project.sourceType,
             description: project.description,
+            style: project.style,
             status: project.status,
           })
           .select()
@@ -121,7 +125,7 @@ export async function POST(request: NextRequest) {
         
         if (!error && data) {
           // 触发异步分析
-          triggerAnalysis(data.id, project.sourceContent).catch(console.error)
+          triggerAnalysis(data.id, project.sourceContent, project.style).catch(console.error)
           
           return successResponse({
             project: {
@@ -130,6 +134,7 @@ export async function POST(request: NextRequest) {
               description: data.description,
               sourceContent: data.source_content,
               sourceType: data.source_type,
+              style: data.style || project.style,
               status: data.status,
               createdAt: data.created_at,
               updatedAt: data.updated_at,
@@ -145,7 +150,7 @@ export async function POST(request: NextRequest) {
     memoryProjects.unshift(project)
     
     // 触发异步分析
-    triggerAnalysis(project.id, project.sourceContent).catch(console.error)
+    triggerAnalysis(project.id, project.sourceContent, project.style).catch(console.error)
     
     return successResponse({ project }, 201)
   } catch (error) {
@@ -156,7 +161,7 @@ export async function POST(request: NextRequest) {
 /**
  * 触发项目内容分析（异步）
  */
-async function triggerAnalysis(projectId: string, content: string) {
+async function triggerAnalysis(projectId: string, content: string, style?: string) {
   try {
     // 更新项目状态为分析中
     const projectIndex = memoryProjects.findIndex(p => p.id === projectId)

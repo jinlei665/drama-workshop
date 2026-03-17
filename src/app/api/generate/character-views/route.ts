@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { ImageGenerationClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
-import { memoryCharacters } from "@/lib/memory-storage"
+import { memoryCharacters, memoryProjects } from "@/lib/memory-storage"
+import { getCharacterStylePrompt } from "@/lib/styles"
 import axios from "axios"
 
 // POST /api/generate/character-views - 生成人物三视图（短剧角色设定）
@@ -23,10 +24,49 @@ export async function POST(request: NextRequest) {
   const imageClient = new ImageGenerationClient(config, customHeaders)
 
   try {
-    // 生成真人风格角色设定图（用于短剧拍摄参考）
-    const basePrompt = `真人实拍风格，短剧角色设定图，${appearance}，专业影视造型，三视图包含正面、侧面、背面三个角度，白色摄影棚背景，高清人像摄影，电影级光影，4K画质，用于影视剧造型参考`
+    // 获取项目风格
+    let style = 'realistic_cinema'
+    
+    // 从内存获取
+    const charIndex = memoryCharacters.findIndex(c => c.id === characterId)
+    if (charIndex !== -1) {
+      const projectId = memoryCharacters[charIndex].projectId
+      const project = memoryProjects.find(p => p.id === projectId)
+      if (project?.style) {
+        style = project.style
+      }
+    }
+    
+    // 从数据库获取
+    if (isDatabaseConfigured()) {
+      const supabase = getSupabaseClient()
+      
+      const { data: charData } = await supabase
+        .from('characters')
+        .select('project_id')
+        .eq('id', characterId)
+        .single()
+      
+      if (charData?.project_id) {
+        const { data: projectData } = await supabase
+          .from('projects')
+          .select('style')
+          .eq('id', charData.project_id)
+          .single()
+        
+        if (projectData?.style) {
+          style = projectData.style
+        }
+      }
+    }
 
-    console.log(`Generating character views for ${characterId}:`, basePrompt.substring(0, 100))
+    // 获取角色风格提示词
+    const stylePrompt = getCharacterStylePrompt(style)
+
+    // 生成角色设定图
+    const basePrompt = `${stylePrompt}，${appearance}，角色三视图包含正面、侧面、背面三个角度，白色背景，用于角色设定参考`
+
+    console.log(`Generating character views for ${characterId} with style ${style}:`, basePrompt.substring(0, 100))
 
     // 生成三视图
     const response = await imageClient.generate({
@@ -103,7 +143,6 @@ export async function POST(request: NextRequest) {
     }
 
     // 更新内存存储
-    const charIndex = memoryCharacters.findIndex(c => c.id === characterId)
     if (charIndex !== -1) {
       memoryCharacters[charIndex].frontViewKey = fileKey || undefined
       memoryCharacters[charIndex].imageUrl = viewUrl
@@ -113,6 +152,7 @@ export async function POST(request: NextRequest) {
       success: true,
       viewUrl,
       fileKey,
+      style,
     })
   } catch (error) {
     console.error("Generate character views error:", error)

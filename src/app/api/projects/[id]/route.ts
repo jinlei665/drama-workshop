@@ -73,6 +73,7 @@ export async function GET(
               description: project.description,
               sourceContent: project.source_content,
               sourceType: project.source_type,
+              style: project.style || 'realistic_cinema',
               status: project.status,
               createdAt: project.created_at,
               updatedAt: project.updated_at,

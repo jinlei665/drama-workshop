@@ -37,6 +37,37 @@ import { SettingsDialog } from '@/components/settings-dialog'
 import { AppShell } from '@/components/layout'
 import type { Project } from '@/lib/types'
 
+// 画面风格配置
+const VISUAL_STYLES = {
+  realistic: {
+    label: '真人类',
+    styles: [
+      { value: 'realistic_cinema', label: '电影级写实', description: '专业影视剧质感，电影级光影' },
+      { value: 'realistic_drama', label: '短剧写实', description: '现代短剧风格，自然光线' },
+      { value: 'realistic_period', label: '古装写实', description: '古风影视质感，唯美画面' },
+      { value: 'realistic_idol', label: '偶像剧', description: '韩剧/偶像剧风格，柔美滤镜' },
+    ]
+  },
+  anime: {
+    label: '动漫类',
+    styles: [
+      { value: 'anime_3d_cn', label: '国漫3D', description: '国产3D动画风格，如斗罗大陆' },
+      { value: 'anime_2d_cn', label: '国风2D', description: '国风2D动画，如魔道祖师' },
+      { value: 'anime_jp', label: '日漫风格', description: '日本动漫风格，如鬼灭之刃' },
+      { value: 'anime_chibi', label: 'Q版萌系', description: '可爱Q版风格，大头小身' },
+    ]
+  },
+  artistic: {
+    label: '艺术类',
+    styles: [
+      { value: 'art_watercolor', label: '水彩插画', description: '水彩画风格，柔和淡雅' },
+      { value: 'art_ink', label: '水墨国风', description: '中国传统水墨画风格' },
+      { value: 'art_oil', label: '油画质感', description: '油画风格，厚重笔触' },
+      { value: 'art_comic', label: '美漫风格', description: '美式漫画风格，强对比' },
+    ]
+  }
+} as const
+
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,7 +78,8 @@ export default function Home() {
     name: '',
     description: '',
     sourceContent: '',
-    sourceType: 'novel'
+    sourceType: 'novel',
+    style: 'realistic_cinema'
   })
 
   const fetchProjects = async () => {
@@ -98,7 +130,8 @@ export default function Home() {
         name: '',
         description: '',
         sourceContent: '',
-        sourceType: 'novel'
+        sourceType: 'novel',
+        style: 'realistic_cinema'
       })
       fetchProjects()
       
@@ -213,6 +246,36 @@ export default function Home() {
                         </select>
                       </div>
                     </div>
+                    
+                    {/* 画面风格选择 */}
+                    <div className="space-y-3">
+                      <Label>画面风格</Label>
+                      <div className="space-y-3">
+                        {Object.entries(VISUAL_STYLES).map(([category, { label, styles }]) => (
+                          <div key={category} className="space-y-2">
+                            <p className="text-xs text-muted-foreground font-medium">{label}</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {styles.map((style) => (
+                                <button
+                                  key={style.value}
+                                  type="button"
+                                  onClick={() => setFormData({ ...formData, style: style.value })}
+                                  className={`text-left p-3 rounded-lg border transition-all ${
+                                    formData.style === style.value
+                                      ? 'border-primary bg-primary/10'
+                                      : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                                  }`}
+                                >
+                                  <p className="text-sm font-medium">{style.label}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{style.description}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
                     <div className="space-y-2">
                       <Label htmlFor="description">项目描述</Label>
                       <Input
