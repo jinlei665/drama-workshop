@@ -55,17 +55,21 @@ export interface CreateProjectInput {
 
 export interface Character {
   id: string
-  projectId: string
+  projectId?: string
   name: string
   description?: string
-  appearance: string
+  appearance?: string
   personality?: string
-  tags: string[]
+  gender?: string
+  age?: string
+  style?: string
+  imageUrl?: string
+  tags?: string[]
   /** 角色造型图 */
-  views: CharacterViews
+  views?: CharacterViews
   /** 配音配置 */
   voice?: CharacterVoice
-  status: GenerationStatus
+  status?: GenerationStatus
   createdAt: string
   updatedAt: string
 }

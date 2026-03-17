@@ -4,7 +4,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination, validateRequired } from '@/lib/api/response'
+import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination } from '@/lib/api/response'
 
 // 内存存储（用于开发环境，当数据库不可用时）
 const memoryProjects: Array<{
@@ -33,10 +33,10 @@ export async function GET(request: NextRequest) {
     const { pageSize, offset } = parsePagination(params)
     
     // 尝试从数据库获取
-    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-    
-    if (isDatabaseConfigured()) {
-      try {
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
         const { data, error } = await db
           .from('projects')
@@ -44,18 +44,30 @@ export async function GET(request: NextRequest) {
           .order('created_at', { ascending: false })
         
         if (!error && data) {
-          const projects = data.slice(offset, offset + pageSize)
+          // 转换字段名以匹配前端期望
+          const projects = data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            sourceContent: p.source_content,
+            sourceType: p.source_type,
+            status: p.status || 'draft',
+            createdAt: p.created_at,
+            updatedAt: p.updated_at,
+          }))
+          
           return successResponse({
-            projects,
+            projects: projects.slice(offset, offset + pageSize),
             pagination: {
               page: Math.floor(offset / pageSize) + 1,
               pageSize,
+              total: projects.length,
             },
           })
         }
-      } catch (dbError) {
-        console.warn('Database not available, using memory storage:', dbError)
       }
+    } catch (dbError) {
+      console.warn('Database not available, using memory storage:', dbError)
     }
     
     // 使用内存存储
@@ -86,7 +98,13 @@ export async function POST(request: NextRequest) {
       description?: string
     }>(request)
     
-    validateRequired(body, ['name', 'sourceContent'])
+    if (!body.name?.trim()) {
+      return errorResponse('项目名称不能为空', 400)
+    }
+    
+    if (!body.sourceContent?.trim()) {
+      return errorResponse('内容不能为空', 400)
+    }
     
     const project = {
       id: generateId(),
@@ -100,10 +118,10 @@ export async function POST(request: NextRequest) {
     }
     
     // 尝试保存到数据库
-    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-    
-    if (isDatabaseConfigured()) {
-      try {
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
         const { data, error } = await db
           .from('projects')
@@ -118,17 +136,60 @@ export async function POST(request: NextRequest) {
           .single()
         
         if (!error && data) {
-          return successResponse({ project: data }, 201)
+          // 触发异步分析（不等待结果）
+          triggerAnalysis(data.id, project.sourceContent).catch(console.error)
+          
+          return successResponse({
+            project: {
+              id: data.id,
+              name: data.name,
+              description: data.description,
+              sourceContent: data.source_content,
+              sourceType: data.source_type,
+              status: data.status,
+              createdAt: data.created_at,
+              updatedAt: data.updated_at,
+            }
+          }, 201)
         }
-      } catch (dbError) {
-        console.warn('Database not available, saving to memory:', dbError)
       }
+    } catch (dbError) {
+      console.warn('Database not available, saving to memory:', dbError)
     }
     
     // 保存到内存
     memoryProjects.unshift(project)
+    
+    // 触发异步分析
+    triggerAnalysis(project.id, project.sourceContent).catch(console.error)
+    
     return successResponse({ project }, 201)
   } catch (error) {
     return errorResponse(error)
+  }
+}
+
+/**
+ * 触发项目内容分析（异步）
+ */
+async function triggerAnalysis(projectId: string, content: string) {
+  try {
+    // 调用分析 API
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : 'http://localhost:5000'
+    
+    await fetch(`${baseUrl}/api/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        content,
+      }),
+    })
+    
+    console.log(`Analysis triggered for project ${projectId}`)
+  } catch (error) {
+    console.error('Failed to trigger analysis:', error)
   }
 }

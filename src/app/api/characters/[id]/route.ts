@@ -1,87 +1,174 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
-import { updateCharacterSchema } from "@/storage/database/shared/schema"
+/**
+ * 单个人物 API 路由
+ */
 
-// GET /api/characters/[id] - 获取人物详情
+import { NextRequest } from 'next/server'
+import { successResponse, errorResponse } from '@/lib/api/response'
+
+// 内存存储（从 route.ts 导入）
+declare const memoryCharacters: Array<{
+  id: string
+  name: string
+  description?: string
+  imageUrl?: string
+}>
+
+/**
+ * GET /api/characters/[id]
+ * 获取单个人物
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params
-  const client = getSupabaseClient()
-
-  const { data, error } = await client
-    .from("characters")
-    .select("*")
-    .eq("id", id)
-    .single()
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 })
+  try {
+    const { id } = await params
+    
+    // 尝试从数据库获取
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
+        const db = getSupabaseClient()
+        const { data, error } = await db
+          .from('characters')
+          .select('*')
+          .eq('id', id)
+          .single()
+        
+        if (!error && data) {
+          return successResponse({
+            character: {
+              id: data.id,
+              name: data.name,
+              description: data.description,
+              appearance: data.appearance,
+              personality: data.personality,
+              gender: data.gender,
+              age: data.age,
+              style: data.style,
+              imageUrl: data.image_url,
+              projectId: data.project_id,
+              createdAt: data.created_at,
+              updatedAt: data.updated_at,
+            }
+          })
+        }
+      }
+    } catch (dbError) {
+      console.warn('Database not available:', dbError)
+    }
+    
+    return errorResponse('人物不存在', 404)
+  } catch (error) {
+    return errorResponse(error)
   }
-
-  return NextResponse.json({ character: data })
 }
 
-// PUT /api/characters/[id] - 更新人物
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params
-  const body = await request.json()
-  const client = getSupabaseClient()
-
-  const parsed = updateCharacterSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid input", details: parsed.error.issues },
-      { status: 400 }
-    )
-  }
-
-  // 转换字段名为数据库格式（snake_case）
-  const dbData: Record<string, any> = {
-    updated_at: new Date().toISOString(),
-  }
-  
-  if (parsed.data.name !== undefined) dbData.name = parsed.data.name
-  if (parsed.data.description !== undefined) dbData.description = parsed.data.description
-  if (parsed.data.appearance !== undefined) dbData.appearance = parsed.data.appearance
-  if (parsed.data.personality !== undefined) dbData.personality = parsed.data.personality
-  if (parsed.data.frontViewKey !== undefined) dbData.front_view_key = parsed.data.frontViewKey
-  if (parsed.data.sideViewKey !== undefined) dbData.side_view_key = parsed.data.sideViewKey
-  if (parsed.data.backViewKey !== undefined) dbData.back_view_key = parsed.data.backViewKey
-  if (parsed.data.referenceImageKey !== undefined) dbData.reference_image_key = parsed.data.referenceImageKey
-  if (parsed.data.tags !== undefined) dbData.tags = parsed.data.tags
-
-  const { data, error } = await client
-    .from("characters")
-    .update(dbData)
-    .eq("id", id)
-    .select()
-    .single()
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ character: data })
-}
-
-// DELETE /api/characters/[id] - 删除人物
+/**
+ * DELETE /api/characters/[id]
+ * 删除人物
+ */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params
-  const client = getSupabaseClient()
-
-  const { error } = await client.from("characters").delete().eq("id", id)
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  try {
+    const { id } = await params
+    
+    // 尝试从数据库删除
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
+        const db = getSupabaseClient()
+        const { error } = await db
+          .from('characters')
+          .delete()
+          .eq('id', id)
+        
+        if (!error) {
+          return successResponse({ success: true })
+        }
+      }
+    } catch (dbError) {
+      console.warn('Database not available:', dbError)
+    }
+    
+    // 从内存删除
+    const index = memoryCharacters.findIndex(c => c.id === id)
+    if (index !== -1) {
+      memoryCharacters.splice(index, 1)
+      return successResponse({ success: true })
+    }
+    
+    return errorResponse('人物不存在', 404)
+  } catch (error) {
+    return errorResponse(error)
   }
+}
 
-  return NextResponse.json({ success: true })
+/**
+ * PATCH /api/characters/[id]
+ * 更新人物
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const body = await request.json()
+    
+    // 尝试更新数据库
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
+        const db = getSupabaseClient()
+        
+        const updateData: Record<string, any> = {}
+        if (body.name) updateData.name = body.name
+        if (body.description !== undefined) updateData.description = body.description
+        if (body.appearance !== undefined) updateData.appearance = body.appearance
+        if (body.personality !== undefined) updateData.personality = body.personality
+        if (body.gender !== undefined) updateData.gender = body.gender
+        if (body.age !== undefined) updateData.age = body.age
+        if (body.style !== undefined) updateData.style = body.style
+        if (body.imageUrl !== undefined) updateData.image_url = body.imageUrl
+        
+        const { data, error } = await db
+          .from('characters')
+          .update(updateData)
+          .eq('id', id)
+          .select()
+          .single()
+        
+        if (!error && data) {
+          return successResponse({
+            character: {
+              id: data.id,
+              name: data.name,
+              description: data.description,
+              appearance: data.appearance,
+              personality: data.personality,
+              gender: data.gender,
+              age: data.age,
+              style: data.style,
+              imageUrl: data.image_url,
+              projectId: data.project_id,
+              createdAt: data.created_at,
+              updatedAt: data.updated_at,
+            }
+          })
+        }
+      }
+    } catch (dbError) {
+      console.warn('Database not available:', dbError)
+    }
+    
+    return errorResponse('更新失败', 500)
+  } catch (error) {
+    return errorResponse(error)
+  }
 }

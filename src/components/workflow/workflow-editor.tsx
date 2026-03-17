@@ -659,7 +659,16 @@ export function WorkflowEditor({
             }}
           >
             {/* 连接线 SVG */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
+            <svg 
+              className="absolute pointer-events-none" 
+              style={{ 
+                overflow: 'visible',
+                width: '10000px',
+                height: '10000px',
+                left: '-5000px',
+                top: '-5000px',
+              }}
+            >
               {edges.map(renderEdge)}
               {renderConnectingLine()}
             </svg>

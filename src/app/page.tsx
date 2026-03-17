@@ -54,7 +54,9 @@ export default function Home() {
     try {
       const res = await fetch('/api/projects')
       const data = await res.json()
-      setProjects(data.projects || [])
+      // API 返回格式: { success: true, data: { projects: [...] } }
+      const projectList = data.success ? (data.data?.projects || []) : (data.projects || [])
+      setProjects(projectList)
     } catch (error) {
       console.error('获取项目列表失败:', error)
       toast.error('获取项目列表失败')
