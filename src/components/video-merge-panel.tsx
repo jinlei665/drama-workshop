@@ -26,7 +26,8 @@ import {
   Download,
   Settings,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Play
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -63,6 +64,7 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
   } | null>(null)
   const [expanded, setExpanded] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   // 获取有视频的分镜
   const videoScenes = scenes.filter(s => s.videoStatus === 'completed' && s.videoUrl)
@@ -310,22 +312,36 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
 
             {/* 合并结果 */}
             {result && (
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">合并完成</p>
-                  <p className="text-xs text-muted-foreground">
-                    文件: {result.filename} | 时长: {result.duration?.toFixed(1) || 0}s
-                  </p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">合并完成</p>
+                    <p className="text-xs text-muted-foreground">
+                      文件: {result.filename} | 时长: {result.duration?.toFixed(1) || 0}s
+                    </p>
+                  </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDownload}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  下载
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPreviewOpen(true)}
+                    className="flex-1"
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    预览
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownload}
+                    className="flex-1"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    下载
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -374,6 +390,37 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
               }}
             >
               前往设置
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 视频预览对话框 */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>视频预览</DialogTitle>
+            <DialogDescription>
+              {result?.filename} | 时长: {result?.duration?.toFixed(1) || 0}s
+            </DialogDescription>
+          </DialogHeader>
+          <div className="aspect-video bg-black rounded-lg overflow-hidden">
+            {result?.url && (
+              <video
+                src={result.url}
+                controls
+                autoPlay
+                className="w-full h-full object-contain"
+              />
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+              关闭
+            </Button>
+            <Button onClick={handleDownload}>
+              <Download className="w-4 h-4 mr-2" />
+              下载视频
             </Button>
           </div>
         </DialogContent>
