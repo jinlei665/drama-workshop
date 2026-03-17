@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { LLMClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL } from "@/lib/ai"
+import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 
 // 增加超时配置 - Next.js API 路由最大执行时间
 export const maxDuration = 300 // 5分钟
@@ -13,54 +13,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "内容不能为空" }, { status: 400 })
   }
 
-  // 获取用户配置
-  let settings: any = null
-  try {
-    const supabase = getSupabaseClient()
-    const result = await supabase
-      .from('user_settings')
-      .select('*')
-      .limit(1)
-      .maybeSingle()
-    settings = result.data
-  } catch (dbError) {
-    console.warn("Failed to fetch user settings:", dbError)
-    // 继续使用环境变量
+  // 获取用户配置（可选）
+  let userSettings: {
+    llm_model?: string
+    llm_api_key?: string | null
+    llm_base_url?: string | null
+  } | null = null
+
+  if (isDatabaseConfigured()) {
+    try {
+      const supabase = getSupabaseClient()
+      const result = await supabase
+        .from('user_settings')
+        .select('llm_model, llm_api_key, llm_base_url')
+        .limit(1)
+        .maybeSingle()
+      userSettings = result.data
+    } catch (dbError) {
+      console.warn("Failed to fetch user settings, using defaults:", dbError)
+    }
   }
 
-  // 检查 API 配置
-  const apiKey = settings?.llm_api_key || process.env.LLM_API_KEY
-  const baseUrl = settings?.llm_base_url || process.env.LLM_BASE_URL
+  // 提取请求头用于转发
+  const customHeaders = extractHeaders(request.headers)
 
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "LLM API Key 未配置。请在设置页面或 .env 文件中配置 LLM_API_KEY" },
-      { status: 500 }
-    )
-  }
+  // 使用用户配置的模型或默认模型
+  const model = userSettings?.llm_model || DEFAULT_LLM_MODEL
+  const apiKey = userSettings?.llm_api_key || undefined
+  const baseUrl = userSettings?.llm_base_url || undefined
 
   console.log("LLM Config:", {
+    model,
     hasApiKey: !!apiKey,
-    baseUrl: baseUrl || 'default',
-    model: settings?.llm_model || 'doubao-seed-2-0-pro'
+    baseUrl: baseUrl || 'default (system)',
   })
-
-  const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-
-  // 使用用户配置的 API Key 和 Base URL，增加超时时间和重试配置
-  const config = new Config({
-    apiKey,
-    baseUrl,
-    timeout: 300000, // 300 秒超时（5分钟）
-    retryTimes: 3,   // 重试3次
-    retryDelay: 5000, // 重试间隔5秒
-  })
-
-  const client = new LLMClient(config, customHeaders)
-
-  // 使用用户配置的模型，如果没有配置则使用默认模型
-  // MiniMax 推荐使用 MiniMax-Text-01
-  const modelName = settings?.llm_model || process.env.LLM_MODEL || 'MiniMax-Text-01'
 
   // 检查内容长度，如果太长则截断
   const maxContentLength = 10000 // 约 1 万字
@@ -113,52 +99,42 @@ export async function POST(request: NextRequest) {
       { role: "user" as const, content: `请分析以下内容：\n\n${processedContent}` },
     ]
 
-    // 带重试的调用
-    let response
-    let lastError: any = null
-    const maxRetries = 3
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`LLM invoke attempt ${attempt}/${maxRetries}`)
-        response = await client.invoke(messages, {
-          model: modelName,
-          temperature: 0.3,
-        })
-        break // 成功则退出循环
-      } catch (err: any) {
-        lastError = err
-        console.error(`LLM invoke attempt ${attempt} failed:`, err.message)
-
-        // 如果是超时错误，等待后重试
-        if (err?.name === 'TimeoutError' || err?.message?.includes('timed out')) {
-          if (attempt < maxRetries) {
-            const waitTime = attempt * 10000 // 10秒、20秒、30秒
-            console.log(`Waiting ${waitTime/1000}s before retry...`)
-            await new Promise(resolve => setTimeout(resolve, waitTime))
-            continue
-          }
-        } else {
-          // 其他错误直接抛出
-          throw err
-        }
-      }
-    }
-
-    if (!response) {
-      throw lastError || new Error('LLM response is empty')
-    }
+    // 调用 LLM（使用系统自带模型）
+    const responseContent = await invokeLLM(
+      messages,
+      {
+        model,
+        temperature: 0.3,
+      },
+      apiKey ? { apiKey, baseUrl } : undefined,
+      customHeaders
+    )
 
     // 解析 JSON 响应
     let result
     try {
-      // 提取 JSON 内容（处理可能存在的 markdown 代码块）
-      const jsonMatch = response.content.match(/```json\s*([\s\S]*?)\s*```/) ||
-                        response.content.match(/```\s*([\s\S]*?)\s*```/)
-      const jsonStr = jsonMatch ? jsonMatch[1] : response.content
-      result = JSON.parse(jsonStr)
-    } catch {
-      console.error("Failed to parse LLM response:", response.content)
+      result = parseLLMJson<{
+        characters: Array<{
+          name: string
+          description: string
+          appearance: string
+          personality: string
+          tags: string[]
+        }>
+        scenes: Array<{
+          sceneNumber: number
+          title: string
+          description: string
+          dialogue: string
+          action: string
+          emotion: string
+          shotType: string
+          cameraMovement: string
+          characterNames: string[]
+        }>
+      }>(responseContent)
+    } catch (parseError) {
+      console.error("Failed to parse LLM response:", responseContent)
       return NextResponse.json(
         { error: "解析结果失败，请重试" },
         { status: 500 }
@@ -166,12 +142,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 如果有 projectId，保存到数据库
-    if (projectId) {
+    if (projectId && isDatabaseConfigured()) {
       const supabase = getSupabaseClient()
 
       // 保存人物
       if (result.characters && result.characters.length > 0) {
-        const charactersData = result.characters.map((char: any) => ({
+        const charactersData = result.characters.map((char) => ({
           project_id: projectId,
           name: char.name,
           description: char.description,
@@ -192,10 +168,10 @@ export async function POST(request: NextRequest) {
           .eq("project_id", projectId)
 
         const nameToId = new Map(
-          (existingChars || []).map((c: any) => [c.name, c.id])
+          (existingChars || []).map((c: { id: string; name: string }) => [c.name, c.id])
         )
 
-        const scenesData = result.scenes.map((scene: any) => ({
+        const scenesData = result.scenes.map((scene) => ({
           project_id: projectId,
           scene_number: scene.sceneNumber,
           title: scene.title,
@@ -217,28 +193,19 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(result)
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Analyze error:", error)
 
+    const errorMessage = error instanceof Error ? error.message : "分析失败，请重试"
+
     // 检查是否是超时错误
-    if (error?.name === 'TimeoutError' || error?.message?.includes('timed out')) {
+    if (errorMessage.includes('timeout') || errorMessage.includes('超时')) {
       return NextResponse.json(
-        { error: "请求超时，请检查网络连接或稍后重试。如果问题持续，请检查 API Base URL 是否正确。" },
+        { error: "请求超时，请稍后重试" },
         { status: 504 }
       )
     }
 
-    // 检查是否是 API 错误
-    if (error instanceof APIError) {
-      console.error("API Error:", error.message, error.statusCode)
-      return NextResponse.json(
-        { error: `API 错误: ${error.message}` },
-        { status: error.statusCode || 500 }
-      )
-    }
-
-    // 其他错误
-    const errorMessage = error?.message || "分析失败，请重试"
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

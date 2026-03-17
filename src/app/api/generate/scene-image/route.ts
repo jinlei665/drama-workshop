@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { ImageGenerationClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
+import { generateImage } from "@/lib/ai"
 import { S3Storage } from "coze-coding-dev-sdk"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 import axios from "axios"
 
 // POST /api/generate/scene-image - 生成分镜图片（短剧视频分镜）
@@ -15,38 +15,30 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // 获取用户配置
-  let settings: any = null
-  try {
-    const supabase = getSupabaseClient()
-    const result = await supabase
-      .from('user_settings')
-      .select('*')
-      .limit(1)
-      .maybeSingle()
-    settings = result.data
-  } catch (dbError) {
-    console.warn("Failed to fetch user settings:", dbError)
-  }
-
-  // 检查 API 配置
-  const apiKey = settings?.image_api_key || process.env.IMAGE_API_KEY
-  const baseUrl = settings?.image_base_url || process.env.IMAGE_BASE_URL
-
-  if (!apiKey) {
+  // 检查数据库是否可用
+  if (!isDatabaseConfigured()) {
     return NextResponse.json(
-      { error: "图像 API Key 未配置。请在设置页面或 .env 文件中配置 IMAGE_API_KEY" },
+      { error: "数据库未配置，无法保存图片" },
       { status: 500 }
     )
   }
 
-  const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  const config = new Config({
-    apiKey,
-    baseUrl,
-    timeout: 120000, // 120 秒超时
-  })
-  const imageClient = new ImageGenerationClient(config, customHeaders)
+  const supabase = getSupabaseClient()
+
+  // 获取用户配置（可选）
+  let imageSize = '2K'
+  try {
+    const result = await supabase
+      .from('user_settings')
+      .select('image_size, image_model')
+      .limit(1)
+      .maybeSingle()
+    if (result.data?.image_size) {
+      imageSize = result.data.image_size
+    }
+  } catch {
+    // 使用默认值
+  }
 
   // 初始化对象存储
   const storage = new S3Storage({
@@ -56,9 +48,6 @@ export async function POST(request: NextRequest) {
     bucketName: process.env.COZE_BUCKET_NAME,
     region: "cn-beijing",
   })
-
-  // 使用用户配置的模型，如果没有配置则使用默认模型
-  const modelName = settings?.image_model || process.env.IMAGE_MODEL || undefined
 
   try {
     // 构建真人实拍风格分镜提示词
@@ -76,36 +65,19 @@ export async function POST(request: NextRequest) {
     prompt += "，专业影视剧画面，电影级构图，高清摄影，4K画质，细节丰富"
 
     // 更新状态为生成中
-    const supabase = getSupabaseClient()
     await supabase
       .from("scenes")
       .update({ status: "generating" })
       .eq("id", sceneId)
 
-    // 生成图片
-    const response = await imageClient.generate({
-      prompt,
-      size: "2K",
+    // 使用系统自带的图像生成服务
+    const result = await generateImage(prompt, {
+      size: imageSize as '2K' | '4K',
       watermark: false,
-      ...(modelName && { model: modelName }),
     })
 
-    const helper = imageClient.getResponseHelper(response)
-
-    if (!helper.success) {
-      await supabase
-        .from("scenes")
-        .update({ status: "failed" })
-        .eq("id", sceneId)
-
-      return NextResponse.json(
-        { error: helper.errorMessages.join(", ") || "生成失败" },
-        { status: 500 }
-      )
-    }
-
     // 下载并上传图片到对象存储
-    const imageUrl = helper.imageUrls[0]
+    const imageUrl = result.urls[0]
     const imageResponse = await axios.get(imageUrl, {
       responseType: "arraybuffer",
     })
@@ -150,14 +122,14 @@ export async function POST(request: NextRequest) {
     console.error("Generate scene image error:", error)
 
     // 更新状态为失败
-    const supabase = getSupabaseClient()
     await supabase
       .from("scenes")
       .update({ status: "failed" })
       .eq("id", sceneId)
 
+    const errorMessage = error instanceof Error ? error.message : "生成分镜图片失败"
     return NextResponse.json(
-      { error: "生成分镜图片失败" },
+      { error: errorMessage },
       { status: 500 }
     )
   }

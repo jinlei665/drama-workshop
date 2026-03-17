@@ -8,7 +8,7 @@ import { ProjectService } from '@/lib/db'
 import { successResponse, errorResponse, getJSON } from '@/lib/api/response'
 
 interface RouteParams {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 /**
@@ -20,7 +20,8 @@ export async function GET(
   { params }: RouteParams
 ) {
   try {
-    const project = await ProjectService.get(params.id)
+    const { id } = await params
+    const project = await ProjectService.get(id)
     
     if (!project) {
       return successResponse(null, 404)
@@ -41,6 +42,7 @@ export async function PUT(
   { params }: RouteParams
 ) {
   try {
+    const { id } = await params
     const body = await getJSON<{
       name?: string
       description?: string
@@ -48,7 +50,7 @@ export async function PUT(
       metadata?: Record<string, unknown>
     }>(request)
     
-    const project = await ProjectService.update(params.id, {
+    const project = await ProjectService.update(id, {
       name: body.name,
       description: body.description,
       status: body.status as 'draft' | 'analyzing' | 'ready' | 'generating' | 'completed' | 'error' | undefined,
@@ -70,7 +72,8 @@ export async function DELETE(
   { params }: RouteParams
 ) {
   try {
-    await ProjectService.delete(params.id)
+    const { id } = await params
+    await ProjectService.delete(id)
     
     return successResponse({ deleted: true })
   } catch (error) {

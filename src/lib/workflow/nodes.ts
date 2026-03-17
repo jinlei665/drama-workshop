@@ -51,7 +51,7 @@ ${content.slice(0, 10000)}
   }
 }`
 
-    const response = await invokeLLM(config, [{ role: 'user', content: prompt }])
+    const response = await invokeLLM([{ role: 'user', content: prompt }], undefined, config)
     const result = parseLLMJson<{
       summary: string
       themes: string[]
@@ -105,7 +105,7 @@ ${existing.length > 0 ? `已有人物：${existing.map(c => c.name).join('、')}
 2. appearance 需要足够详细，包含服装、发型、体型等
 3. 如果是已有人物，isExisting 设为 true`
 
-    const response = await invokeLLM(config, [{ role: 'user', content: prompt }])
+    const response = await invokeLLM([{ role: 'user', content: prompt }], undefined, config)
     const characters = parseLLMJson<Array<{
       name: string
       description: string
@@ -171,7 +171,7 @@ ${episodeCount > 1 ? `分为 ${episodeCount} 集` : ''}
 3. 确保故事的连贯性和节奏感
 4. 每集结尾有适当的悬念或过渡`
 
-    const response = await invokeLLM(config, [{ role: 'user', content: prompt }])
+    const response = await invokeLLM([{ role: 'user', content: prompt }], undefined, config)
     const scenes = parseLLMJson<Array<{
       sceneNumber: number
       title: string
