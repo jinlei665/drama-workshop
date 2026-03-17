@@ -202,6 +202,11 @@ cd short-drama-workshop
 pnpm install
 ```
 
+> **说明**：
+> - `pnpm install` 会自动安装所有依赖，包括 `coze-coding-dev-sdk`（AI SDK）
+> - 项目已内置豆包系列模型的 SDK，无需额外安装
+> - 如果需要全局使用 AI CLI 工具，可运行：`pnpm add -g coze-coding-dev-sdk`
+
 ### 4.3 配置环境变量
 
 ```powershell
@@ -633,3 +638,58 @@ pnpm run build
 ```
 
 访问 http://localhost:5000 开始使用！
+
+---
+
+## 十二、完整命令汇总
+
+### PowerShell 命令清单
+
+```powershell
+# === 1. 环境准备 ===
+# 安装 Node.js (需先从 nodejs.org 下载安装包)
+# 或使用 winget
+winget install OpenJS.NodeJS.LTS
+
+# 安装 pnpm
+corepack enable
+corepack prepare pnpm@latest --activate
+
+# 安装 FFmpeg
+winget install Gyan.FFmpeg
+
+# === 2. 项目部署 ===
+# 克隆项目
+git clone https://github.com/jinlei665/drama-workshop.git
+cd drama-workshop
+
+# 安装依赖（自动包含 coze-coding-dev-sdk）
+pnpm install
+
+# 配置环境变量
+copy .env.example .env.local
+notepad .env.local  # 填入 COZE_API_KEY 等配置
+
+# 构建
+pnpm run build
+
+# 启动
+pnpm run start
+```
+
+### 必需配置
+
+| 配置项 | 说明 | 获取方式 |
+|--------|------|----------|
+| `COZE_API_KEY` | Coze API 密钥 | [Coze 平台](https://www.coze.cn) → 个人设置 → API 访问令牌 |
+| `DATABASE_TYPE` | 数据库类型 | `memory` / `mysql` / `supabase` |
+| `FFMPEG_PATH` | FFmpeg 路径 | 如 `C:\ffmpeg\bin\ffmpeg.exe` |
+
+### 依赖说明
+
+- **coze-coding-dev-sdk**: AI SDK，通过 `pnpm install` 自动安装，包含：
+  - LLM 调用（豆包、DeepSeek、Kimi 等）
+  - 图像生成（Doubao Seedream）
+  - 视频生成（Doubao Seedance）
+  - 语音合成（Doubao TTS）
+- **FFmpeg**: 视频合并功能依赖，需单独安装
