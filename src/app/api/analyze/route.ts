@@ -39,10 +39,11 @@ export async function POST(request: NextRequest) {
   // 提取请求头用于转发
   const customHeaders = extractHeaders(request.headers)
 
-  // 使用用户配置的模型或默认模型
-  const model = userSettings?.llm_model || DEFAULT_LLM_MODEL
-  const apiKey = userSettings?.llm_api_key || undefined
-  const baseUrl = userSettings?.llm_base_url || undefined
+  // 始终使用系统默认模型（系统自带模型不需要 API Key）
+  // 如果用户想使用自己的模型，需要确保 API Key 有效
+  const model = DEFAULT_LLM_MODEL
+  const apiKey = undefined // 使用系统默认认证
+  const baseUrl = undefined // 使用系统默认地址
 
   console.log("LLM Config:", {
     model,
