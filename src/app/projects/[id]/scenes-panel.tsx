@@ -38,17 +38,17 @@ import { toast } from "sonner"
 
 interface Scene {
   id: string
-  scene_number: number
+  sceneNumber: number
   title: string | null
   description: string
   dialogue: string | null
   action: string | null
   emotion: string | null
-  character_ids: string[]
-  image_key: string | null
-  image_url: string | null
-  video_url: string | null
-  video_status: string
+  characterIds: string[]
+  imageKey?: string | null
+  imageUrl: string | null
+  videoUrl: string | null
+  videoStatus?: string
   status: string
   metadata: {
     shotType?: string
@@ -208,7 +208,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     setGeneratingImage(scene.id)
     try {
       // 获取出场人物的外貌描述
-      const charDescriptions = scene.character_ids
+      const charDescriptions = scene.characterIds
         .map(id => characters.find(c => c.id === id)?.appearance)
         .filter(Boolean)
 
@@ -241,7 +241,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
 
   // 生成单个分镜视频
   const handleGenerateVideo = async (scene: Scene) => {
-    if (!scene.image_key && !scene.image_url) {
+    if (!scene.imageKey && !scene.imageUrl) {
       toast.error("请先生成分镜图片")
       return
     }
@@ -291,7 +291,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
   const openEditDialog = (scene: Scene) => {
     setSelectedScene(scene)
     setFormData({
-      sceneNumber: scene.scene_number,
+      sceneNumber: scene.sceneNumber,
       title: scene.title || "",
       description: scene.description,
       dialogue: scene.dialogue || "",
@@ -299,7 +299,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       emotion: scene.emotion || "",
       shotType: scene.metadata?.shotType || "",
       cameraMovement: scene.metadata?.cameraMovement || "",
-      characterIds: scene.character_ids || []
+      characterIds: scene.characterIds || []
     })
     setEditDialogOpen(true)
   }
@@ -621,19 +621,19 @@ function SceneCard({
 
   // 获取图片 URL
   useEffect(() => {
-    if (scene.image_url) {
-      setImageUrl(scene.image_url)
-    } else if (scene.image_key) {
-      fetch(`/api/images?key=${scene.image_key}`)
+    if (scene.imageUrl) {
+      setImageUrl(scene.imageUrl)
+    } else if (scene.imageKey) {
+      fetch(`/api/images?key=${scene.imageKey}`)
         .then(res => res.json())
         .then(data => setImageUrl(data.url))
         .catch(console.error)
     }
-  }, [scene.image_key, scene.image_url])
+  }, [scene.imageKey, scene.imageUrl])
 
   // 下载视频
   const handleDownloadVideo = async () => {
-    if (!scene.video_url) return
+    if (!scene.videoUrl) return
     
     setDownloading(true)
     try {
@@ -644,7 +644,7 @@ function SceneCard({
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = url
-      link.download = `scene_${scene.scene_number}_${scene.title || 'untitled'}.mp4`
+      link.download = `scene_${scene.sceneNumber}_${scene.title || 'untitled'}.mp4`
       link.click()
       window.URL.revokeObjectURL(url)
     } catch (error) {
@@ -681,12 +681,12 @@ function SceneCard({
   const estimatedDuration = calculateDuration();
 
   // 获取出场人物名称
-  const sceneCharacters = scene.character_ids
+  const sceneCharacters = scene.characterIds
     .map(id => characters.find(c => c.id === id)?.name)
     .filter(Boolean)
 
-  const hasImage = scene.image_key || scene.image_url
-  const hasVideo = scene.video_url
+  const hasImage = scene.imageKey || scene.imageUrl
+  const hasVideo = scene.videoUrl
 
   return (
     <Card className="group hover:shadow-md transition-shadow">
@@ -696,7 +696,7 @@ function SceneCard({
           {hasVideo ? (
             // 显示视频
             <video 
-              src={scene.video_url!} 
+              src={scene.videoUrl!} 
               className="w-full h-full object-cover"
               muted
               loop
@@ -710,7 +710,7 @@ function SceneCard({
             // 显示图片
             <img 
               src={imageUrl} 
-              alt={scene.title || `分镜 ${scene.scene_number}`}
+              alt={scene.title || `分镜 ${scene.sceneNumber}`}
               className="w-full h-full object-cover"
             />
           ) : (
@@ -747,7 +747,7 @@ function SceneCard({
           {/* 分镜序号 */}
           <div className="absolute top-2 left-2">
             <Badge variant="secondary" className="bg-black/60 text-white">
-              {scene.scene_number}
+              {scene.sceneNumber}
             </Badge>
           </div>
         </div>
@@ -757,7 +757,7 @@ function SceneCard({
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-2 flex-wrap">
               {getStatusBadge(scene.status)}
-              {getVideoStatusBadge(scene.video_status)}
+              {scene.videoStatus && getVideoStatusBadge(scene.videoStatus)}
               {scene.metadata?.shotType && (
                 <Badge variant="outline">{scene.metadata.shotType}</Badge>
               )}

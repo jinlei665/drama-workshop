@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL } from "@/lib/ai"
-import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
+import { memoryCharacters, memoryScenes, generateId } from "@/lib/memory-storage"
 
 // 增加超时配置 - Next.js API 路由最大执行时间
 export const maxDuration = 300 // 5分钟
@@ -20,8 +20,10 @@ export async function POST(request: NextRequest) {
     llm_base_url?: string | null
   } | null = null
 
-  if (isDatabaseConfigured()) {
-    try {
+  try {
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
       const supabase = getSupabaseClient()
       const result = await supabase
         .from('user_settings')
@@ -29,9 +31,9 @@ export async function POST(request: NextRequest) {
         .limit(1)
         .maybeSingle()
       userSettings = result.data
-    } catch (dbError) {
-      console.warn("Failed to fetch user settings, using defaults:", dbError)
     }
+  } catch (dbError) {
+    console.warn("Failed to fetch user settings, using defaults:", dbError)
   }
 
   // 提取请求头用于转发
@@ -141,54 +143,154 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 如果有 projectId，保存到数据库
-    if (projectId && isDatabaseConfigured()) {
-      const supabase = getSupabaseClient()
-
+    // 如果有 projectId，保存数据
+    if (projectId) {
+      const savedCharacters: string[] = []
+      
       // 保存人物
       if (result.characters && result.characters.length > 0) {
-        const charactersData = result.characters.map((char) => ({
-          project_id: projectId,
-          name: char.name,
-          description: char.description,
-          appearance: char.appearance,
-          personality: char.personality,
-          tags: char.tags || [],
-        }))
-
-        await supabase.from("characters").insert(charactersData)
+        for (const char of result.characters) {
+          const characterId = generateId('char')
+          
+          // 尝试保存到数据库
+          let savedToDb = false
+          try {
+            const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+            
+            if (isDatabaseConfigured()) {
+              const supabase = getSupabaseClient()
+              const { data, error } = await supabase
+                .from("characters")
+                .insert({
+                  id: characterId,
+                  project_id: projectId,
+                  name: char.name,
+                  description: char.description,
+                  appearance: char.appearance,
+                  personality: char.personality,
+                  tags: char.tags || [],
+                  status: 'pending',
+                })
+                .select()
+                .single()
+              
+              if (!error && data) {
+                savedToDb = true
+                savedCharacters.push(data.id)
+              }
+            }
+          } catch (dbError) {
+            console.warn("Failed to save character to database:", dbError)
+          }
+          
+          // 如果数据库保存失败，保存到内存
+          if (!savedToDb) {
+            memoryCharacters.push({
+              id: characterId,
+              projectId,
+              name: char.name,
+              description: char.description,
+              appearance: char.appearance,
+              personality: char.personality,
+              tags: char.tags || [],
+              status: 'pending',
+              createdAt: new Date().toISOString(),
+            })
+            savedCharacters.push(characterId)
+          }
+        }
       }
 
       // 保存分镜
       if (result.scenes && result.scenes.length > 0) {
         // 获取项目中的人物名称映射
-        const { data: existingChars } = await supabase
-          .from("characters")
-          .select("id, name")
-          .eq("project_id", projectId)
+        const characterNameToId = new Map<string, string>()
+        
+        // 从内存获取
+        memoryCharacters
+          .filter(c => c.projectId === projectId)
+          .forEach(c => characterNameToId.set(c.name, c.id))
+        
+        // 尝试从数据库获取
+        try {
+          const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+          
+          if (isDatabaseConfigured()) {
+            const supabase = getSupabaseClient()
+            const { data: existingChars } = await supabase
+              .from("characters")
+              .select("id, name")
+              .eq("project_id", projectId)
+            
+            if (existingChars) {
+              existingChars.forEach((c: { id: string; name: string }) => 
+                characterNameToId.set(c.name, c.id)
+              )
+            }
+          }
+        } catch (dbError) {
+          console.warn("Failed to fetch characters from database:", dbError)
+        }
 
-        const nameToId = new Map(
-          (existingChars || []).map((c: { id: string; name: string }) => [c.name, c.id])
-        )
-
-        const scenesData = result.scenes.map((scene) => ({
-          project_id: projectId,
-          scene_number: scene.sceneNumber,
-          title: scene.title,
-          description: scene.description,
-          dialogue: scene.dialogue,
-          action: scene.action,
-          emotion: scene.emotion,
-          character_ids: (scene.characterNames || [])
-            .map((name: string) => nameToId.get(name))
-            .filter(Boolean),
-          metadata: {
-            shotType: scene.shotType,
-            cameraMovement: scene.cameraMovement,
-          },
-        }))
-
-        await supabase.from("scenes").insert(scenesData)
+        for (const scene of result.scenes) {
+          const sceneId = generateId('scene')
+          
+          // 获取人物 ID
+          const characterIds: string[] = (scene.characterNames || [])
+            .map((name: string) => characterNameToId.get(name))
+            .filter((id): id is string => id !== undefined)
+          
+          // 尝试保存到数据库
+          let savedToDb = false
+          try {
+            const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+            
+            if (isDatabaseConfigured()) {
+              const supabase = getSupabaseClient()
+              const { error } = await supabase
+                .from("scenes")
+                .insert({
+                  id: sceneId,
+                  project_id: projectId,
+                  scene_number: scene.sceneNumber,
+                  title: scene.title,
+                  description: scene.description,
+                  dialogue: scene.dialogue,
+                  action: scene.action,
+                  emotion: scene.emotion,
+                  character_ids: characterIds,
+                  metadata: {
+                    shotType: scene.shotType,
+                    cameraMovement: scene.cameraMovement,
+                  },
+                  status: 'pending',
+                })
+              
+              if (!error) {
+                savedToDb = true
+              }
+            }
+          } catch (dbError) {
+            console.warn("Failed to save scene to database:", dbError)
+          }
+          
+          // 如果数据库保存失败，保存到内存
+          if (!savedToDb) {
+            memoryScenes.push({
+              id: sceneId,
+              projectId,
+              sceneNumber: scene.sceneNumber,
+              title: scene.title,
+              description: scene.description,
+              dialogue: scene.dialogue,
+              action: scene.action,
+              emotion: scene.emotion,
+              characterIds,
+              status: 'pending',
+              createdAt: new Date().toISOString(),
+            })
+          }
+        }
       }
     }
 

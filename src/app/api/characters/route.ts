@@ -4,24 +4,7 @@
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination } from '@/lib/api/response'
-
-// 内存存储
-const memoryCharacters: Array<{
-  id: string
-  name: string
-  description?: string
-  appearance?: string
-  personality?: string
-  gender?: string
-  age?: string
-  style?: string
-  imageUrl?: string
-  createdAt: string
-  updatedAt: string
-}> = []
-
-let idCounter = 1
-const generateId = () => `char_${Date.now()}_${idCounter++}`
+import { memoryCharacters, generateId } from '@/lib/memory-storage'
 
 /**
  * GET /api/characters
@@ -81,7 +64,7 @@ export async function GET(request: NextRequest) {
     // 使用内存存储
     let filtered = memoryCharacters
     if (projectId) {
-      // 内存存储暂时不支持项目过滤
+      filtered = filtered.filter(c => c.projectId === projectId)
     }
     
     const characters = filtered.slice(offset, offset + pageSize)
@@ -120,7 +103,7 @@ export async function POST(request: NextRequest) {
     }
     
     const character = {
-      id: generateId(),
+      id: generateId('char'),
       name: body.name,
       description: body.description,
       appearance: body.appearance,
@@ -128,8 +111,10 @@ export async function POST(request: NextRequest) {
       gender: body.gender,
       age: body.age,
       style: body.style || 'realistic',
+      projectId: body.projectId || '',
+      tags: [],
+      status: 'pending',
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     }
     
     // 尝试保存到数据库
@@ -148,7 +133,8 @@ export async function POST(request: NextRequest) {
             gender: character.gender,
             age: character.age,
             style: character.style,
-            project_id: body.projectId,
+            project_id: character.projectId,
+            status: character.status,
           })
           .select()
           .single()
@@ -177,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
     
     // 保存到内存
-    memoryCharacters.unshift(character)
+    memoryCharacters.push(character)
     return successResponse({ character }, 201)
   } catch (error) {
     return errorResponse(error)

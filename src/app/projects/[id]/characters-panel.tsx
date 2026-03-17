@@ -39,10 +39,12 @@ interface Character {
   description: string | null
   appearance: string | null
   personality: string | null
-  front_view_key: string | null
-  side_view_key: string | null
-  back_view_key: string | null
+  frontViewKey?: string | null
+  sideViewKey?: string | null
+  backViewKey?: string | null
   tags: string[]
+  status?: string
+  imageUrl?: string
 }
 
 interface CharactersPanelProps {
@@ -375,13 +377,13 @@ function CharacterCard({
 
   // 获取图片 URL
   useEffect(() => {
-    if (character.front_view_key) {
-      fetch(`/api/images?key=${character.front_view_key}`)
+    if (character.frontViewKey) {
+      fetch(`/api/images?key=${character.frontViewKey}`)
         .then(res => res.json())
         .then(data => setImageUrl(data.url))
         .catch(console.error)
     }
-  }, [character.front_view_key])
+  }, [character.frontViewKey])
 
   return (
     <Card className="group hover:shadow-md transition-shadow">

@@ -5,23 +5,7 @@
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination } from '@/lib/api/response'
-
-// 内存存储（用于开发环境，当数据库不可用时）
-const memoryProjects: Array<{
-  id: string
-  name: string
-  description?: string
-  sourceContent: string
-  sourceType: string
-  status: string
-  createdAt: string
-  updatedAt: string
-}> = []
-
-// 生成唯一 ID
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-}
+import { memoryProjects, generateId } from '@/lib/memory-storage'
 
 /**
  * GET /api/projects
@@ -107,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
     
     const project = {
-      id: generateId(),
+      id: generateId('proj'),
       name: body.name,
       sourceContent: body.sourceContent,
       sourceType: body.sourceType || 'novel',
@@ -136,7 +120,7 @@ export async function POST(request: NextRequest) {
           .single()
         
         if (!error && data) {
-          // 触发异步分析（不等待结果）
+          // 触发异步分析
           triggerAnalysis(data.id, project.sourceContent).catch(console.error)
           
           return successResponse({
@@ -174,12 +158,18 @@ export async function POST(request: NextRequest) {
  */
 async function triggerAnalysis(projectId: string, content: string) {
   try {
+    // 更新项目状态为分析中
+    const projectIndex = memoryProjects.findIndex(p => p.id === projectId)
+    if (projectIndex !== -1) {
+      memoryProjects[projectIndex].status = 'analyzing'
+    }
+    
     // 调用分析 API
     const baseUrl = process.env.VERCEL_URL 
       ? `https://${process.env.VERCEL_URL}` 
       : 'http://localhost:5000'
     
-    await fetch(`${baseUrl}/api/analyze`, {
+    const response = await fetch(`${baseUrl}/api/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -188,8 +178,29 @@ async function triggerAnalysis(projectId: string, content: string) {
       }),
     })
     
-    console.log(`Analysis triggered for project ${projectId}`)
+    const result = await response.json()
+    
+    if (result.characters || result.scenes) {
+      // 更新项目状态
+      if (projectIndex !== -1) {
+        memoryProjects[projectIndex].status = 'ready'
+      }
+      console.log(`Analysis completed for project ${projectId}:`, {
+        characters: result.characters?.length || 0,
+        scenes: result.scenes?.length || 0,
+      })
+    } else {
+      console.error(`Analysis failed for project ${projectId}:`, result.error)
+      if (projectIndex !== -1) {
+        memoryProjects[projectIndex].status = 'error'
+      }
+    }
   } catch (error) {
     console.error('Failed to trigger analysis:', error)
+    // 更新项目状态为错误
+    const projectIndex = memoryProjects.findIndex(p => p.id === projectId)
+    if (projectIndex !== -1) {
+      memoryProjects[projectIndex].status = 'error'
+    }
   }
 }

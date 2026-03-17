@@ -53,10 +53,11 @@ interface Project {
   id: string
   name: string
   description: string | null
-  source_content: string
-  source_type: string
+  sourceContent: string
+  sourceType: string
   status: string
-  created_at: string
+  createdAt: string
+  updatedAt?: string
 }
 
 interface Character {
@@ -65,25 +66,27 @@ interface Character {
   description: string | null
   appearance: string | null
   personality: string | null
-  front_view_key: string | null
-  side_view_key: string | null
-  back_view_key: string | null
+  frontViewKey?: string | null
+  sideViewKey?: string | null
+  backViewKey?: string | null
   tags: string[]
+  status?: string
+  imageUrl?: string
 }
 
 interface Scene {
   id: string
-  scene_number: number
+  sceneNumber: number
   title: string | null
   description: string
   dialogue: string | null
   action: string | null
   emotion: string | null
-  character_ids: string[]
-  image_key: string | null
-  image_url: string | null
-  video_url: string | null
-  video_status: string
+  characterIds: string[]
+  imageKey?: string | null
+  imageUrl: string | null
+  videoUrl: string | null
+  videoStatus?: string
   status: string
   metadata: {
     shotType?: string
@@ -129,9 +132,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         throw new Error(data.error || "获取项目失败")
       }
 
-      setProject(data.project)
-      setCharacters(data.characters || [])
-      setScenes(data.scenes || [])
+      // API 返回 { success: true, data: { project, characters, scenes } }
+      const responseData = data.success ? data.data : data
+      setProject(responseData.project)
+      setCharacters(responseData.characters || [])
+      setScenes(responseData.scenes || [])
     } catch (error) {
       console.error("获取项目失败:", error)
       toast.error("获取项目失败")
@@ -342,9 +347,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   // 获取已完成图片的分镜
   const completedScenes = scenes.filter(s => s.status === "completed")
   // 获取已完成视频的分镜
-  completedScenes.sort((a, b) => a.scene_number - b.scene_number)
-  const videoScenes = completedScenes.filter(s => s.video_status === "completed")
-  const pendingVideoScenes = completedScenes.filter(s => s.video_status === "pending" || s.video_status === "failed")
+  completedScenes.sort((a, b) => a.sceneNumber - b.sceneNumber)
+  const videoScenes = completedScenes.filter(s => s.videoStatus === "completed")
+  const pendingVideoScenes = completedScenes.filter(s => s.videoStatus === "pending" || s.videoStatus === "failed")
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
@@ -372,6 +377,25 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                 <Video className="w-3 h-3" />
                 {scenes.length} 分镜
               </Badge>
+              {/* 项目状态 */}
+              {project.status === 'analyzing' && (
+                <Badge className="bg-blue-500 text-white gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  分析中
+                </Badge>
+              )}
+              {project.status === 'ready' && (
+                <Badge className="bg-green-500 text-white">已就绪</Badge>
+              )}
+              {project.status === 'generating' && (
+                <Badge className="bg-amber-500 text-white">生成中</Badge>
+              )}
+              {project.status === 'completed' && (
+                <Badge className="bg-green-600 text-white">已完成</Badge>
+              )}
+              {project.status === 'error' && (
+                <Badge className="bg-red-500 text-white">错误</Badge>
+              )}
               <Button
                 variant="outline"
                 onClick={handleExport}
@@ -460,6 +484,81 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
       {/* 主内容 */}
       <main className="max-w-7xl mx-auto px-6 py-6">
+        {/* 分析状态卡片 */}
+        {project.status === 'analyzing' && (
+          <Card className="mb-6 border-blue-500/50 bg-blue-500/5">
+            <CardContent className="py-6">
+              <div className="flex items-center justify-center gap-3">
+                <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+                <div>
+                  <p className="font-medium">正在分析内容...</p>
+                  <p className="text-sm text-muted-foreground">AI 正在提取人物和分镜信息，请稍候</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* 错误状态卡片 */}
+        {project.status === 'error' && (
+          <Card className="mb-6 border-red-500/50 bg-red-500/5">
+            <CardContent className="py-6">
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-6 h-6 rounded-full bg-red-500/20 flex items-center justify-center">
+                  <span className="text-red-500 text-sm">!</span>
+                </div>
+                <div>
+                  <p className="font-medium text-red-500">分析失败</p>
+                  <p className="text-sm text-muted-foreground">请检查内容格式或重新创建项目</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
+        {/* 空状态提示 */}
+        {project.status === 'draft' && characters.length === 0 && scenes.length === 0 && (
+          <Card className="mb-6 border-amber-500/50 bg-amber-500/5">
+            <CardContent className="py-6">
+              <div className="flex items-center justify-center gap-3">
+                <Sparkles className="w-6 h-6 text-amber-500" />
+                <div>
+                  <p className="font-medium">准备开始创作</p>
+                  <p className="text-sm text-muted-foreground">点击右侧「手动分析」按钮开始提取人物和分镜</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/analyze', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          projectId: project.id,
+                          content: project.sourceContent,
+                        }),
+                      })
+                      const result = await res.json()
+                      if (result.characters || result.scenes) {
+                        toast.success(`分析完成！提取了 ${result.characters?.length || 0} 个人物，${result.scenes?.length || 0} 个分镜`)
+                        fetchData()
+                      } else {
+                        toast.error(result.error || '分析失败')
+                      }
+                    } catch (err) {
+                      toast.error('分析失败')
+                    }
+                  }}
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  手动分析
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
         <Tabs defaultValue="episodes" className="space-y-6">
           <TabsList className="bg-card/50 border border-border/50">
             <TabsTrigger value="episodes" className="gap-2">
@@ -659,10 +758,10 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
         <div className="relative">
           {/* 视频区域 */}
           <div className="aspect-video bg-black relative">
-            {currentScene?.video_url ? (
+            {currentScene?.videoUrl ? (
               <video
                 ref={videoRef}
-                src={currentScene.video_url}
+                src={currentScene.videoUrl}
                 className="w-full h-full object-contain"
                 onEnded={handleVideoEnd}
                 onPlay={() => setIsPlaying(true)}
@@ -677,7 +776,7 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
             {/* 分镜序号 */}
             <div className="absolute top-4 left-4">
               <Badge className="bg-black/70 text-white">
-                第 {currentScene?.scene_number} 镜
+                第 {currentScene?.sceneNumber} 镜
               </Badge>
             </div>
 
@@ -694,7 +793,7 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
             <div className="flex items-center justify-between">
               {/* 分镜信息 */}
               <div className="flex-1">
-                <h4 className="font-medium">{currentScene?.title || `分镜 ${currentScene?.scene_number}`}</h4>
+                <h4 className="font-medium">{currentScene?.title || `分镜 ${currentScene?.sceneNumber}`}</h4>
                 <p className="text-sm text-muted-foreground line-clamp-1">
                   {currentScene?.description}
                 </p>
@@ -748,9 +847,9 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
                       : "border-transparent hover:border-border"
                   }`}
                 >
-                  {scene.video_url ? (
+                  {scene.videoUrl ? (
                     <video
-                      src={scene.video_url}
+                      src={scene.videoUrl}
                       className="w-full h-full object-cover"
                       muted
                     />
@@ -780,11 +879,11 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
       const urls: Record<string, string> = {}
       for (const scene of scenes) {
         // 优先使用直接存储的URL
-        if (scene.image_url) {
-          urls[scene.id] = scene.image_url
-        } else if (scene.image_key) {
+        if (scene.imageUrl) {
+          urls[scene.id] = scene.imageUrl
+        } else if (scene.imageKey) {
           try {
-            const res = await fetch(`/api/images?key=${scene.image_key}`)
+            const res = await fetch(`/api/images?key=${scene.imageKey}`)
             const data = await res.json()
             urls[scene.id] = data.url
           } catch (error) {
@@ -819,7 +918,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
       const blobUrl = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = blobUrl
-      link.download = `分镜${scene.scene_number}_${scene.title || 'scene'}.png`
+      link.download = `分镜${scene.sceneNumber}_${scene.title || 'scene'}.png`
       link.click()
       window.URL.revokeObjectURL(blobUrl)
       toast.success("下载成功")
@@ -842,7 +941,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
               {imageUrls[scene.id] ? (
                 <img 
                   src={imageUrls[scene.id]} 
-                  alt={scene.title || `分镜 ${scene.scene_number}`}
+                  alt={scene.title || `分镜 ${scene.sceneNumber}`}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -851,7 +950,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                 </div>
               )}
               {/* 视频状态 */}
-              {scene.video_url && (
+              {scene.videoUrl && (
                 <div className="absolute top-2 right-2">
                   <Badge variant="default" className="bg-green-500 text-white text-xs">
                     <Play className="w-3 h-3 mr-1" />
@@ -862,7 +961,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
               {/* 分镜序号 */}
               <div className="absolute top-2 left-2">
                 <Badge variant="secondary" className="bg-black/60 text-white text-xs">
-                  {scene.scene_number}
+                  {scene.sceneNumber}
                 </Badge>
               </div>
             </div>
@@ -882,22 +981,22 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
             <>
               <DialogHeader className="sr-only">
                 <DialogTitle>
-                  {scenes[selectedIndex].title || `分镜 ${scenes[selectedIndex].scene_number}`}
+                  {scenes[selectedIndex].title || `分镜 ${scenes[selectedIndex].sceneNumber}`}
                 </DialogTitle>
               </DialogHeader>
               <div className="relative w-full h-full flex">
                 {/* 图片/视频区域 */}
                 <div className="flex-1 relative bg-black flex items-center justify-center">
-                  {scenes[selectedIndex].video_url ? (
+                  {scenes[selectedIndex].videoUrl ? (
                     <video
-                      src={scenes[selectedIndex].video_url}
+                      src={scenes[selectedIndex].videoUrl}
                       controls
                       className="max-w-full max-h-full"
                     />
                   ) : imageUrls[scenes[selectedIndex].id] ? (
                     <img 
                       src={imageUrls[scenes[selectedIndex].id]} 
-                      alt={scenes[selectedIndex].title || `分镜 ${scenes[selectedIndex].scene_number}`}
+                      alt={scenes[selectedIndex].title || `分镜 ${scenes[selectedIndex].sceneNumber}`}
                       className="max-w-full max-h-full object-contain"
                     />
                   ) : (
@@ -937,7 +1036,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                   <div className="space-y-4">
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <Badge variant="outline">第 {scenes[selectedIndex].scene_number} 镜</Badge>
+                        <Badge variant="outline">第 {scenes[selectedIndex].sceneNumber} 镜</Badge>
                         {scenes[selectedIndex].metadata?.shotType && (
                           <Badge variant="secondary">{scenes[selectedIndex].metadata.shotType}</Badge>
                         )}

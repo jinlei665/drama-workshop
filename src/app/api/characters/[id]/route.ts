@@ -4,14 +4,7 @@
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse } from '@/lib/api/response'
-
-// 内存存储（从 route.ts 导入）
-declare const memoryCharacters: Array<{
-  id: string
-  name: string
-  description?: string
-  imageUrl?: string
-}>
+import { memoryCharacters } from '@/lib/memory-storage'
 
 /**
  * GET /api/characters/[id]
@@ -57,6 +50,12 @@ export async function GET(
       }
     } catch (dbError) {
       console.warn('Database not available:', dbError)
+    }
+    
+    // 从内存获取
+    const character = memoryCharacters.find(c => c.id === id)
+    if (character) {
+      return successResponse({ character })
     }
     
     return errorResponse('人物不存在', 404)
@@ -165,6 +164,16 @@ export async function PATCH(
       }
     } catch (dbError) {
       console.warn('Database not available:', dbError)
+    }
+    
+    // 更新内存
+    const index = memoryCharacters.findIndex(c => c.id === id)
+    if (index !== -1) {
+      memoryCharacters[index] = {
+        ...memoryCharacters[index],
+        ...body,
+      }
+      return successResponse({ character: memoryCharacters[index] })
     }
     
     return errorResponse('更新失败', 500)
