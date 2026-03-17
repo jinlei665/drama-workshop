@@ -121,6 +121,7 @@ export function createLLMClient(
 
 /**
  * 调用 LLM（非流式）
+ * 支持用户配置回退到系统模型
  */
 export async function invokeLLM(
   messages: LLMMessage[],
@@ -128,10 +129,64 @@ export async function invokeLLM(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<string> {
-  const client = createLLMClient(config, headers)
   const model = options?.model || config?.model || DEFAULT_LLM_MODEL
+  const hasUserConfig = !!(config?.apiKey)
 
-  logger.info('LLM invoke started', { model })
+  logger.info('LLM invoke started', { 
+    model, 
+    hasUserConfig,
+    useSystemDefault: !config?.apiKey 
+  })
+
+  // 如果有用户配置，先尝试用户配置
+  if (hasUserConfig) {
+    try {
+      const client = createLLMClient(config, headers)
+      const response = await withRetry(
+        () =>
+          client.invoke(messages, {
+            model,
+            temperature: options?.temperature ?? 0.7,
+            thinking: options?.thinking ?? 'disabled',
+            caching: options?.caching ?? 'disabled',
+          }),
+        { maxRetries: 2, delay: 3000 }
+      )
+
+      logger.info('LLM invoke completed with user config', { responseLength: response.content.length })
+      return response.content
+    } catch (userError) {
+      logger.warn('LLM invoke failed with user config, falling back to system model', { 
+        error: userError instanceof Error ? userError.message : String(userError) 
+      })
+      
+      // 用户配置失败，尝试系统模型
+      try {
+        const systemClient = createLLMClient(undefined, headers)
+        const response = await systemClient.invoke(messages, {
+          model: DEFAULT_LLM_MODEL,
+          temperature: options?.temperature ?? 0.7,
+          thinking: options?.thinking ?? 'disabled',
+          caching: options?.caching ?? 'disabled',
+        })
+
+        logger.info('LLM invoke completed with system fallback', { responseLength: response.content.length })
+        
+        // 返回结果，同时标记使用了回退
+        return response.content
+      } catch (systemError) {
+        logger.error('LLM invoke failed with both user and system config', { userError, systemError })
+        // 抛出特殊错误，让调用方知道回退也失败了
+        const error = new Error('用户模型和系统模型均请求失败')
+        ;(error as any).fallbackAttempted = true
+        ;(error as any).originalError = userError
+        throw error
+      }
+    }
+  }
+
+  // 使用系统默认模型
+  const client = createLLMClient(config, headers)
 
   try {
     const response = await withRetry(

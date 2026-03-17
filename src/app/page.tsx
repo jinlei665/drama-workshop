@@ -35,6 +35,7 @@ import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { SettingsDialog } from '@/components/settings-dialog'
 import { AppShell } from '@/components/layout'
+import { ModelConfigStatus } from '@/components/model-config-status'
 import type { Project } from '@/lib/types'
 
 // 画面风格配置
@@ -196,7 +197,10 @@ export default function Home() {
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              {/* 配置状态指示器 */}
+              <ModelConfigStatus />
+              
               <Button
                 variant="ghost"
                 size="icon"

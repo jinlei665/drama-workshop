@@ -28,6 +28,31 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
+// 默认设置（系统模型）
+const DEFAULT_SETTINGS: Settings = {
+  id: 'default',
+  llm_provider: 'doubao',
+  llm_model: 'doubao-seed-1-8-251228',
+  llm_api_key: null,
+  llm_base_url: null,
+  image_provider: 'doubao',
+  image_model: 'doubao-seed-3-0',
+  image_api_key: null,
+  image_base_url: null,
+  image_size: '2K',
+  video_provider: 'doubao',
+  video_model: 'doubao-seedance-1-5-pro-251215',
+  video_api_key: null,
+  video_base_url: null,
+  video_resolution: '720p',
+  video_ratio: '16:9',
+  voice_provider: 'doubao',
+  voice_model: 'doubao-tts',
+  voice_api_key: null,
+  voice_base_url: null,
+  voice_default_style: 'natural',
+}
+
 interface Settings {
   id: string
   llm_provider: string
@@ -115,17 +140,24 @@ interface SettingsDialogProps {
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [settings, setSettings] = useState<Settings | null>(null)
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
 
   const fetchSettings = async () => {
     setLoading(true)
     try {
       const res = await fetch("/api/settings")
       const data = await res.json()
-      setSettings(data.settings)
+      // 如果有用户配置，合并默认配置
+      if (data.settings) {
+        setSettings({ ...DEFAULT_SETTINGS, ...data.settings })
+      } else {
+        setSettings(DEFAULT_SETTINGS)
+      }
     } catch (error) {
       console.error("获取配置失败:", error)
-      toast.error("获取配置失败")
+      // 出错时也使用默认配置
+      setSettings(DEFAULT_SETTINGS)
+      toast.error("获取配置失败，使用默认配置")
     } finally {
       setLoading(false)
     }
@@ -138,8 +170,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [open])
 
   const handleSave = async () => {
-    if (!settings) return
-
     setSaving(true)
     try {
       const res = await fetch("/api/settings", {
@@ -184,9 +214,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }
 
   const updateSetting = (key: keyof Settings, value: string | null) => {
-    if (settings) {
-      setSettings({ ...settings, [key]: value })
-    }
+    setSettings({ ...settings, [key]: value })
   }
 
   return (
@@ -206,7 +234,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
-        ) : settings ? (
+        ) : (
           <Tabs defaultValue="llm" className="mt-4">
             <TabsList className="grid grid-cols-4 w-full">
               <TabsTrigger value="llm" className="gap-2">
@@ -593,13 +621,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               </Card>
             </TabsContent>
           </Tabs>
-        ) : null}
+        )}
 
         <div className="flex justify-end gap-3 pt-4 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={handleSave} disabled={saving || !settings}>
+          <Button onClick={handleSave} disabled={saving}>
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

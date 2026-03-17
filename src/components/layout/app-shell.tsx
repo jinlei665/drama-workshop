@@ -11,6 +11,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ModelConfigProvider } from '@/lib/model-config'
 import { 
   Home, 
   FolderOpen, 
@@ -39,7 +40,8 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname()
 
   return (
-    <div className="flex h-screen bg-background">
+    <ModelConfigProvider>
+      <div className="flex h-screen bg-background">
       {/* 侧边栏 */}
       <aside className={cn(
         'flex flex-col border-r border-border',
@@ -108,6 +110,7 @@ export function AppShell({ children }: AppShellProps) {
       <main className="flex-1 overflow-auto">
         {children}
       </main>
-    </div>
+      </div>
+    </ModelConfigProvider>
   )
 }

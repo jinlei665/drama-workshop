@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL } from "@/lib/ai"
 import { memoryCharacters, memoryScenes, generateId } from "@/lib/memory-storage"
+import { getUserAIServiceConfig } from "@/lib/model-config"
 
 // 增加超时配置 - Next.js API 路由最大执行时间
 export const maxDuration = 300 // 5分钟
@@ -13,42 +14,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "内容不能为空" }, { status: 400 })
   }
 
-  // 获取用户配置（可选）
+  // 使用统一配置获取用户设置
+  const aiConfig = await getUserAIServiceConfig(request.headers)
+  
+  // 获取用户配置（可选，用于日志）
   let userSettings: {
     llm_model?: string
     llm_api_key?: string | null
     llm_base_url?: string | null
   } | null = null
 
-  try {
-    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-    
-    if (isDatabaseConfigured()) {
-      const supabase = getSupabaseClient()
-      const result = await supabase
-        .from('user_settings')
-        .select('llm_model, llm_api_key, llm_base_url')
-        .limit(1)
-        .maybeSingle()
-      userSettings = result.data
+  if (aiConfig.apiKey) {
+    userSettings = {
+      llm_model: aiConfig.model,
+      llm_api_key: aiConfig.apiKey,
+      llm_base_url: aiConfig.baseUrl,
     }
-  } catch (dbError) {
-    console.warn("Failed to fetch user settings, using defaults:", dbError)
   }
 
   // 提取请求头用于转发
   const customHeaders = extractHeaders(request.headers)
 
-  // 始终使用系统默认模型（系统自带模型不需要 API Key）
-  // 如果用户想使用自己的模型，需要确保 API Key 有效
-  const model = DEFAULT_LLM_MODEL
-  const apiKey = undefined // 使用系统默认认证
-  const baseUrl = undefined // 使用系统默认地址
+  // 使用统一配置（支持用户配置回退到系统模型）
+  const model = aiConfig.model || DEFAULT_LLM_MODEL
+  const apiKey = aiConfig.apiKey
+  const baseUrl = aiConfig.baseUrl
 
   console.log("LLM Config:", {
     model,
     hasApiKey: !!apiKey,
     baseUrl: baseUrl || 'default (system)',
+    useSystemDefault: aiConfig.useSystemDefault,
   })
 
   // 检查内容长度，如果太长则截断
@@ -102,16 +98,28 @@ export async function POST(request: NextRequest) {
       { role: "user" as const, content: `请分析以下内容：\n\n${processedContent}` },
     ]
 
-    // 调用 LLM（使用系统自带模型）
-    const responseContent = await invokeLLM(
-      messages,
-      {
-        model,
-        temperature: 0.3,
-      },
-      apiKey ? { apiKey, baseUrl } : undefined,
-      customHeaders
-    )
+    // 调用 LLM（使用统一配置，支持用户配置回退到系统模型）
+    let usedFallback = false
+    let responseContent: string
+    
+    try {
+      responseContent = await invokeLLM(
+        messages,
+        {
+          model,
+          temperature: 0.3,
+        },
+        apiKey ? { apiKey, baseUrl, model } : undefined,
+        customHeaders
+      )
+    } catch (err) {
+      // 如果是回退错误，尝试用系统模型
+      if (err instanceof Error && (err as any).fallbackAttempted) {
+        console.warn("User model failed, already attempted fallback, using error message")
+        throw err
+      }
+      throw err
+    }
 
     // 解析 JSON 响应
     let result
