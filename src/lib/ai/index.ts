@@ -103,8 +103,56 @@ export const AVAILABLE_LLM_MODELS = [
 // ==================== LLM 服务 ====================
 
 /**
+ * 获取用户配置的 Coze API Key
+ * 优先级：传入参数 > 用户设置 > 环境变量
+ */
+async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string }> {
+  try {
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      const db = getSupabaseClient()
+      const { data } = await db
+        .from('user_settings')
+        .select('coze_api_key, coze_base_url')
+        .maybeSingle()
+      
+      if (data?.coze_api_key) {
+        return {
+          apiKey: data.coze_api_key,
+          baseUrl: data.coze_base_url || undefined,
+        }
+      }
+    }
+  } catch {
+    // 忽略错误，使用默认配置
+  }
+  
+  return {}
+}
+
+/**
  * 创建 LLM 客户端
- * 使用系统默认配置，无需 API Key
+ * 支持用户配置的 Coze API Key
+ */
+export async function createLLMClientAsync(
+  config?: AIServiceConfig,
+  headers?: Record<string, string>
+): Promise<LLMClient> {
+  // 获取用户配置
+  const userConfig = await getUserCozeConfig()
+  
+  const clientConfig = new Config({
+    apiKey: config?.apiKey || userConfig.apiKey, // 优先使用传入参数，其次用户配置
+    baseUrl: config?.baseUrl || userConfig.baseUrl,
+    timeout: config?.timeout || 120000, // 2分钟超时
+  })
+
+  return new LLMClient(clientConfig, headers)
+}
+
+/**
+ * 创建 LLM 客户端（同步版本，兼容旧代码）
  */
 export function createLLMClient(
   config?: AIServiceConfig,
@@ -254,6 +302,26 @@ export async function* streamLLM(
 
 /**
  * 创建图像生成客户端
+ * 支持用户配置的 Coze API Key
+ */
+export async function createImageClientAsync(
+  config?: AIServiceConfig,
+  headers?: Record<string, string>
+): Promise<ImageGenerationClient> {
+  // 获取用户配置
+  const userConfig = await getUserCozeConfig()
+  
+  const clientConfig = new Config({
+    apiKey: config?.apiKey || userConfig.apiKey,
+    baseUrl: config?.baseUrl || userConfig.baseUrl,
+    timeout: config?.timeout || 180000, // 3分钟超时
+  })
+
+  return new ImageGenerationClient(clientConfig, headers)
+}
+
+/**
+ * 创建图像生成客户端（同步版本）
  */
 export function createImageClient(
   config?: AIServiceConfig,
@@ -270,6 +338,7 @@ export function createImageClient(
 
 /**
  * 生成图像
+ * 支持用户配置的 Coze API Key
  */
 export async function generateImage(
   prompt: string,
@@ -277,7 +346,7 @@ export async function generateImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ urls: string[]; b64List?: string[] }> {
-  const client = createImageClient(config, headers)
+  const client = await createImageClientAsync(config, headers)
 
   logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
 
@@ -313,6 +382,7 @@ export async function generateImage(
 
 /**
  * 图生图
+ * 支持用户配置的 Coze API Key
  */
 export async function generateImageFromImage(
   prompt: string,
@@ -321,7 +391,7 @@ export async function generateImageFromImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ urls: string[] }> {
-  const client = createImageClient(config, headers)
+  const client = await createImageClientAsync(config, headers)
 
   logger.info('Image-to-image generation started')
 
@@ -350,6 +420,26 @@ export async function generateImageFromImage(
 
 /**
  * 创建视频生成客户端
+ * 支持用户配置的 Coze API Key
+ */
+export async function createVideoClientAsync(
+  config?: AIServiceConfig,
+  headers?: Record<string, string>
+): Promise<VideoGenerationClient> {
+  // 获取用户配置
+  const userConfig = await getUserCozeConfig()
+  
+  const clientConfig = new Config({
+    apiKey: config?.apiKey || userConfig.apiKey,
+    baseUrl: config?.baseUrl || userConfig.baseUrl,
+    timeout: config?.timeout || 600000, // 10分钟超时
+  })
+
+  return new VideoGenerationClient(clientConfig, headers)
+}
+
+/**
+ * 创建视频生成客户端（同步版本）
  */
 export function createVideoClient(
   config?: AIServiceConfig,
@@ -366,6 +456,7 @@ export function createVideoClient(
 
 /**
  * 文生视频
+ * 支持用户配置的 Coze API Key
  */
 export async function generateVideo(
   prompt: string,
@@ -373,7 +464,7 @@ export async function generateVideo(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  const client = createVideoClient(config, headers)
+  const client = await createVideoClientAsync(config, headers)
 
   logger.info('Video generation started', { prompt: prompt.slice(0, 100) })
 
@@ -411,6 +502,7 @@ export async function generateVideo(
 
 /**
  * 图生视频（首帧）
+ * 支持用户配置的 Coze API Key
  */
 export async function generateVideoFromImage(
   prompt: string,
@@ -419,7 +511,7 @@ export async function generateVideoFromImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  const client = createVideoClient(config, headers)
+  const client = await createVideoClientAsync(config, headers)
 
   logger.info('Image-to-video generation started')
 
@@ -458,6 +550,7 @@ export async function generateVideoFromImage(
 
 /**
  * 图生视频（首帧 + 尾帧）
+ * 支持用户配置的 Coze API Key
  */
 export async function generateVideoFromFrames(
   prompt: string,
@@ -467,7 +560,7 @@ export async function generateVideoFromFrames(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string }> {
-  const client = createVideoClient(config, headers)
+  const client = await createVideoClientAsync(config, headers)
 
   logger.info('Frame-to-video generation started')
 

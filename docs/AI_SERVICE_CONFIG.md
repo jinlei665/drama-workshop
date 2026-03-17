@@ -1,16 +1,95 @@
 # AI 服务配置指南
 
+## 快速配置（推荐）
+
+### 使用 Coze API 配置系统模型
+
+本项目支持在**设置页面**配置 Coze API Key，配置后可在自部署环境中使用系统内置的所有 AI 模型。
+
+#### 获取 Coze API Key
+
+1. 访问 [Coze 平台](https://www.coze.cn) 并登录
+2. 点击右上角头像 →「个人设置」
+3. 在左侧菜单选择「API 访问令牌」
+4. 点击「创建令牌」，选择权限后生成
+5. 复制生成的 Token（以 `pat-` 开头）
+
+#### 配置步骤
+
+1. 打开应用，点击右上角「设置」按钮
+2. 选择「API」标签页
+3. 填入 API Key 和 Base URL（可选，默认 `https://api.coze.com`）
+4. 点击「保存配置」
+
+配置完成后，所有 AI 功能（LLM、图像生成、视频生成）都将使用你配置的 Coze API。
+
+---
+
 ## 问题说明
 
 本项目使用的 `coze-coding-dev-sdk` 依赖 Coze 平台的认证环境变量：
 - `COZE_WORKLOAD_IDENTITY_API_KEY`
 - `COZE_INTEGRATION_BASE_URL`
 
-**在自己部署的环境中，这些环境变量不存在，需要替换为其他 AI 服务。**
+**在自己部署的环境中，这些环境变量不存在。** 但通过配置 Coze API Key，可以继续使用系统内置模型。
 
 ---
 
-## 方案一：使用豆包/火山引擎 API（推荐）
+## 数据库配置（如使用数据库）
+
+如果使用 MySQL 或 Supabase，需要在 `user_settings` 表中添加新字段：
+
+```sql
+-- 添加 Coze API 配置字段
+ALTER TABLE user_settings 
+ADD COLUMN coze_api_key VARCHAR(500),
+ADD COLUMN coze_base_url VARCHAR(200) DEFAULT 'https://api.coze.com';
+```
+
+完整的 `user_settings` 表结构：
+
+```sql
+CREATE TABLE IF NOT EXISTS user_settings (
+    id VARCHAR(36) PRIMARY KEY DEFAULT UUID(),
+    -- Coze API 配置
+    coze_api_key VARCHAR(500),
+    coze_base_url VARCHAR(200) DEFAULT 'https://api.coze.com',
+    -- LLM 配置
+    llm_provider VARCHAR(50) DEFAULT 'doubao',
+    llm_model VARCHAR(100) DEFAULT 'doubao-seed-1-8-251228',
+    llm_api_key VARCHAR(500),
+    llm_base_url VARCHAR(500),
+    -- 图像配置
+    image_provider VARCHAR(50) DEFAULT 'doubao',
+    image_model VARCHAR(100) DEFAULT 'doubao-seed-3-0',
+    image_api_key VARCHAR(500),
+    image_base_url VARCHAR(500),
+    image_size VARCHAR(20) DEFAULT '2K',
+    -- 视频配置
+    video_provider VARCHAR(50) DEFAULT 'doubao',
+    video_model VARCHAR(100) DEFAULT 'doubao-seedance-1-5-pro-251215',
+    video_api_key VARCHAR(500),
+    video_base_url VARCHAR(500),
+    video_resolution VARCHAR(20) DEFAULT '720p',
+    video_ratio VARCHAR(10) DEFAULT '16:9',
+    -- 语音配置
+    voice_provider VARCHAR(50) DEFAULT 'doubao',
+    voice_model VARCHAR(100) DEFAULT 'doubao-tts',
+    voice_api_key VARCHAR(500),
+    voice_base_url VARCHAR(500),
+    voice_default_style VARCHAR(50) DEFAULT 'natural',
+    -- FFmpeg 配置
+    ffmpeg_path VARCHAR(500),
+    ffprobe_path VARCHAR(500),
+    -- 时间戳
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## 方案二：使用火山引擎/豆包 API
 
 ### 1. 获取 API Key
 

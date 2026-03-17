@@ -28,13 +28,17 @@ import {
   Film,
   CheckCircle,
   AlertCircle,
-  Folder
+  Folder,
+  Cloud
 } from "lucide-react"
 import { toast } from "sonner"
 
 // 默认设置（系统模型）
 const DEFAULT_SETTINGS: Settings = {
   id: 'default',
+  // Coze API 配置（自部署时需要配置）
+  coze_api_key: null,
+  coze_base_url: 'https://api.coze.com',
   llm_provider: 'doubao',
   llm_model: 'doubao-seed-1-8-251228',
   llm_api_key: null,
@@ -62,6 +66,10 @@ const DEFAULT_SETTINGS: Settings = {
 
 interface Settings {
   id: string
+  // Coze API 配置
+  coze_api_key: string | null
+  coze_base_url: string | null
+  // LLM 配置
   llm_provider: string
   llm_model: string
   llm_api_key: string | null
@@ -400,6 +408,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          cozeApiKey: settings.coze_api_key,
+          cozeBaseUrl: settings.coze_base_url,
           llmProvider: settings.llm_provider,
           llmModel: settings.llm_model,
           llmApiKey: settings.llm_api_key,
@@ -462,7 +472,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
         ) : (
           <Tabs defaultValue="llm" className="mt-4">
-            <TabsList className="grid grid-cols-5 w-full">
+            <TabsList className="grid grid-cols-6 w-full">
+              <TabsTrigger value="api" className="gap-2">
+                <Cloud className="w-4 h-4" />
+                API
+              </TabsTrigger>
               <TabsTrigger value="llm" className="gap-2">
                 <Brain className="w-4 h-4" />
                 LLM
@@ -484,6 +498,92 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 FFmpeg
               </TabsTrigger>
             </TabsList>
+
+            {/* API 配置 */}
+            <TabsContent value="api" className="space-y-6 mt-4">
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="pt-4">
+                  <div className="flex items-start gap-3">
+                    <Cloud className="w-5 h-5 text-primary mt-0.5" />
+                    <div className="text-sm flex-1">
+                      <p className="font-medium">Coze API 配置</p>
+                      <p className="text-muted-foreground mt-1">
+                        在 Coze 平台获取 API Key 后，填入下方配置即可使用系统内置的 AI 模型。
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Key className="w-4 h-4" />
+                    Coze API 密钥配置
+                  </CardTitle>
+                  <CardDescription>
+                    配置后可在自部署环境中使用豆包系列模型
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Key className="w-4 h-4" />
+                      API Key
+                    </Label>
+                    <Input
+                      type="password"
+                      placeholder="pat-xxxxxxxxxxxxx"
+                      value={settings.coze_api_key || ""}
+                      onChange={(e) => updateSetting("coze_api_key", e.target.value || null)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      从 Coze 平台获取：个人设置 → API 访问令牌 → 创建令牌
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Server className="w-4 h-4" />
+                      Base URL
+                    </Label>
+                    <Input
+                      placeholder="https://api.coze.com"
+                      value={settings.coze_base_url || ""}
+                      onChange={(e) => updateSetting("coze_base_url", e.target.value || null)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      国内用户使用默认地址，海外用户可使用 api.coze.cn
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 获取指南 */}
+              <Card className="border-border/50">
+                <CardHeader>
+                  <CardTitle className="text-base">获取 Coze API Key</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm space-y-3">
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>
+                      访问 <a href="https://www.coze.cn" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Coze 平台</a> 并登录
+                    </li>
+                    <li>点击右上角头像 →「个人设置」</li>
+                    <li>在左侧菜单选择「API 访问令牌」</li>
+                    <li>点击「创建令牌」，选择权限后生成</li>
+                    <li>复制生成的 Token（以 pat- 开头）</li>
+                    <li>粘贴到上方的 API Key 输入框中</li>
+                  </ol>
+                  <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+                    <p className="font-medium text-xs mb-1">💡 提示</p>
+                    <p className="text-xs text-muted-foreground">
+                      配置 Coze API 后，可使用豆包系列大模型（Doubao Seed）、图像生成（Doubao Seedream）、视频生成（Doubao Seedance）等全部 AI 能力。
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
             {/* LLM配置 */}
             <TabsContent value="llm" className="space-y-6 mt-4">

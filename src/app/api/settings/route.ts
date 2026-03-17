@@ -21,6 +21,9 @@ import {
 function getDefaultSettings() {
   return {
     id: 'default',
+    // Coze API 配置（自部署时需要配置）
+    coze_api_key: null,
+    coze_base_url: 'https://api.coze.com',
     // LLM 配置
     llm_provider: 'doubao',
     llm_model: DEFAULT_LLM_MODEL,
@@ -96,6 +99,10 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body = await getJSON<{
+      // Coze API 配置
+      cozeApiKey?: string
+      cozeBaseUrl?: string
+      // LLM 配置
       llmProvider?: string
       llmModel?: string
       llmApiKey?: string
@@ -135,6 +142,8 @@ export async function PUT(request: NextRequest) {
           .maybeSingle()
 
         const settingsData = {
+          coze_api_key: body.cozeApiKey,
+          coze_base_url: body.cozeBaseUrl,
           llm_provider: body.llmProvider,
           llm_model: body.llmModel,
           llm_api_key: body.llmApiKey,
@@ -183,6 +192,8 @@ export async function PUT(request: NextRequest) {
 
     // 保存到内存
     memorySettings = {
+      coze_api_key: body.cozeApiKey,
+      coze_base_url: body.cozeBaseUrl,
       llm_provider: body.llmProvider,
       llm_model: body.llmModel,
       llm_api_key: body.llmApiKey,
