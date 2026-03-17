@@ -164,6 +164,21 @@ async function triggerAnalysis(projectId: string, content: string) {
       memoryProjects[projectIndex].status = 'analyzing'
     }
     
+    // 更新数据库中的项目状态
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
+        const db = getSupabaseClient()
+        await db
+          .from('projects')
+          .update({ status: 'analyzing', updated_at: new Date().toISOString() })
+          .eq('id', projectId)
+      }
+    } catch (dbError) {
+      console.warn('Failed to update project status in database:', dbError)
+    }
+    
     // 调用分析 API
     const baseUrl = process.env.VERCEL_URL 
       ? `https://${process.env.VERCEL_URL}` 
@@ -181,18 +196,51 @@ async function triggerAnalysis(projectId: string, content: string) {
     const result = await response.json()
     
     if (result.characters || result.scenes) {
-      // 更新项目状态
+      // 更新内存中的项目状态
       if (projectIndex !== -1) {
         memoryProjects[projectIndex].status = 'ready'
       }
+      
+      // 更新数据库中的项目状态
+      try {
+        const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+        
+        if (isDatabaseConfigured()) {
+          const db = getSupabaseClient()
+          await db
+            .from('projects')
+            .update({ status: 'ready', updated_at: new Date().toISOString() })
+            .eq('id', projectId)
+        }
+      } catch (dbError) {
+        console.warn('Failed to update project status in database:', dbError)
+      }
+      
       console.log(`Analysis completed for project ${projectId}:`, {
         characters: result.characters?.length || 0,
         scenes: result.scenes?.length || 0,
       })
     } else {
       console.error(`Analysis failed for project ${projectId}:`, result.error)
+      
+      // 更新内存中的项目状态
       if (projectIndex !== -1) {
         memoryProjects[projectIndex].status = 'error'
+      }
+      
+      // 更新数据库中的项目状态
+      try {
+        const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+        
+        if (isDatabaseConfigured()) {
+          const db = getSupabaseClient()
+          await db
+            .from('projects')
+            .update({ status: 'error', updated_at: new Date().toISOString() })
+            .eq('id', projectId)
+        }
+      } catch (dbError) {
+        console.warn('Failed to update project status in database:', dbError)
       }
     }
   } catch (error) {
@@ -201,6 +249,21 @@ async function triggerAnalysis(projectId: string, content: string) {
     const projectIndex = memoryProjects.findIndex(p => p.id === projectId)
     if (projectIndex !== -1) {
       memoryProjects[projectIndex].status = 'error'
+    }
+    
+    // 更新数据库中的项目状态
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
+        const db = getSupabaseClient()
+        await db
+          .from('projects')
+          .update({ status: 'error', updated_at: new Date().toISOString() })
+          .eq('id', projectId)
+      }
+    } catch (dbError) {
+      console.warn('Failed to update project status in database:', dbError)
     }
   }
 }
