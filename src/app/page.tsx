@@ -84,10 +84,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       })
-      const data = await res.json()
+      const result = await res.json()
 
-      if (!res.ok) {
-        throw new Error(data.error?.message || '创建失败')
+      if (!res.ok || !result.success) {
+        throw new Error(result.error?.message || result.error || '创建失败')
       }
 
       toast.success('项目创建成功')
@@ -99,9 +99,15 @@ export default function Home() {
         sourceType: 'novel'
       })
       fetchProjects()
+      
+      // 跳转到项目详情页
+      const projectId = result.data?.project?.id
+      if (projectId) {
+        window.location.href = `/projects/${projectId}`
+      }
     } catch (error) {
       console.error('创建项目失败:', error)
-      toast.error('创建项目失败')
+      toast.error(error instanceof Error ? error.message : '创建项目失败')
     } finally {
       setCreating(false)
     }
