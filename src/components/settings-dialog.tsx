@@ -24,7 +24,11 @@ import {
   Server,
   Sparkles,
   Mic,
-  Info
+  Info,
+  Film,
+  CheckCircle,
+  AlertCircle,
+  Folder
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -51,6 +55,9 @@ const DEFAULT_SETTINGS: Settings = {
   voice_api_key: null,
   voice_base_url: null,
   voice_default_style: 'natural',
+  // FFmpeg 配置
+  ffmpeg_path: null,
+  ffprobe_path: null,
 }
 
 interface Settings {
@@ -75,6 +82,9 @@ interface Settings {
   voice_api_key: string | null
   voice_base_url: string | null
   voice_default_style: string
+  // FFmpeg 配置
+  ffmpeg_path: string | null
+  ffprobe_path: string | null
 }
 
 // 系统支持的 LLM 模型列表
@@ -137,6 +147,220 @@ interface SettingsDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+// FFmpeg 配置组件
+function FFmpegConfigSection({ 
+  ffmpegPath, 
+  ffprobePath,
+  onUpdate 
+}: { 
+  ffmpegPath: string | null
+  ffprobePath: string | null
+  onUpdate: (key: string, value: string | null) => void 
+}) {
+  const [checking, setChecking] = useState(false)
+  const [status, setStatus] = useState<{
+    available: boolean
+    version?: string
+    path?: string
+    error?: string
+  } | null>(null)
+
+  const checkFfmpeg = async () => {
+    setChecking(true)
+    try {
+      const res = await fetch("/api/ffmpeg")
+      const data = await res.json()
+      setStatus(data.data || data)
+    } catch {
+      setStatus({ available: false, error: "检测失败" })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const testCustomPath = async () => {
+    if (!ffmpegPath) return
+    setChecking(true)
+    try {
+      const res = await fetch("/api/ffmpeg", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ffmpegPath, ffprobePath })
+      })
+      const data = await res.json()
+      setStatus(data.data || data)
+      if (data.available) {
+        toast.success(`FFmpeg 检测成功: v${data.version}`)
+      } else {
+        toast.error(data.error || "FFmpeg 路径无效")
+      }
+    } catch {
+      toast.error("检测失败")
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const clearCustomPath = async () => {
+    try {
+      const res = await fetch("/api/ffmpeg", { method: "DELETE" })
+      const data = await res.json()
+      onUpdate("ffmpeg_path", null)
+      onUpdate("ffprobe_path", null)
+      setStatus(data.data || data)
+      toast.success("已清除自定义配置")
+    } catch {
+      toast.error("清除失败")
+    }
+  }
+
+  // 首次加载时检测
+  useEffect(() => {
+    checkFfmpeg()
+  }, [])
+
+  return (
+    <div className="space-y-6">
+      {/* 状态卡片 */}
+      <Card className={status?.available ? "border-green-500/20 bg-green-500/5" : "border-amber-500/20 bg-amber-500/5"}>
+        <CardContent className="pt-4">
+          <div className="flex items-start gap-3">
+            {status?.available ? (
+              <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
+            )}
+            <div className="flex-1">
+              <p className="font-medium">
+                {status?.available ? "FFmpeg 可用" : "FFmpeg 未检测到"}
+              </p>
+              {status?.version && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  版本: {status.version} | 路径: {status.path || "系统环境变量"}
+                </p>
+              )}
+              {status?.error && (
+                <p className="text-sm text-destructive mt-1">{status.error}</p>
+              )}
+              {!status?.available && (
+                <p className="text-sm text-muted-foreground mt-2">
+                  视频合并功能需要 FFmpeg。请安装 FFmpeg 或配置自定义路径。
+                </p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={checkFfmpeg}
+              disabled={checking}
+            >
+              {checking ? <Loader2 className="w-4 h-4 animate-spin" /> : "重新检测"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* FFmpeg 路径配置 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Folder className="w-4 h-4" />
+            自定义路径
+          </CardTitle>
+          <CardDescription>
+            如果系统环境变量中没有 FFmpeg，可以手动配置路径
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>FFmpeg 可执行文件路径</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder={process.platform === 'win32' 
+                  ? "如: C:\\ffmpeg\\bin\\ffmpeg.exe" 
+                  : "如: /usr/local/bin/ffmpeg"}
+                value={ffmpegPath || ""}
+                onChange={(e) => onUpdate("ffmpeg_path", e.target.value || null)}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {process.platform === 'win32' 
+                ? "Windows 用户需要指定完整的 .exe 文件路径" 
+                : "Linux/Mac 用户需要指定 ffmpeg 可执行文件的完整路径"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>FFprobe 可执行文件路径 (可选)</Label>
+            <Input
+              placeholder={process.platform === 'win32' 
+                ? "如: C:\\ffmpeg\\bin\\ffprobe.exe" 
+                : "如: /usr/local/bin/ffprobe"}
+              value={ffprobePath || ""}
+              onChange={(e) => onUpdate("ffprobe_path", e.target.value || null)}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={testCustomPath}
+              disabled={checking || !ffmpegPath}
+            >
+              {checking ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  检测中...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  测试路径
+                </>
+              )}
+            </Button>
+            {ffmpegPath && (
+              <Button
+                variant="ghost"
+                onClick={clearCustomPath}
+                disabled={checking}
+              >
+                清除自定义配置
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 安装指南 */}
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="text-base">安装指南</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-3">
+          <div>
+            <p className="font-medium text-foreground mb-1">Windows:</p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li>从 <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">ffmpeg.org</a> 下载</li>
+              <li>解压到如 C:\ffmpeg</li>
+              <li>将 C:\ffmpeg\bin 添加到系统环境变量 PATH</li>
+              <li>或直接在上方配置完整路径</li>
+            </ol>
+          </div>
+          <div>
+            <p className="font-medium text-foreground mb-1">macOS (Homebrew):</p>
+            <code className="block bg-secondary/50 p-2 rounded text-xs">brew install ffmpeg</code>
+          </div>
+          <div>
+            <p className="font-medium text-foreground mb-1">Linux (Ubuntu/Debian):</p>
+            <code className="block bg-secondary/50 p-2 rounded text-xs">sudo apt update && sudo apt install ffmpeg</code>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -196,6 +420,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           voiceApiKey: settings.voice_api_key,
           voiceBaseUrl: settings.voice_base_url,
           voiceDefaultStyle: settings.voice_default_style,
+          ffmpegPath: settings.ffmpeg_path,
+          ffprobePath: settings.ffprobe_path,
         })
       })
 
@@ -226,7 +452,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             模型配置
           </DialogTitle>
           <DialogDescription>
-            配置AI模型参数。系统已内置豆包模型，可直接使用。
+            配置AI模型参数和工具路径。系统已内置豆包模型，可直接使用。
           </DialogDescription>
         </DialogHeader>
 
@@ -236,22 +462,26 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           </div>
         ) : (
           <Tabs defaultValue="llm" className="mt-4">
-            <TabsList className="grid grid-cols-4 w-full">
+            <TabsList className="grid grid-cols-5 w-full">
               <TabsTrigger value="llm" className="gap-2">
                 <Brain className="w-4 h-4" />
-                LLM模型
+                LLM
               </TabsTrigger>
               <TabsTrigger value="image" className="gap-2">
                 <Image className="w-4 h-4" />
-                图像模型
+                图像
               </TabsTrigger>
               <TabsTrigger value="video" className="gap-2">
                 <Video className="w-4 h-4" />
-                视频模型
+                视频
               </TabsTrigger>
               <TabsTrigger value="voice" className="gap-2">
                 <Mic className="w-4 h-4" />
-                语音模型
+                语音
+              </TabsTrigger>
+              <TabsTrigger value="ffmpeg" className="gap-2">
+                <Film className="w-4 h-4" />
+                FFmpeg
               </TabsTrigger>
             </TabsList>
 
@@ -619,6 +849,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* FFmpeg 配置 */}
+            <TabsContent value="ffmpeg" className="space-y-6 mt-4">
+              <FFmpegConfigSection 
+                ffmpegPath={settings.ffmpeg_path}
+                ffprobePath={settings.ffprobe_path}
+                onUpdate={(key, value) => updateSetting(key as keyof Settings, value)}
+              />
             </TabsContent>
           </Tabs>
         )}

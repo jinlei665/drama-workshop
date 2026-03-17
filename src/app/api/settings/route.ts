@@ -45,6 +45,9 @@ function getDefaultSettings() {
     voice_api_key: null,
     voice_base_url: null,
     voice_default_style: 'natural',
+    // FFmpeg 配置
+    ffmpeg_path: null,
+    ffprobe_path: null,
   }
 }
 
@@ -113,6 +116,9 @@ export async function PUT(request: NextRequest) {
       voiceApiKey?: string
       voiceBaseUrl?: string
       voiceDefaultStyle?: string
+      // FFmpeg 配置
+      ffmpegPath?: string
+      ffprobePath?: string
     }>(request)
 
     // 尝试保存到数据库
@@ -149,6 +155,8 @@ export async function PUT(request: NextRequest) {
           voice_api_key: body.voiceApiKey,
           voice_base_url: body.voiceBaseUrl,
           voice_default_style: body.voiceDefaultStyle,
+          ffmpeg_path: body.ffmpegPath,
+          ffprobe_path: body.ffprobePath,
           updated_at: new Date().toISOString(),
         }
 
@@ -195,6 +203,8 @@ export async function PUT(request: NextRequest) {
       voice_api_key: body.voiceApiKey,
       voice_base_url: body.voiceBaseUrl,
       voice_default_style: body.voiceDefaultStyle,
+      ffmpeg_path: body.ffmpegPath,
+      ffprobe_path: body.ffprobePath,
     }
 
     return successResponse({

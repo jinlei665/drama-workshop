@@ -50,6 +50,7 @@ import { CharactersPanel } from "./characters-panel"
 import { ScenesPanel } from "./scenes-panel"
 import { EpisodesPanel } from "./episodes-panel"
 import { VideoGenerationProgress } from "@/components/video-generation-progress"
+import { VideoMergePanel } from "@/components/video-merge-panel"
 
 interface Project {
   id: string
@@ -698,6 +699,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
                     </div>
                   </CardContent>
                 </Card>
+              )}
+
+              {/* 视频合并面板 */}
+              {videoScenes.length > 0 && (
+                <VideoMergePanel projectId={id} scenes={scenes} />
               )}
 
               {/* 分镜预览 */}

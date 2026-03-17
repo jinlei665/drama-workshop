@@ -1,0 +1,383 @@
+/**
+ * 视频合并面板组件
+ * 允许用户选择多个视频片段并合并成一个完整视频
+ */
+
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Film,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  Download,
+  Settings,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react'
+import { toast } from 'sonner'
+
+interface Scene {
+  id: string
+  sceneNumber: number
+  title: string | null
+  videoUrl: string | null
+  videoStatus?: string | null
+}
+
+interface FFmpegStatus {
+  available: boolean
+  version?: string
+  path?: string
+  error?: string
+}
+
+interface VideoMergePanelProps {
+  projectId: string
+  scenes: Scene[]
+}
+
+export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
+  const [ffmpegStatus, setFfmpegStatus] = useState<FFmpegStatus | null>(null)
+  const [checkingFfmpeg, setCheckingFfmpeg] = useState(true)
+  const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set())
+  const [merging, setMerging] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [result, setResult] = useState<{
+    url: string
+    filename: string
+    duration: number
+  } | null>(null)
+  const [expanded, setExpanded] = useState(true)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // 获取有视频的分镜
+  const videoScenes = scenes.filter(s => s.videoStatus === 'completed' && s.videoUrl)
+  
+  // 检测 FFmpeg
+  useEffect(() => {
+    const checkFfmpeg = async () => {
+      try {
+        const res = await fetch('/api/ffmpeg')
+        const data = await res.json()
+        setFfmpegStatus(data.data || data)
+      } catch {
+        setFfmpegStatus({ available: false, error: '检测失败' })
+      } finally {
+        setCheckingFfmpeg(false)
+      }
+    }
+    checkFfmpeg()
+  }, [])
+
+  // 全选/取消全选
+  const handleSelectAll = () => {
+    if (selectedScenes.size === videoScenes.length) {
+      setSelectedScenes(new Set())
+    } else {
+      setSelectedScenes(new Set(videoScenes.map(s => s.id)))
+    }
+  }
+
+  // 切换单个选择
+  const handleToggleScene = (sceneId: string) => {
+    const newSelected = new Set(selectedScenes)
+    if (newSelected.has(sceneId)) {
+      newSelected.delete(sceneId)
+    } else {
+      newSelected.add(sceneId)
+    }
+    setSelectedScenes(newSelected)
+  }
+
+  // 合并视频
+  const handleMerge = async () => {
+    if (selectedScenes.size === 0) {
+      toast.error('请选择要合并的视频')
+      return
+    }
+
+    if (!ffmpegStatus?.available) {
+      toast.error('FFmpeg 未配置，请先在设置中配置')
+      setSettingsOpen(true)
+      return
+    }
+
+    setMerging(true)
+    setProgress(0)
+    setResult(null)
+
+    try {
+      // 模拟进度更新
+      const progressInterval = setInterval(() => {
+        setProgress(prev => Math.min(prev + 5, 90))
+      }, 500)
+
+      const res = await fetch('/api/videos/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          sceneIds: Array.from(selectedScenes),
+          outputName: `merged_${projectId}_${Date.now()}.mp4`
+        })
+      })
+
+      clearInterval(progressInterval)
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        if (data.needConfig) {
+          toast.error('FFmpeg 未配置，请先在设置中配置')
+          setSettingsOpen(true)
+        } else {
+          throw new Error(data.error || '合并失败')
+        }
+        return
+      }
+
+      setProgress(100)
+      setResult(data.data || data)
+      toast.success(`合并完成！共 ${data.sceneCount} 个视频，时长 ${data.duration?.toFixed(1) || 0} 秒`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '合并失败')
+    } finally {
+      setMerging(false)
+    }
+  }
+
+  // 下载合并后的视频
+  const handleDownload = async () => {
+    if (!result?.url) return
+
+    try {
+      const response = await fetch(result.url)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = result.filename
+      link.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      toast.error('下载失败')
+    }
+  }
+
+  if (videoScenes.length === 0) {
+    return null
+  }
+
+  return (
+    <>
+      <Card className="border-border/50">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Film className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">视频合并</CardTitle>
+                <CardDescription>
+                  选择多个视频片段，合并成一个完整视频
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* FFmpeg 状态 */}
+              {checkingFfmpeg ? (
+                <Badge variant="outline" className="gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  检测中
+                </Badge>
+              ) : ffmpegStatus?.available ? (
+                <Badge variant="outline" className="gap-1 text-green-500 border-green-500/30">
+                  <CheckCircle className="w-3 h-3" />
+                  FFmpeg 可用
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="gap-1 text-amber-500 border-amber-500/30">
+                  <AlertCircle className="w-3 h-3" />
+                  FFmpeg 未配置
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+
+        {expanded && (
+          <CardContent className="space-y-4">
+            {/* FFmpeg 未配置提示 */}
+            {!checkingFfmpeg && !ffmpegStatus?.available && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">FFmpeg 未配置</p>
+                  <p className="text-xs text-muted-foreground">
+                    视频合并功能需要 FFmpeg，请先在设置中配置
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  配置
+                </Button>
+              </div>
+            )}
+
+            {/* 视频选择 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">选择视频片段</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSelectAll}
+                >
+                  {selectedScenes.size === videoScenes.length ? '取消全选' : '全选'}
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
+                {videoScenes.map((scene) => (
+                  <button
+                    key={scene.id}
+                    onClick={() => handleToggleScene(scene.id)}
+                    className={`flex items-center gap-2 p-2 rounded-lg border transition-all text-left ${
+                      selectedScenes.has(scene.id)
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <Checkbox
+                      checked={selectedScenes.has(scene.id)}
+                      onChange={() => {}}
+                      className="pointer-events-none"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        分镜 {scene.sceneNumber}
+                      </p>
+                      {scene.title && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {scene.title}
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                已选择 {selectedScenes.size} / {videoScenes.length} 个视频
+              </p>
+            </div>
+
+            {/* 合并进度 */}
+            {merging && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span>合并中...</span>
+                  <span>{progress}%</span>
+                </div>
+                <Progress value={progress} />
+              </div>
+            )}
+
+            {/* 合并结果 */}
+            {result && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
+                <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">合并完成</p>
+                  <p className="text-xs text-muted-foreground">
+                    文件: {result.filename} | 时长: {result.duration?.toFixed(1) || 0}s
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownload}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  下载
+                </Button>
+              </div>
+            )}
+
+            {/* 操作按钮 */}
+            <div className="flex gap-2">
+              <Button
+                onClick={handleMerge}
+                disabled={merging || selectedScenes.size === 0 || !ffmpegStatus?.available}
+                className="flex-1"
+              >
+                {merging ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    合并中...
+                  </>
+                ) : (
+                  <>
+                    <Film className="w-4 h-4 mr-2" />
+                    合并视频 ({selectedScenes.size})
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* 设置对话框 */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>FFmpeg 配置</DialogTitle>
+            <DialogDescription>
+              配置 FFmpeg 路径以启用视频合并功能
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-muted-foreground mb-4">
+              请在「设置」页面中配置 FFmpeg 路径，或确保系统环境变量中已安装 FFmpeg。
+            </p>
+            <Button
+              onClick={() => {
+                setSettingsOpen(false)
+                // 导航到设置页面
+                window.location.href = '/settings'
+              }}
+            >
+              前往设置
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}

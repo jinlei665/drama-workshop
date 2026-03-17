@@ -36,6 +36,7 @@ import { toast } from 'sonner'
 import { SettingsDialog } from '@/components/settings-dialog'
 import { AppShell } from '@/components/layout'
 import { ModelConfigStatus } from '@/components/model-config-status'
+import { FFmpegStatusIndicator } from '@/components/ffmpeg-status-indicator'
 import type { Project } from '@/lib/types'
 
 // 画面风格配置
@@ -200,6 +201,9 @@ export default function Home() {
             <div className="flex items-center gap-3">
               {/* 配置状态指示器 */}
               <ModelConfigStatus />
+              
+              {/* FFmpeg 状态指示器 */}
+              <FFmpegStatusIndicator />
               
               <Button
                 variant="ghost"
