@@ -96,6 +96,20 @@ export function getQueryParams(request: Request): URLSearchParams {
   return url.searchParams
 }
 
+/** 提取错误信息 */
+export function extractErrorMessage(error: unknown): string {
+  if (typeof error === 'string') return error
+  if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>
+    if (typeof e.message === 'string') return e.message
+    if (typeof e.error === 'string') return e.error
+    if (e.error && typeof e.error === 'object' && 'message' in (e.error as object)) {
+      return String((e.error as Record<string, unknown>).message)
+    }
+  }
+  return '未知错误'
+}
+
 /** 分页参数 */
 export interface PaginationParams {
   page: number

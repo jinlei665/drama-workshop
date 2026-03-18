@@ -84,7 +84,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error || "创建失败")
+        throw new Error(data.error?.message || data.error || "创建失败")
       }
 
       toast.success("人物创建成功")
@@ -119,7 +119,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error || "更新失败")
+        throw new Error(data.error?.message || data.error || "更新失败")
       }
 
       toast.success("人物更新成功")
@@ -176,7 +176,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || "生成失败")
+        throw new Error(data.error?.message || data.error || "生成失败")
       }
 
       toast.success("角色造型图生成成功")
