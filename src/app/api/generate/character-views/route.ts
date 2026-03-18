@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { ImageGenerationClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
+import { HeaderUtils } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 import { memoryCharacters, memoryProjects } from "@/lib/memory-storage"
 import { getCharacterStylePrompt } from "@/lib/styles"
 import { getCozeConfigFromMemory } from "@/lib/memory-store"
+import { generateImage } from "@/lib/ai"
 import axios from "axios"
 
 // POST /api/generate/character-views - 生成人物三视图（短剧角色设定）
@@ -22,7 +23,6 @@ export async function POST(request: NextRequest) {
 
   // 获取用户配置
   const userConfig = getCozeConfigFromMemory()
-  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
   
   // 检查是否有 API Key
   if (!userConfig?.apiKey) {
@@ -32,24 +32,9 @@ export async function POST(request: NextRequest) {
     )
   }
   
-  // 禁用代理（避免本地代理干扰）
-  const originalProxy = {
-    http: process.env.HTTP_PROXY,
-    https: process.env.HTTPS_PROXY,
-  }
-  delete process.env.HTTP_PROXY
-  delete process.env.HTTPS_PROXY
-  
-  // 使用用户配置或默认配置
-  const config = new Config({
-    apiKey: userConfig.apiKey,
-    baseUrl: userConfig.baseUrl || defaultBaseUrl,
-    timeout: 180000, // 3分钟
-  })
-  
   console.log('[Character Views] Config:', {
     hasApiKey: !!userConfig?.apiKey,
-    baseUrl: userConfig?.baseUrl || defaultBaseUrl,
+    baseUrl: userConfig?.baseUrl || 'https://api.coze.cn',
   })
 
   try {
@@ -97,41 +82,26 @@ export async function POST(request: NextRequest) {
 
     console.log(`Generating character views for ${characterId} with style ${style}:`, basePrompt.substring(0, 100))
 
-    // 创建图像生成客户端
-    const imageClient = new ImageGenerationClient(config, customHeaders)
-
-    // 生成三视图
-    let response
+    // 使用统一的图像生成接口（已修复 SDK 内部错误处理）
+    let imageUrl: string
     try {
-      response = await imageClient.generate({
-        prompt: basePrompt,
-        size: "2K",
+      const result = await generateImage(basePrompt, {
+        size: '2K',
         watermark: false,
-      })
-      console.log('[Character Views] Raw response:', JSON.stringify(response, null, 2))
+      }, {
+        apiKey: userConfig.apiKey,
+        baseUrl: userConfig.baseUrl,
+      }, customHeaders)
+      
+      imageUrl = result.urls[0]
+      console.log('[Character Views] Image generated successfully:', imageUrl)
     } catch (genError) {
       console.error('[Character Views] Generate error:', genError)
-      if (genError instanceof APIError) {
-        return NextResponse.json(
-          { error: `图像生成失败: ${genError.message} (status: ${genError.statusCode})` },
-          { status: 500 }
-        )
-      }
-      throw genError
-    }
-
-    const helper = imageClient.getResponseHelper(response)
-
-    if (!helper.success) {
-      console.error("Image generation failed:", helper.errorMessages)
       return NextResponse.json(
-        { error: helper.errorMessages.join(", ") || "生成失败" },
+        { error: genError instanceof Error ? genError.message : '图像生成失败' },
         { status: 500 }
       )
     }
-
-    const imageUrl = helper.imageUrls[0]
-    console.log("Image generated successfully:", imageUrl)
 
     // 下载图片
     const imageResponse = await axios.get(imageUrl, {
@@ -205,9 +175,5 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : "生成人物视图失败" },
       { status: 500 }
     )
-  } finally {
-    // 恢复代理设置
-    if (originalProxy.http) process.env.HTTP_PROXY = originalProxy.http
-    if (originalProxy.https) process.env.HTTPS_PROXY = originalProxy.https
   }
 }
