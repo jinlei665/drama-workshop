@@ -833,6 +833,11 @@ export async function generateImage(
   try {
     logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
 
+    // 获取用户配置，提前检查是否有 Bot ID
+    const userConfig = await getUserCozeConfig()
+    const apiKey = config?.apiKey || userConfig?.apiKey
+    const botId = await getBotId()
+    
     // 策略1: 先尝试沙箱内置凭证（仅在有沙箱环境时）
     const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
     if (hasSandboxCredentials) {
@@ -863,13 +868,30 @@ export async function generateImage(
       }
     }
 
-    // 策略2: 尝试用户配置的 PAT
-    const userConfig = await getUserCozeConfig()
-    const apiKey = config?.apiKey || userConfig?.apiKey
-    
+    // 策略2: 如果配置了 Bot ID，优先使用 Bot Skills（只需要对话权限）
+    if (apiKey && botId) {
+      logger.info('Trying image generation via Bot Skills (has Bot ID)')
+      try {
+        const botResult = await invokeBotForImageGeneration(prompt, {
+          apiKey,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl,
+        })
+        
+        if (botResult.urls.length > 0) {
+          logger.info('Image generation completed via Bot Skills', { count: botResult.urls.length })
+          return { urls: botResult.urls }
+        }
+      } catch (botErr) {
+        const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+        logger.warn('Bot Skills failed for image generation:', { error: errMsg })
+        // Bot Skills 失败，继续尝试 PAT 直接调用
+      }
+    }
+
+    // 策略3: 尝试用户配置的 PAT 直接调用图像生成 API（需要专门权限）
     if (apiKey) {
       try {
-        logger.info('Trying image generation with user credentials')
+        logger.info('Trying image generation with user credentials (direct API)')
         
         const userConfigObj = new Config({
           apiKey,
@@ -941,25 +963,7 @@ export async function generateImage(
       } catch (patErr) {
         const errMsg = patErr instanceof Error ? patErr.message : String(patErr)
         logger.warn('User PAT failed for image generation:', { error: errMsg })
-        // PAT 失败，继续尝试 Bot Skills
       }
-    }
-
-    // 策略3: 通过 Bot 调用 Skills
-    logger.info('Trying image generation via Bot Skills')
-    try {
-      const botResult = await invokeBotForImageGeneration(prompt, {
-        apiKey: apiKey || undefined,
-        baseUrl: config?.baseUrl || userConfig?.baseUrl,
-      })
-      
-      if (botResult.urls.length > 0) {
-        logger.info('Image generation completed via Bot Skills', { count: botResult.urls.length })
-        return { urls: botResult.urls }
-      }
-    } catch (botErr) {
-      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
-      logger.warn('Bot Skills failed for image generation:', { error: errMsg })
     }
 
     // 所有策略都失败
@@ -1011,9 +1015,28 @@ export async function generateImageFromImage(
     logger.warn('Sandbox credentials failed for image-to-image:', { error: errMsg })
   }
 
-  // 策略2: 回退到用户配置
+  // 获取用户配置
   const userConfig = await getUserCozeConfig()
   const apiKey = config?.apiKey || userConfig?.apiKey
+  
+  // 策略2: 如果配置了 Bot ID，优先使用 Bot Skills
+  const botId = await getBotId()
+  if (apiKey && botId) {
+    logger.info('Trying image-to-image via Bot Skills')
+    try {
+      const botResult = await invokeBotForImageGeneration(
+        `[图生图] 参考图片：${Array.isArray(imageUrl) ? imageUrl.join(', ') : imageUrl}\n\n提示词：${prompt}`,
+        { apiKey, baseUrl: config?.baseUrl || userConfig?.baseUrl }
+      )
+      if (botResult.urls.length > 0) {
+        return { urls: botResult.urls }
+      }
+    } catch (botErr) {
+      logger.warn('Bot Skills failed for image-to-image:', { error: botErr instanceof Error ? botErr.message : String(botErr) })
+    }
+  }
+
+  // 策略3: 回退到用户 PAT 直接调用
   
   if (!apiKey) {
     throw new Error('图像生成失败：沙箱凭证不可用，且未配置用户 API Key。')
