@@ -448,6 +448,14 @@ export async function generateImage(
   const savedProxy = disableProxy()
   
   try {
+    // 获取用户配置，检查是否有有效的 API Key
+    const userConfig = await getUserCozeConfig()
+    const apiKey = config?.apiKey || userConfig.apiKey
+    
+    if (!apiKey) {
+      throw new Error('图像生成需要配置有效的 Coze API Key。请在设置页面配置您的 API Key。')
+    }
+    
     const client = await createImageClientAsync(config, headers)
 
     logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
@@ -460,10 +468,20 @@ export async function generateImage(
         responseFormat: options?.responseFormat || 'url',
       })
 
+      // 检查响应格式是否正确
+      if (!response.data || !Array.isArray(response.data)) {
+        // 检查是否有错误信息
+        if (response.error) {
+          throw new Error(`图像生成 API 错误: ${response.error.message || JSON.stringify(response.error)}`)
+        }
+        // 其他格式问题
+        throw new Error(`图像生成 API 返回格式错误: ${JSON.stringify(response).slice(0, 200)}`)
+      }
+
       const helper = client.getResponseHelper(response)
 
       if (!helper.success) {
-        throw new Error(helper.errorMessages.join('; '))
+        throw new Error(helper.errorMessages.join('; ') || '图像生成失败，请检查 API Key 权限')
       }
 
       logger.info('Image generation completed', { count: helper.imageUrls.length })
@@ -475,6 +493,11 @@ export async function generateImage(
     } catch (err) {
       logger.error('Image generation failed', err)
 
+      // 处理 SDK 内部错误 (TypeError: i.data is not iterable)
+      if (err instanceof TypeError && err.message.includes('is not iterable')) {
+        throw new Error('图像生成失败：API 返回了错误的响应格式，请检查您的 Coze API Key 是否有效且有图像生成权限。')
+      }
+      
       if (err instanceof APIError) {
         throw Errors.AIRequestFailed('Image', `${err.message} (status: ${err.statusCode})`)
       }
