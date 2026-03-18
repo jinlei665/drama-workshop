@@ -50,6 +50,15 @@ export async function invokeCozeDirect(
 
     console.log('[Coze Request] bot_id:', botId, 'messages:', additionalMessages.length)
 
+    const requestBody = {
+      bot_id: botId,
+      user_id: 'drama-workshop-user',
+      stream: true,
+      auto_save_history: true,
+      additional_messages: additionalMessages,
+    }
+    console.log('[Coze Request] Body:', JSON.stringify(requestBody, null, 2).slice(0, 500))
+
     const response = await fetch(`${baseUrl}/v3/chat`, {
       method: 'POST',
       headers: {
@@ -73,6 +82,11 @@ export async function invokeCozeDirect(
       throw new Error(`Coze API 请求失败: ${response.status} ${response.statusText}`)
     }
 
+    // 打印响应头信息
+    console.log('[Coze Response] Status:', response.status)
+    console.log('[Coze Response] Content-Type:', response.headers.get('content-type'))
+    console.log('[Coze Response] Has body:', !!response.body)
+
     const reader = response.body?.getReader()
     if (!reader) {
       throw new Error('无法获取响应流')
@@ -92,7 +106,12 @@ export async function invokeCozeDirect(
         break
       }
 
-      buffer += decoder.decode(value, { stream: true })
+      // 打印原始数据
+      const rawChunk = decoder.decode(value, { stream: true })
+      console.log('[Coze Stream] Raw chunk length:', rawChunk.length)
+      console.log('[Coze Stream] Raw chunk preview:', rawChunk.slice(0, 500))
+      
+      buffer += rawChunk
       
       // 按双换行分割事件
       const events = buffer.split('\n\n')
