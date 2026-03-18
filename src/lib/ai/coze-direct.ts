@@ -95,11 +95,15 @@ export async function invokeCozeDirect(
     while (true) {
       const { done, value } = await reader.read()
       if (done) {
-        console.log('[Coze Stream] Stream done')
+        console.log('[Coze Stream] Stream done, total delta:', deltaCount, 'content length:', fullContent.length)
         break
       }
 
-      buffer += decoder.decode(value, { stream: true })
+      // 打印原始响应数据
+      const chunk = decoder.decode(value, { stream: true })
+      console.log('[Coze Stream] Raw chunk:', chunk.slice(0, 500))
+      
+      buffer += chunk
       
       // 按双换行分割事件
       const events = buffer.split('\n\n')
@@ -118,6 +122,9 @@ export async function invokeCozeDirect(
             eventData = line.slice(5).trim()
           }
         }
+
+        // 打印每个事件
+        console.log(`[Coze Stream] Event: ${currentEvent}, Data: ${eventData.slice(0, 200)}${eventData.length > 200 ? '...' : ''}`)
 
         if (!eventData || eventData === '[DONE]') continue
 
