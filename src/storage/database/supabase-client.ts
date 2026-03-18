@@ -7,6 +7,9 @@
  * 注意：MySQL 支持已移除，请使用 Supabase 或内存存储
  */
 
+// 导入全局内存存储，确保与 memory-storage.ts 同步
+import { memoryProjects, memoryCharacters, memoryScenes, memoryEpisodes } from '@/lib/memory-storage';
+
 // 类型定义
 export type DatabaseType = 'supabase' | 'memory';
 
@@ -79,20 +82,29 @@ export function getSupabaseClient(token?: string): any {
 /**
  * 创建内存存储客户端
  * 实现完整的 Supabase-like API
+ * 使用全局内存存储，确保与其他模块共享数据
  */
 function createMemoryClient() {
-  const storage: Record<string, any[]> = {
-    projects: [],
-    characters: [],
-    scenes: [],
-    episodes: [],
-    user_settings: [],
+  // 使用全局内存存储（与 memory-storage.ts 同步）
+  // 注意：这里的 key 需要转换：projectId -> project_id
+  const getTable = (table: string) => {
+    switch (table) {
+      case 'projects':
+        return memoryProjects;
+      case 'characters':
+        return memoryCharacters;
+      case 'scenes':
+        return memoryScenes;
+      case 'episodes':
+        return memoryEpisodes;
+      default:
+        return [];
+    }
   };
-  
+
   let idCounter = 1;
-  
   const generateId = () => `${Date.now()}-${idCounter++}`;
-  
+
   /**
    * 构建查询链
    */
@@ -100,40 +112,56 @@ function createMemoryClient() {
     let filters: Array<{ type: string; column: string; value: any }> = [];
     let orders: Array<{ column: string; ascending: boolean }> = [];
     let limitCount: number | null = null;
-    
+
     const executeQuery = async () => {
-      let data = [...(storage[table] || [])];
-      
-      // 应用过滤条件
+      const tableData = getTable(table);
+      let data: any[] = [...tableData];
+
+      // 应用过滤条件（支持 snake_case 字段名）
       for (const filter of filters) {
+        const filterKey = filter.column;
         if (filter.type === 'eq') {
-          data = data.filter(item => item[filter.column] === filter.value);
+          data = data.filter((item: any) => {
+            // 同时检查 camelCase 和 snake_case
+            const camelKey = filterKey.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+            const val = item[filterKey] ?? item[camelKey];
+            return val === filter.value;
+          });
         } else if (filter.type === 'in') {
-          data = data.filter(item => filter.value.includes(item[filter.column]));
+          data = data.filter((item: any) => {
+            const camelKey = filterKey.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+            const val = item[filterKey] ?? item[camelKey];
+            return filter.value.includes(val);
+          });
         } else if (filter.type === 'neq') {
-          data = data.filter(item => item[filter.column] !== filter.value);
+          data = data.filter((item: any) => {
+            const camelKey = filterKey.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+            const val = item[filterKey] ?? item[camelKey];
+            return val !== filter.value;
+          });
         }
       }
-      
+
       // 应用排序
       for (const order of orders) {
-        data.sort((a, b) => {
-          const aVal = a[order.column];
-          const bVal = b[order.column];
+        data.sort((a: any, b: any) => {
+          const camelKey = order.column.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+          const aVal = a[order.column] ?? a[camelKey];
+          const bVal = b[order.column] ?? b[camelKey];
           if (aVal === bVal) return 0;
           const cmp = aVal < bVal ? -1 : 1;
           return order.ascending ? cmp : -cmp;
         });
       }
-      
+
       // 应用限制
       if (limitCount !== null) {
         data = data.slice(0, limitCount);
       }
-      
+
       return data;
     };
-    
+
     const chain = {
       select: (fields: string = '*') => {
         const selectChain = {
@@ -177,31 +205,31 @@ function createMemoryClient() {
       insert: (data: any | any[]) => {
         const items = Array.isArray(data) ? data : [data];
         const insertedItems: any[] = [];
-        
+
         const insertChain = {
           select: () => ({
             single: async () => {
               const item = {
-                id: generateId(),
+                id: items[0].id || generateId(),
                 ...items[0],
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                created_at: items[0].created_at || items[0].createdAt || new Date().toISOString(),
+                updated_at: items[0].updated_at || items[0].updatedAt || new Date().toISOString(),
               };
-              if (!storage[table]) storage[table] = [];
-              storage[table].push(item);
+              const tableData = getTable(table);
+              (tableData as any[]).push(item);
               return { data: item, error: null };
             }
           }),
           then: async (resolve: (value: { data: any | null; error: any | null }) => void) => {
+            const tableData = getTable(table);
             for (const itemData of items) {
               const item = {
-                id: generateId(),
+                id: itemData.id || generateId(),
                 ...itemData,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                created_at: itemData.created_at || itemData.createdAt || new Date().toISOString(),
+                updated_at: itemData.updated_at || itemData.updatedAt || new Date().toISOString(),
               };
-              if (!storage[table]) storage[table] = [];
-              storage[table].push(item);
+              (tableData as any[]).push(item);
               insertedItems.push(item);
             }
             resolve({ data: insertedItems.length === 1 ? insertedItems[0] : insertedItems, error: null });
@@ -211,7 +239,7 @@ function createMemoryClient() {
       },
       update: (data: any) => {
         let updateFilters: Array<{ type: string; column: string; value: any }> = [];
-        
+
         const updateChain = {
           eq: (column: string, value: any) => {
             updateFilters.push({ type: 'eq', column, value });
@@ -219,11 +247,15 @@ function createMemoryClient() {
           },
           select: () => ({
             single: async () => {
-              const items = storage[table] || [];
-              let targetItem = items.find(item => {
-                return updateFilters.every(f => item[f.column] === f.value);
+              const tableData = getTable(table);
+              let targetItem = (tableData as any[]).find((item: any) => {
+                return updateFilters.every(f => {
+                  const camelKey = f.column.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+                  const val = item[f.column] ?? item[camelKey];
+                  return val === f.value;
+                });
               });
-              
+
               if (targetItem) {
                 Object.assign(targetItem, data, { updated_at: new Date().toISOString() });
                 return { data: targetItem, error: null };
@@ -236,19 +268,24 @@ function createMemoryClient() {
       },
       delete: () => {
         let deleteFilters: Array<{ type: string; column: string; value: any }> = [];
-        
+
         const deleteChain = {
           eq: (column: string, value: any) => {
             deleteFilters.push({ type: 'eq', column, value });
             return deleteChain;
           },
           then: async (resolve: (value: { data: any | null; error: any | null }) => void) => {
-            const items = storage[table] || [];
-            const index = items.findIndex(item => {
-              return deleteFilters.every(f => item[f.column] === f.value);
-            });
-            if (index !== -1) {
-              items.splice(index, 1);
+            const tableData = getTable(table);
+            for (let i = (tableData as any[]).length - 1; i >= 0; i--) {
+              const item = (tableData as any[])[i];
+              const shouldDelete = deleteFilters.every(f => {
+                const camelKey = f.column.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+                const val = item[f.column] ?? item[camelKey];
+                return val === f.value;
+              });
+              if (shouldDelete) {
+                (tableData as any[]).splice(i, 1);
+              }
             }
             resolve({ data: null, error: null });
           }
@@ -256,10 +293,10 @@ function createMemoryClient() {
         return deleteChain;
       }
     };
-    
+
     return chain;
   }
-  
+
   return {
     from: (table: string) => buildQueryChain(table)
   };
