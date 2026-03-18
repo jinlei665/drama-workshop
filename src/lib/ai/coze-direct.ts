@@ -32,6 +32,11 @@ interface CozeChatResponse {
     id: string
     conversation_id: string
     status: string
+    usage?: {
+      token_count: number
+      input_tokens: number
+      output_tokens: number
+    }
     messages?: Array<{
       id: string
       role: string
@@ -65,7 +70,7 @@ interface CozeStreamEvent {
 }
 
 /**
- * 直接调用 Coze API（非流式）
+ * 直接调用 Coze API（使用流式，然后收集完整响应）
  */
 export async function invokeCozeDirect(
   messages: CozeMessage[],
@@ -98,23 +103,23 @@ export async function invokeCozeDirect(
       content_type: 'text'
     }))
 
+    // 使用流式 API
     const response = await fetch(`${baseUrl}/v3/chat`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
       },
       body: JSON.stringify({
         bot_id: botId,
         user_id: 'drama-workshop-user',
-        stream: false,
+        stream: true,  // 使用流式
         auto_save_history: true,
         additional_messages: additionalMessages,
       }),
       signal: controller.signal,
     })
-
-    clearTimeout(timeoutId)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -122,28 +127,89 @@ export async function invokeCozeDirect(
       throw new Error(`Coze API 请求失败: ${response.status} ${response.statusText}`)
     }
 
-    const result: CozeChatResponse = await response.json()
-
-    if (result.code !== 0) {
-      logger.error('Coze API error', { code: result.code, msg: result.msg })
-      throw new Error(`Coze API 错误: ${result.msg}`)
+    // 读取流式响应
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法获取响应流')
     }
 
-    // 提取助手回复
-    const assistantMessages = result.data?.messages?.filter(
-      msg => msg.role === 'assistant' && msg.type === 'answer'
-    ) || []
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullContent = ''
+    let chatStatus = ''
 
-    if (assistantMessages.length === 0) {
-      throw new Error('Coze API 未返回有效回复')
+    while (true) {
+      const { done, value } = await reader.read()
+      
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      
+      // 解析 SSE 事件
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data:')) {
+          const data = line.slice(5).trim()
+          
+          if (data === '[DONE]') {
+            continue
+          }
+
+          try {
+            const event = JSON.parse(data)
+            
+            // 调试日志
+            if (event.event) {
+              console.log('[Coze Stream] Event:', event.event)
+            }
+
+            // 处理对话状态
+            if (event.event === 'conversation.chat.completed') {
+              chatStatus = 'completed'
+            }
+            
+            // 处理已完成的消息
+            if (event.event === 'conversation.message.completed') {
+              if (event.data?.content && event.data?.type === 'answer') {
+                fullContent += event.data.content
+              }
+            }
+            
+            // 处理增量消息
+            if (event.event === 'conversation.message.delta') {
+              if (event.data?.content) {
+                fullContent += event.data.content
+              }
+            }
+            
+            // 处理错误
+            if (event.event === 'error' || event.code) {
+              const errorMsg = event.msg || JSON.stringify(event)
+              throw new Error(`Coze API 错误: ${errorMsg}`)
+            }
+          } catch (parseError) {
+            if (parseError instanceof SyntaxError) {
+              // JSON 解析错误，可能是分片数据，忽略
+              continue
+            }
+            throw parseError
+          }
+        }
+      }
     }
 
-    // 合并所有回复内容
-    const content = assistantMessages.map(msg => msg.content).join('')
+    clearTimeout(timeoutId)
 
-    logger.info('Coze Direct API call completed', { responseLength: content.length })
+    if (!fullContent) {
+      logger.error('Coze API returned empty content', { chatStatus })
+      throw new Error('Coze API 返回空内容，请检查智能体配置')
+    }
 
-    return content
+    logger.info('Coze Direct API call completed', { responseLength: fullContent.length })
+    return fullContent
+
   } catch (error) {
     clearTimeout(timeoutId)
     
