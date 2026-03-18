@@ -48,6 +48,24 @@ export async function invokeCozeDirect(
       content_type: 'text'
     }))
 
+    const requestBody = {
+      bot_id: botId,
+      user_id: 'drama-workshop-user',
+      stream: true,
+      auto_save_history: true,
+      additional_messages: additionalMessages,
+    }
+
+    // 打印请求内容，方便调试
+    console.log('\n========== Coze API 请求内容 ==========')
+    console.log('Bot ID:', botId)
+    console.log('Messages:')
+    additionalMessages.forEach((msg, i) => {
+      console.log(`\n--- Message ${i + 1} (${msg.role}) ---`)
+      console.log(msg.content.slice(0, 500) + (msg.content.length > 500 ? '...(截断)' : ''))
+    })
+    console.log('========================================\n')
+
     const response = await fetch(`${baseUrl}/v3/chat`, {
       method: 'POST',
       headers: {
@@ -111,6 +129,9 @@ export async function invokeCozeDirect(
 
         if (!eventData || eventData === '[DONE]') continue
 
+        // 打印所有事件，方便调试
+        console.log(`[Coze Stream] Event: ${currentEvent}, Data: ${eventData.slice(0, 300)}${eventData.length > 300 ? '...' : ''}`) === '[DONE]') continue
+
         try {
           const data = JSON.parse(eventData)
           
@@ -131,8 +152,12 @@ export async function invokeCozeDirect(
 
           // 处理已完成的消息
           if (currentEvent === 'conversation.message.completed') {
+            console.log('[Coze Stream] Message completed:', JSON.stringify(data).slice(0, 500))
             if (data.type === 'answer' && data.content) {
               fullContent = data.content
+            } else if (data.type === 'verbose') {
+              // 某些 Bot 可能返回 verbose 类型的消息
+              console.log('[Coze Stream] Verbose message:', data.content?.slice(0, 200))
             }
           }
           
