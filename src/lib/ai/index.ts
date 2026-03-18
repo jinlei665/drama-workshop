@@ -156,16 +156,22 @@ export async function getServerAIConfig(): Promise<{
 }> {
   const userConfig = await getUserCozeConfig()
   
-  if (userConfig.apiKey) {
+  // 国内用户默认使用 api.coze.cn
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
+  if (userConfig?.apiKey) {
+    console.log('[AI Config] Using user config from memory store')
     return {
       apiKey: userConfig.apiKey,
-      baseUrl: userConfig.baseUrl,
+      baseUrl: userConfig.baseUrl || defaultBaseUrl,
       model: DEFAULT_LLM_MODEL,
       useSystemDefault: false,
     }
   }
   
+  console.log('[AI Config] Using system default config, baseUrl:', defaultBaseUrl)
   return {
+    baseUrl: defaultBaseUrl,
     model: DEFAULT_LLM_MODEL,
     useSystemDefault: true,
   }
