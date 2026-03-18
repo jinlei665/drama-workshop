@@ -20,15 +20,24 @@ let cachedDbType: DatabaseType | null = null;
 /**
  * 获取数据库类型
  * Next.js 会自动加载 .env 文件，无需手动加载
+ * 
+ * 优先级：用户配置的 NEXT_PUBLIC_SUPABASE_URL > 沙箱环境的 COZE_SUPABASE_URL
  */
 export function getDatabaseType(): DatabaseType {
   if (cachedDbType) {
     return cachedDbType;
   }
   
-  // 检查是否配置了 Supabase
-  const supabaseUrl = process.env.COZE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (supabaseUrl) {
+  // 优先检查用户配置的 Supabase（NEXT_PUBLIC_SUPABASE_URL）
+  const userSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (userSupabaseUrl) {
+    cachedDbType = 'supabase';
+    return 'supabase';
+  }
+  
+  // 然后检查沙箱环境的 Supabase（COZE_SUPABASE_URL）
+  const cozeSupabaseUrl = process.env.COZE_SUPABASE_URL;
+  if (cozeSupabaseUrl) {
     cachedDbType = 'supabase';
     return 'supabase';
   }
@@ -40,6 +49,7 @@ export function getDatabaseType(): DatabaseType {
 
 /**
  * 获取数据库客户端
+ * 优先级：用户配置的 Supabase > 沙箱环境的 Supabase > 内存存储
  */
 export function getSupabaseClient(token?: string): any {
   if (cachedClient) {
@@ -54,9 +64,10 @@ export function getSupabaseClient(token?: string): any {
     return cachedClient;
   }
   
-  // 使用 Supabase（动态加载，避免客户端打包）
-  const url = process.env.COZE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.COZE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // 优先使用用户配置的 Supabase
+  // NEXT_PUBLIC_SUPABASE_URL 优先于 COZE_SUPABASE_URL
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.COZE_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.COZE_SUPABASE_ANON_KEY;
   
   if (!url || !anonKey) {
     console.warn('Database not configured, using memory storage');
@@ -64,6 +75,8 @@ export function getSupabaseClient(token?: string): any {
     cachedDbType = 'memory';
     return cachedClient;
   }
+  
+  console.log(`[Database] Connecting to Supabase: ${url}`);
   
   // 动态导入 @supabase/supabase-js
   // 使用 eval 避免被 Webpack/Turbopack 静态分析
