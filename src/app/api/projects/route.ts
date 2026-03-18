@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const { pageSize, offset } = parsePagination(params)
     
     // 尝试从数据库获取
+    let useDatabase = false
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
       
@@ -27,7 +28,10 @@ export async function GET(request: NextRequest) {
           .select('*')
           .order('created_at', { ascending: false })
         
-        if (!error && data) {
+        // 只有当没有错误且有数据时才使用数据库
+        // 如果表不存在，error.code 会是 '42P01' (PostgreSQL)
+        if (!error && data && data.length > 0) {
+          useDatabase = true
           // 转换字段名以匹配前端期望
           const projects = data.map((p: any) => ({
             id: p.id,
@@ -49,6 +53,11 @@ export async function GET(request: NextRequest) {
               total: projects.length,
             },
           })
+        }
+        
+        // 数据库配置了但表可能不存在，打印警告
+        if (error) {
+          console.warn('Database query error, falling back to memory storage:', error.message)
         }
       }
     } catch (dbError) {
