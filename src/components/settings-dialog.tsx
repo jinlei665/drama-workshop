@@ -38,7 +38,8 @@ const DEFAULT_SETTINGS: Settings = {
   id: 'default',
   // Coze API 配置（自部署时需要配置）
   coze_api_key: null,
-  coze_base_url: 'https://api.coze.com',
+  coze_base_url: 'https://api.coze.cn',
+  coze_bot_id: null,
   llm_provider: 'doubao',
   llm_model: 'doubao-seed-1-8-251228',
   llm_api_key: null,
@@ -69,6 +70,7 @@ interface Settings {
   // Coze API 配置
   coze_api_key: string | null
   coze_base_url: string | null
+  coze_bot_id: string | null
   // LLM 配置
   llm_provider: string
   llm_model: string
@@ -410,6 +412,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         body: JSON.stringify({
           cozeApiKey: settings.coze_api_key,
           cozeBaseUrl: settings.coze_base_url,
+          cozeBotId: settings.coze_bot_id,
           llmProvider: settings.llm_provider,
           llmModel: settings.llm_model,
           llmApiKey: settings.llm_api_key,
@@ -548,12 +551,27 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       Base URL
                     </Label>
                     <Input
-                      placeholder="https://api.coze.com"
+                      placeholder="https://api.coze.cn"
                       value={settings.coze_base_url || ""}
                       onChange={(e) => updateSetting("coze_base_url", e.target.value || null)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      国内用户使用默认地址，海外用户可使用 api.coze.cn
+                      国内用户使用 api.coze.cn，海外用户使用 api.coze.com
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4" />
+                      Bot ID（智能体ID）
+                    </Label>
+                    <Input
+                      placeholder="73xxxxxxxxxx"
+                      value={settings.coze_bot_id || ""}
+                      onChange={(e) => updateSetting("coze_bot_id", e.target.value || null)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      在 Coze 创建智能体后，URL 中的数字即为 Bot ID
                     </p>
                   </div>
                 </CardContent>
@@ -562,7 +580,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               {/* 获取指南 */}
               <Card className="border-border/50">
                 <CardHeader>
-                  <CardTitle className="text-base">获取 Coze API Key</CardTitle>
+                  <CardTitle className="text-base">获取 Coze API Key 和 Bot ID</CardTitle>
                 </CardHeader>
                 <CardContent className="text-sm space-y-3">
                   <ol className="list-decimal list-inside space-y-2">
@@ -573,7 +591,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     <li>在左侧菜单选择「API 访问令牌」</li>
                     <li>点击「创建令牌」，选择权限后生成</li>
                     <li>复制生成的 Token（以 pat- 开头）</li>
-                    <li>粘贴到上方的 API Key 输入框中</li>
+                    <li>
+                      <strong>创建智能体</strong>：点击「工作空间」→「创建 Bot」
+                    </li>
+                    <li>
+                      配置智能体后发布，从 URL 获取 Bot ID（如 /bot/<strong>73428668xxx</strong>）
+                    </li>
                   </ol>
                   <div className="mt-4 p-3 bg-muted/50 rounded-lg">
                     <p className="font-medium text-xs mb-1">💡 提示</p>

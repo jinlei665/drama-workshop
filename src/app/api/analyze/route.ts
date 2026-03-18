@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL, getServerAIConfig } from "@/lib/ai"
+import { invokeCozeDirect, getCozeDirectConfig } from "@/lib/ai/coze-direct"
 import { memoryCharacters, memoryScenes, generateId } from "@/lib/memory-storage"
 
 // 增加超时配置 - Next.js API 路由最大执行时间
@@ -97,27 +98,44 @@ export async function POST(request: NextRequest) {
       { role: "user" as const, content: `请分析以下内容：\n\n${processedContent}` },
     ]
 
-    // 调用 LLM（使用统一配置，支持用户配置回退到系统模型）
-    let usedFallback = false
+    // 调用 LLM
     let responseContent: string
     
-    try {
-      responseContent = await invokeLLM(
-        messages,
-        {
-          model,
-          temperature: 0.3,
-        },
-        apiKey ? { apiKey, baseUrl, model } : undefined,
-        customHeaders
-      )
-    } catch (err) {
-      // 如果是回退错误，尝试用系统模型
-      if (err instanceof Error && (err as any).fallbackAttempted) {
-        console.warn("User model failed, already attempted fallback, using error message")
+    // 优先使用直接 Coze API（需要 bot_id）
+    const cozeDirectConfig = await getCozeDirectConfig()
+    if (cozeDirectConfig?.botId) {
+      console.log('[Analyze] Using direct Coze API with bot_id:', cozeDirectConfig.botId)
+      responseContent = await invokeCozeDirect(messages, cozeDirectConfig)
+    } else if (apiKey) {
+      // 使用 SDK（可能需要系统模型）
+      console.log('[Analyze] Using SDK with user API key')
+      try {
+        responseContent = await invokeLLM(
+          messages,
+          {
+            model,
+            temperature: 0.3,
+          },
+          { apiKey, baseUrl, model },
+          customHeaders
+        )
+      } catch (err) {
+        // 如果是回退错误，尝试用系统模型
+        if (err instanceof Error && (err as any).fallbackAttempted) {
+          console.warn("User model failed, already attempted fallback, using error message")
+          throw err
+        }
         throw err
       }
-      throw err
+    } else {
+      // 使用系统默认模型
+      console.log('[Analyze] Using system default model')
+      responseContent = await invokeLLM(
+        messages,
+        { model, temperature: 0.3 },
+        undefined,
+        customHeaders
+      )
     }
 
     // 解析 JSON 响应

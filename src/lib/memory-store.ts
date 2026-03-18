@@ -46,7 +46,7 @@ export function getSettingsFromMemory(): Record<string, unknown> | null {
 /**
  * 获取 Coze 配置
  */
-export function getCozeConfigFromMemory(): { apiKey?: string; baseUrl?: string } | null {
+export function getCozeConfigFromMemory(): { apiKey?: string; baseUrl?: string; botId?: string } | null {
   const settings = globalForStore.memoryStore.settings
   if (!settings?.coze_api_key) {
     return null
@@ -55,5 +55,6 @@ export function getCozeConfigFromMemory(): { apiKey?: string; baseUrl?: string }
   return {
     apiKey: settings.coze_api_key as string,
     baseUrl: settings.coze_base_url as string | undefined,
+    botId: settings.coze_bot_id as string | undefined,
   }
 }

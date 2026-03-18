@@ -103,6 +103,7 @@ export async function PUT(request: NextRequest) {
       // Coze API 配置
       cozeApiKey?: string
       cozeBaseUrl?: string
+      cozeBotId?: string
       // LLM 配置
       llmProvider?: string
       llmModel?: string
@@ -145,6 +146,7 @@ export async function PUT(request: NextRequest) {
         const settingsData = {
           coze_api_key: body.cozeApiKey,
           coze_base_url: body.cozeBaseUrl,
+          coze_bot_id: body.cozeBotId,
           llm_provider: body.llmProvider,
           llm_model: body.llmModel,
           llm_api_key: body.llmApiKey,
@@ -195,6 +197,7 @@ export async function PUT(request: NextRequest) {
     saveSettingsToMemory({
       coze_api_key: body.cozeApiKey,
       coze_base_url: body.cozeBaseUrl,
+      coze_bot_id: body.cozeBotId,
       llm_provider: body.llmProvider,
       llm_model: body.llmModel,
       llm_api_key: body.llmApiKey,
