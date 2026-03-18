@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { VideoGenerationClient, Config, HeaderUtils, S3Storage, Content } from 'coze-coding-dev-sdk'
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client'
 import { memoryScenes, memoryProjects } from '@/lib/memory-storage'
+import { getCozeConfigFromMemory } from '@/lib/memory-store'
 import { getVideoStylePrompt } from '@/lib/styles'
 
 export const maxDuration = 300 // 5分钟超时
@@ -115,8 +116,16 @@ export async function POST(request: NextRequest) {
         }))
       })
 
-      // 使用系统默认配置（无需 API Key）
-      const config = new Config({ timeout: 300000 })
+      // 获取用户配置
+      const userConfig = getCozeConfigFromMemory()
+      const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+      
+      // 使用用户配置或默认配置
+      const config = new Config({
+        apiKey: userConfig?.apiKey || undefined,
+        baseUrl: userConfig?.baseUrl || defaultBaseUrl,
+        timeout: 300000,
+      })
       const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
       const client = new VideoGenerationClient(config, customHeaders)
 

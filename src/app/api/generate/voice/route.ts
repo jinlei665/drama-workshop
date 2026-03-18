@@ -1,7 +1,40 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Config, HeaderUtils, S3Storage } from "coze-coding-dev-sdk"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { TTSClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
+import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
+import { memoryCharacters } from "@/lib/memory-storage"
+import { getCozeConfigFromMemory } from "@/lib/memory-store"
 import axios from "axios"
+
+// 语音风格映射到 speaker ID
+const VOICE_STYLE_MAP: Record<string, string> = {
+  // 通用风格
+  "natural": "zh_female_xiaohe_uranus_bigtts",      // 默认女声
+  "female": "zh_female_xiaohe_uranus_bigtts",       // 女声
+  "male": "zh_male_m191_uranus_bigtts",             // 男声
+  
+  // 有声书/朗读
+  "audiobook": "zh_female_xueayi_saturn_bigtts",    // 儿童有声书
+  
+  // 视频配音
+  "narration": "zh_male_dayi_saturn_bigtts",        // 大益（男声）
+  "female_soft": "zh_female_mizai_saturn_bigtts",   // 米仔（女声）
+  "motivational": "zh_female_jitangnv_saturn_bigtts", // 激励女声
+  "charming": "zh_female_meilinvyou_saturn_bigtts", // 迷人女友
+  
+  // 角色扮演
+  "cute_girl": "saturn_zh_female_keainvsheng_tob",
+  "playful_princess": "saturn_zh_female_tiaopigongzhu_tob",
+  "cheerful_boy": "saturn_zh_male_shuanglangshaonian_tob",
+  "genius_classmate": "saturn_zh_male_tiancaitongzhuo_tob",
+}
+
+// 根据角色性别获取默认语音
+function getDefaultVoiceByGender(gender?: string): string {
+  if (gender === "male" || gender === "男") {
+    return "zh_male_m191_uranus_bigtts"
+  }
+  return "zh_female_xiaohe_uranus_bigtts"
+}
 
 /**
  * POST /api/generate/voice
@@ -21,72 +54,101 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "缺少角色ID" }, { status: 400 })
   }
 
-  const supabase = getSupabaseClient()
+  let character: any = null
 
-  // 获取角色信息
-  const { data: character, error: charError } = await supabase
-    .from("characters")
-    .select("*")
-    .eq("id", characterId)
-    .single()
+  // 尝试从数据库获取角色
+  if (isDatabaseConfigured()) {
+    const supabase = getSupabaseClient()
+    const { data, error: charError } = await supabase
+      .from("characters")
+      .select("*")
+      .eq("id", characterId)
+      .single()
 
-  if (charError || !character) {
+    if (!charError && data) {
+      character = data
+    }
+  }
+
+  // 如果数据库中没有，从内存获取
+  if (!character) {
+    character = memoryCharacters.find(c => c.id === characterId)
+  }
+
+  if (!character) {
     return NextResponse.json({ error: "角色不存在" }, { status: 404 })
   }
 
   // 获取用户配置
-  const { data: settings } = await supabase
-    .from("user_settings")
-    .select("*")
-    .limit(1)
-    .single()
+  const userConfig = getCozeConfigFromMemory()
+  const defaultBaseUrl = process.env.COZE_BASE_URL || "https://api.coze.cn"
 
-  // 使用配置的模型和风格
-  const voiceModel = settings?.voice_model || "doubao-tts"
-  const voiceStyle = style || character.voice_style || settings?.voice_default_style || "natural"
+  // 确定语音风格
+  const voiceStyle = style || character.voice_style || "natural"
+  const speaker = VOICE_STYLE_MAP[voiceStyle] || getDefaultVoiceByGender(character.gender)
 
   // 使用提供的文本或角色描述
-  const textContent = text || character.description || `我是${character.name}。`
+  const textContent = text || character.description || character.personality || `我是${character.name}。`
 
   try {
-    // 初始化对象存储
-    const storage = new S3Storage({
-      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-      accessKey: "",
-      secretKey: "",
-      bucketName: process.env.COZE_BUCKET_NAME,
-      region: "cn-beijing",
+    // 初始化 TTS 客户端
+    const config = new Config({
+      apiKey: userConfig?.apiKey || undefined,
+      baseUrl: userConfig?.baseUrl || defaultBaseUrl,
+      timeout: 60000,
+    })
+    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
+    const ttsClient = new TTSClient(config, customHeaders)
+
+    console.log(`Generating voice for character ${character.name} with style ${voiceStyle}`)
+
+    // 调用 TTS API
+    const response = await ttsClient.synthesize({
+      uid: characterId,
+      text: textContent,
+      speaker: speaker,
+      audioFormat: "mp3",
+      sampleRate: 24000,
     })
 
-    // 注意：这里需要使用实际的 TTS API
-    // 由于 SDK 暂时不支持 AudioClient，这里提供一个占位实现
-    // 实际部署时需要调用真实的语音合成 API
-    
-    // 生成一个占位 URL（实际应调用 TTS API）
-    const placeholderUrl = `https://placeholder.tts/${characterId}/${voiceStyle}.mp3`
-    
-    // 更新角色配音信息
-    const { error: updateError } = await supabase
-      .from("characters")
-      .update({
-        voice_url: placeholderUrl,
-        voice_style: voiceStyle,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", characterId)
+    const voiceUrl = response.audioUri
+    const voiceSize = response.audioSize
 
-    if (updateError) {
-      console.error("更新角色配音信息失败:", updateError)
+    console.log(`Voice generated: ${voiceUrl}, size: ${voiceSize} bytes`)
+
+    // 更新数据库中的角色配音信息
+    if (isDatabaseConfigured()) {
+      const supabase = getSupabaseClient()
+      const { error: updateError } = await supabase
+        .from("characters")
+        .update({
+          voice_url: voiceUrl,
+          voice_style: voiceStyle,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", characterId)
+
+      if (updateError) {
+        console.error("更新角色配音信息失败:", updateError)
+      }
+    }
+
+    // 更新内存中的角色配音信息
+    const memIndex = memoryCharacters.findIndex(c => c.id === characterId)
+    if (memIndex !== -1) {
+      (memoryCharacters[memIndex] as any).voiceUrl = voiceUrl
+      ;(memoryCharacters[memIndex] as any).voiceStyle = voiceStyle
     }
 
     return NextResponse.json({
       success: true,
-      voiceUrl: placeholderUrl,
+      voiceUrl: voiceUrl,
+      voiceSize: voiceSize,
       voiceId: `voice_${characterId}_${Date.now()}`,
       voiceStyle: voiceStyle,
-      voiceModel: voiceModel,
+      speaker: speaker,
       textContent: textContent,
-      message: "语音功能需要配置实际的 TTS API",
+      characterName: character.name,
     })
   } catch (error) {
     console.error("语音生成失败:", error)
