@@ -48,14 +48,6 @@ export async function invokeCozeDirect(
       content_type: 'text'
     }))
 
-    const requestBody = {
-      bot_id: botId,
-      user_id: 'drama-workshop-user',
-      stream: true,
-      auto_save_history: true,
-      additional_messages: additionalMessages,
-    }
-
     // 打印请求内容，方便调试
     console.log('\n========== Coze API 请求内容 ==========')
     console.log('Bot ID:', botId)
@@ -129,36 +121,33 @@ export async function invokeCozeDirect(
 
         if (!eventData || eventData === '[DONE]') continue
 
-        // 打印所有事件，方便调试
-        console.log(`[Coze Stream] Event: ${currentEvent}, Data: ${eventData.slice(0, 300)}${eventData.length > 300 ? '...' : ''}`) === '[DONE]') continue
-
         try {
           const data = JSON.parse(eventData)
           
-          // 只打印关键事件
-          if (currentEvent === 'conversation.message.completed') {
-            console.log('[Coze Stream] Message completed, type:', data.type, 'content length:', data.content?.length || 0)
-          } else if (currentEvent === 'conversation.chat.completed') {
-            console.log('[Coze Stream] Chat completed')
-          } else if (currentEvent === 'error') {
-            console.log('[Coze Stream] Error:', data.msg)
-          } else if (currentEvent === 'conversation.message.delta') {
+          // 处理 delta 事件 - 增量内容（流式输出的关键）
+          if (currentEvent === 'conversation.message.delta') {
             deltaCount++
-            // 只打印一次进度
+            // delta 事件中的 content 是增量内容，需要累加
+            if (data.content) {
+              fullContent += data.content
+            }
             if (deltaCount === 1 || deltaCount % 50 === 0) {
-              console.log('[Coze Stream] Processing... delta events:', deltaCount)
+              console.log('[Coze Stream] Delta events:', deltaCount, 'content length:', fullContent.length)
             }
           }
-
+          
           // 处理已完成的消息
           if (currentEvent === 'conversation.message.completed') {
-            console.log('[Coze Stream] Message completed:', JSON.stringify(data).slice(0, 500))
-            if (data.type === 'answer' && data.content) {
+            console.log('[Coze Stream] Message completed, type:', data.type, 'content length:', data.content?.length || 0)
+            // 如果 delta 没有内容，从 completed 消息中获取
+            if (!fullContent && data.content) {
               fullContent = data.content
-            } else if (data.type === 'verbose') {
-              // 某些 Bot 可能返回 verbose 类型的消息
-              console.log('[Coze Stream] Verbose message:', data.content?.slice(0, 200))
             }
+          }
+          
+          // 处理 chat 完成
+          if (currentEvent === 'conversation.chat.completed') {
+            console.log('[Coze Stream] Chat completed')
           }
           
           // 处理错误
