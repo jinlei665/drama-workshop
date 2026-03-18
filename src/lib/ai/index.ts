@@ -448,106 +448,48 @@ export async function generateImage(
   const savedProxy = disableProxy()
   
   try {
-    // 获取用户配置，检查是否有有效的 API Key
-    const userConfig = await getUserCozeConfig()
-    const apiKey = config?.apiKey || userConfig.apiKey
-    
-    if (!apiKey) {
-      throw new Error('图像生成需要配置有效的 Coze API Key。请在设置页面配置您的 API Key。')
-    }
-    
-    const baseUrl = config?.baseUrl || userConfig.baseUrl || process.env.COZE_BASE_URL || 'https://api.coze.cn'
-    const model = 'doubao-seedream-3-0-t2i-250415'
-    
-    logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size, baseUrl })
+    logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
 
-    // 直接调用 Coze API
-    const axios = (await import('axios')).default
-    
-    const requestBody = {
-      model,
-      prompt,
-      size: options?.size || DEFAULT_IMAGE_SIZE,
-      watermark: options?.watermark ?? false,
-      response_format: options?.responseFormat || 'url',
-    }
+    // 使用 SDK 默认配置（沙箱环境内置凭证）
+    // 注意：图像生成使用沙箱环境的内置凭证，不使用用户配置的 PAT
+    // 因为 PAT 权限列表中没有图像生成权限选项
+    const sdkConfig = new Config()
+    const client = new ImageGenerationClient(sdkConfig, headers)
 
     try {
-      const response = await axios.post(
-        `${baseUrl}/api/v3/images/generations`,
-        requestBody,
-        {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            ...headers,
-          },
-          timeout: 180000, // 3分钟
-        }
-      )
+      const response = await client.generate({
+        prompt,
+        size: options?.size || DEFAULT_IMAGE_SIZE,
+        watermark: options?.watermark ?? false,
+        responseFormat: options?.responseFormat || 'url',
+      })
 
       // 检查响应格式
-      const data = response.data
-      
-      // Coze API 错误格式: { code: xxx, msg: "xxx" }
-      if (data.code && data.code !== 0) {
-        throw new Error(`图像生成失败: ${data.msg || data.message || JSON.stringify(data)}`)
-      }
-      
-      // 成功格式: { data: [...], usage: {...} }
-      if (!data.data || !Array.isArray(data.data)) {
-        throw new Error(`图像生成 API 返回格式错误: ${JSON.stringify(data).slice(0, 200)}`)
+      if (!response.data || !Array.isArray(response.data)) {
+        if (response.error) {
+          throw new Error(`图像生成失败: ${response.error.message || JSON.stringify(response.error)}`)
+        }
+        throw new Error(`图像生成 API 返回格式错误`)
       }
 
-      const urls: string[] = []
-      const b64List: string[] = []
-      
-      for (const item of data.data) {
-        if (item.url) {
-          urls.push(item.url)
-        }
-        if (item.b64_json) {
-          b64List.push(item.b64_json)
-        }
-        // 检查单个图片错误
-        if (item.error) {
-          throw new Error(`图片生成错误: ${item.error.message || JSON.stringify(item.error)}`)
-        }
+      const helper = client.getResponseHelper(response)
+
+      if (!helper.success) {
+        throw new Error(helper.errorMessages.join('; ') || '图像生成失败')
       }
 
-      if (urls.length === 0 && b64List.length === 0) {
-        throw new Error('图像生成失败：未返回任何图片')
-      }
-
-      logger.info('Image generation completed', { count: urls.length || b64List.length })
+      logger.info('Image generation completed', { count: helper.imageUrls.length })
 
       return {
-        urls,
-        b64List: b64List.length > 0 ? b64List : undefined,
+        urls: helper.imageUrls,
+        b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
       }
     } catch (err) {
       logger.error('Image generation failed', err)
       
-      // Axios 错误处理
-      if (axios.isAxiosError(err)) {
-        const status = err.response?.status
-        const errorData = err.response?.data
-        
-        if (errorData?.msg) {
-          throw new Error(`图像生成失败: ${errorData.msg} (code: ${errorData.code || status})`)
-        }
-        if (errorData?.error?.message) {
-          throw new Error(`图像生成失败: ${errorData.error.message}`)
-        }
-        if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-          throw new Error('图像生成超时，请稍后重试')
-        }
-        if (err.code === 'ECONNREFUSED') {
-          throw new Error('无法连接到图像生成服务，请检查网络')
-        }
-        throw new Error(`图像生成请求失败: ${err.message}`)
+      if (err instanceof APIError) {
+        throw new Error(`图像生成失败: ${err.message} (status: ${err.statusCode})`)
       }
-      
       throw err
     }
   } finally {
@@ -567,7 +509,9 @@ export async function generateImageFromImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ urls: string[] }> {
-  const client = await createImageClientAsync(config, headers)
+  // 使用 SDK 默认配置（沙箱环境内置凭证）
+  const sdkConfig = new Config()
+  const client = new ImageGenerationClient(sdkConfig, headers)
 
   logger.info('Image-to-image generation started')
 

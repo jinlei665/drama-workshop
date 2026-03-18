@@ -3,7 +3,6 @@ import { S3Storage, HeaderUtils } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 import { memoryScenes, memoryCharacters, memoryProjects } from "@/lib/memory-storage"
 import { getStylePrompt } from "@/lib/styles"
-import { getCozeConfigFromMemory } from "@/lib/memory-store"
 import { generateImage } from "@/lib/ai"
 import axios from "axios"
 
@@ -14,17 +13,6 @@ export async function POST(request: NextRequest) {
   if (!projectId) {
     return NextResponse.json(
       { error: "缺少项目ID" },
-      { status: 400 }
-    )
-  }
-
-  // 获取用户配置
-  const userConfig = getCozeConfigFromMemory()
-  
-  // 检查是否有 API Key
-  if (!userConfig?.apiKey) {
-    return NextResponse.json(
-      { error: "请先在设置页面配置 Coze API Key" },
       { status: 400 }
     )
   }
@@ -102,12 +90,8 @@ export async function POST(request: NextRequest) {
       .forEach(c => characterMap.set(c.id, c))
   }
 
-  // 使用统一的图像生成接口
+  // 使用统一的图像生成接口（沙箱环境内置凭证）
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-  const imageConfig = {
-    apiKey: userConfig.apiKey,
-    baseUrl: userConfig.baseUrl,
-  }
 
   // 初始化对象存储（可选）
   let storage: S3Storage | null = null
@@ -177,11 +161,11 @@ export async function POST(request: NextRequest) {
 
       console.log(`Generating scene ${sceneId} with style ${style}:`, prompt.substring(0, 100))
 
-      // 生成图片（使用统一的图像生成接口，已修复 SDK 内部错误处理）
+      // 生成图片（使用沙箱环境内置凭证）
       const imageResult = await generateImage(prompt, {
         size: '2K',
         watermark: false,
-      }, imageConfig, customHeaders)
+      }, undefined, customHeaders)
 
       // 下载图片
       const imageUrl = imageResult.urls[0]

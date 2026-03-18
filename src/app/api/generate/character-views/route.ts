@@ -3,7 +3,6 @@ import { HeaderUtils } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 import { memoryCharacters, memoryProjects } from "@/lib/memory-storage"
 import { getCharacterStylePrompt } from "@/lib/styles"
-import { getCozeConfigFromMemory } from "@/lib/memory-store"
 import { generateImage } from "@/lib/ai"
 import axios from "axios"
 
@@ -21,21 +20,7 @@ export async function POST(request: NextRequest) {
   // 提取请求头用于转发
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
 
-  // 获取用户配置
-  const userConfig = getCozeConfigFromMemory()
-  
-  // 检查是否有 API Key
-  if (!userConfig?.apiKey) {
-    return NextResponse.json(
-      { error: "请先在设置页面配置 Coze API Key" },
-      { status: 400 }
-    )
-  }
-  
-  console.log('[Character Views] Config:', {
-    hasApiKey: !!userConfig?.apiKey,
-    baseUrl: userConfig?.baseUrl || 'https://api.coze.cn',
-  })
+  console.log('[Character Views] Starting generation for:', characterId)
 
   try {
     // 获取项目风格
@@ -82,16 +67,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`Generating character views for ${characterId} with style ${style}:`, basePrompt.substring(0, 100))
 
-    // 使用统一的图像生成接口（已修复 SDK 内部错误处理）
+    // 使用统一的图像生成接口（使用沙箱环境内置凭证）
     let imageUrl: string
     try {
       const result = await generateImage(basePrompt, {
         size: '2K',
         watermark: false,
-      }, {
-        apiKey: userConfig.apiKey,
-        baseUrl: userConfig.baseUrl,
-      }, customHeaders)
+      }, undefined, customHeaders)
       
       imageUrl = result.urls[0]
       console.log('[Character Views] Image generated successfully:', imageUrl)
