@@ -377,13 +377,20 @@ function CharacterCard({
 
   // 获取图片 URL
   useEffect(() => {
+    // 优先使用直接存储的 imageUrl
+    if (character.imageUrl) {
+      setImageUrl(character.imageUrl)
+      return
+    }
+    
+    // 如果有 frontViewKey，从存储获取签名 URL
     if (character.frontViewKey) {
       fetch(`/api/images?key=${character.frontViewKey}`)
         .then(res => res.json())
         .then(data => setImageUrl(data.url))
         .catch(console.error)
     }
-  }, [character.frontViewKey])
+  }, [character.frontViewKey, character.imageUrl])
 
   return (
     <Card className="group hover:shadow-md transition-shadow">

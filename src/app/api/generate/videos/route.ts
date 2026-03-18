@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateVideoFromImage, DEFAULT_VIDEO_MODEL } from '@/lib/ai';
 import { S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client';
+import { memoryScenes, memoryProjects } from '@/lib/memory-storage';
 
 /**
  * 批量生成视频片段
@@ -23,78 +24,90 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 检查数据库是否可用
-    if (!isDatabaseConfigured()) {
-      return NextResponse.json(
-        { error: '数据库未配置，无法保存视频' },
-        { status: 500 }
-      );
-    }
-
-    const supabase = getSupabaseClient();
+    const useDatabase = isDatabaseConfigured();
+    const supabase = useDatabase ? getSupabaseClient() : null;
 
     // 获取用户配置
     let videoModel = DEFAULT_VIDEO_MODEL;
     let videoResolution: '480p' | '720p' | '1080p' = '720p';
     let videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' = '16:9';
 
-    try {
-      const result = await supabase
-        .from('user_settings')
-        .select('video_model, video_resolution, video_ratio')
-        .limit(1)
-        .maybeSingle();
-      
-      if (result.data) {
-        videoModel = result.data.video_model || DEFAULT_VIDEO_MODEL;
-        if (['480p', '720p', '1080p'].includes(result.data.video_resolution)) {
-          videoResolution = result.data.video_resolution as '480p' | '720p' | '1080p';
+    if (useDatabase && supabase) {
+      try {
+        const result = await supabase
+          .from('user_settings')
+          .select('video_model, video_resolution, video_ratio')
+          .limit(1)
+          .maybeSingle();
+        
+        if (result.data) {
+          videoModel = result.data.video_model || DEFAULT_VIDEO_MODEL;
+          if (['480p', '720p', '1080p'].includes(result.data.video_resolution)) {
+            videoResolution = result.data.video_resolution as '480p' | '720p' | '1080p';
+          }
+          if (['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(result.data.video_ratio)) {
+            videoRatio = result.data.video_ratio as '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
+          }
         }
-        if (['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(result.data.video_ratio)) {
-          videoRatio = result.data.video_ratio as '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
-        }
+      } catch {
+        // 使用默认值
       }
-    } catch {
-      // 使用默认值
     }
 
-    // 获取项目信息
-    const { data: project, error: projectError } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('id', projectId)
-      .maybeSingle();
+    // 获取项目信息和分镜列表
+    let project: any = null;
+    let scenesList: any[] = [];
 
-    if (projectError || !project) {
+    if (useDatabase && supabase) {
+      const { data, error: projectError } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .maybeSingle();
+
+      if (projectError) {
+        console.error('获取项目失败:', projectError);
+      }
+      project = data;
+
+      // 获取分镜列表（按序号排序）
+      let query = supabase
+        .from('scenes')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('scene_number', { ascending: true });
+
+      if (sceneIds && sceneIds.length > 0) {
+        query = query.in('id', sceneIds);
+      }
+
+      const { data: scenesData, error: scenesError } = await query;
+
+      if (scenesError) {
+        console.error('获取分镜失败:', scenesError);
+      }
+      scenesList = scenesData || [];
+    } else {
+      // 使用内存存储
+      project = memoryProjects.find(p => p.id === projectId);
+      scenesList = memoryScenes
+        .filter(s => s.projectId === projectId)
+        .sort((a, b) => a.sceneNumber - b.sceneNumber);
+      
+      if (sceneIds && sceneIds.length > 0) {
+        scenesList = scenesList.filter(s => sceneIds.includes(s.id));
+      }
+    }
+
+    if (!project) {
       return NextResponse.json(
         { error: '项目不存在' },
         { status: 404 }
       );
     }
 
-    // 获取分镜列表（按序号排序）
-    let query = supabase
-      .from('scenes')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('scene_number', 'asc');
-
-    if (sceneIds && sceneIds.length > 0) {
-      query = query.in('id', sceneIds);
-    }
-
-    const { data: scenesList, error: scenesError } = await query;
-
-    if (scenesError) {
-      console.error('获取分镜失败:', scenesError);
-      return NextResponse.json(
-        { error: '获取分镜失败' },
-        { status: 500 }
-      );
-    }
-
-    // 过滤出有图片的分镜
-    const scenesWithImages = (scenesList || []).filter((s: { image_key?: string }) => s.image_key);
+    // 过滤出有图片的分镜（支持 image_key 和 imageUrl）
+    const scenesWithImages = scenesList.filter((s: { image_key?: string; imageUrl?: string }) => s.image_key || s.imageUrl);
     
     if (scenesWithImages.length === 0) {
       return NextResponse.json(
@@ -103,12 +116,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 更新所有分镜的视频状态为 generating
-    const sceneIdsToUpdate = scenesWithImages.map((s: { id: string }) => s.id);
-    await supabase
-      .from('scenes')
-      .update({ video_status: 'generating', updated_at: new Date().toISOString() })
-      .in('id', sceneIdsToUpdate);
+    // 更新所有分镜的视频状态为 generating（仅数据库模式）
+    if (useDatabase && supabase) {
+      const sceneIdsToUpdate = scenesWithImages.map((s: { id: string }) => s.id);
+      await supabase
+        .from('scenes')
+        .update({ video_status: 'generating', updated_at: new Date().toISOString() })
+        .in('id', sceneIdsToUpdate);
+    }
 
     // 初始化对象存储（用于获取图片URL）
     const storage = new S3Storage({
@@ -123,21 +138,24 @@ export async function POST(request: NextRequest) {
 
     // 根据模式选择生成方式
     if (mode === 'fast') {
-      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio);
+      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, useDatabase);
     } else {
-      results = await generateSequential(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio);
+      results = await generateSequential(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, useDatabase);
     }
 
-    // 更新项目状态
-    const completedCount = results.filter(r => r.status === 'completed').length;
-    await supabase
-      .from('projects')
-      .update({
-        final_video_status: completedCount === scenesWithImages.length ? 'completed' : 'partial',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', projectId);
+    // 更新项目状态（仅数据库模式）
+    if (useDatabase && supabase) {
+      const completedCount = results.filter(r => r.status === 'completed').length;
+      await supabase
+        .from('projects')
+        .update({
+          final_video_status: completedCount === scenesWithImages.length ? 'completed' : 'partial',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', projectId);
+    }
 
+    const completedCount = results.filter(r => r.status === 'completed').length;
     return NextResponse.json({
       success: true,
       message: `成功生成 ${completedCount}/${scenesWithImages.length} 个视频片段`,
@@ -163,12 +181,13 @@ function delay(ms: number): Promise<void> {
  * 连续生成模式 - 使用上一帧保持视觉连贯性
  */
 async function generateSequential(
-  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
+  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
   storage: S3Storage,
-  supabase: ReturnType<typeof getSupabaseClient>,
+  supabase: ReturnType<typeof getSupabaseClient> | null,
   videoModel: string,
   videoResolution: '480p' | '720p' | '1080p',
-  videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9'
+  videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
+  useDatabase: boolean
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
   let previousLastFrame: string | null = null;
@@ -190,11 +209,11 @@ async function generateSequential(
         firstFrameUrl = previousLastFrame;
       } else {
         // 获取当前分镜图片的签名URL
-        const imageUrl = await getImageUrl(scene, storage);
-        if (!imageUrl) {
+        const imgUrl = await getImageUrl(scene, storage);
+        if (!imgUrl) {
           throw new Error('无法获取分镜图片URL');
         }
-        firstFrameUrl = imageUrl;
+        firstFrameUrl = imgUrl;
       }
 
       // 构建视频描述
@@ -212,16 +231,25 @@ async function generateSequential(
         generateAudio: true,
       });
 
-      // 更新数据库
-      await supabase
-        .from('scenes')
-        .update({
-          video_url: result.videoUrl,
-          last_frame_url: result.lastFrameUrl || null,
-          video_status: 'completed',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', scene.id);
+      // 更新数据库或内存
+      if (useDatabase && supabase) {
+        await supabase
+          .from('scenes')
+          .update({
+            video_url: result.videoUrl,
+            last_frame_url: result.lastFrameUrl || null,
+            video_status: 'completed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', scene.id);
+      } else {
+        // 更新内存存储
+        const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
+        if (sceneIndex !== -1) {
+          memoryScenes[sceneIndex].videoUrl = result.videoUrl;
+          memoryScenes[sceneIndex].videoStatus = 'completed';
+        }
+      }
 
       results.push({
         sceneId: scene.id,
@@ -236,13 +264,21 @@ async function generateSequential(
     } catch (error) {
       console.error(`分镜 ${scene.scene_number} 视频生成失败:`, error);
       
-      await supabase
-        .from('scenes')
-        .update({
-          video_status: 'failed',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', scene.id);
+      if (useDatabase && supabase) {
+        await supabase
+          .from('scenes')
+          .update({
+            video_status: 'failed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', scene.id);
+      } else {
+        // 更新内存存储
+        const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
+        if (sceneIndex !== -1) {
+          memoryScenes[sceneIndex].videoStatus = 'failed';
+        }
+      }
 
       results.push({
         sceneId: scene.id,
@@ -262,8 +298,12 @@ async function generateSequential(
 /**
  * 获取分镜图片URL
  */
-async function getImageUrl(scene: { image_key?: string; image_url?: string }, storage: S3Storage): Promise<string | null> {
+async function getImageUrl(scene: { image_key?: string; image_url?: string; imageUrl?: string }, storage: S3Storage): Promise<string | null> {
   // 优先使用直接存储的URL
+  if (scene.imageUrl) {
+    return scene.imageUrl;
+  }
+  
   if (scene.image_url) {
     return scene.image_url;
   }
@@ -343,12 +383,13 @@ function buildVideoPrompt(scene: { description: string; dialogue?: string | null
  * 快速生成模式 - 串行生成视频片段
  */
 async function generateFast(
-  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
+  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
   storage: S3Storage,
-  supabase: ReturnType<typeof getSupabaseClient>,
+  supabase: ReturnType<typeof getSupabaseClient> | null,
   videoModel: string,
   videoResolution: '480p' | '720p' | '1080p',
-  videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9'
+  videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
+  useDatabase: boolean
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
 
@@ -361,8 +402,8 @@ async function generateFast(
     }
 
     try {
-      const imageUrl = await getImageUrl(scene, storage);
-      if (!imageUrl) {
+      const imgUrl = await getImageUrl(scene, storage);
+      if (!imgUrl) {
         throw new Error('无法获取分镜图片URL');
       }
 
@@ -371,7 +412,7 @@ async function generateFast(
 
       console.log(`[快速模式] 开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
 
-      const result = await generateVideoFromImage(videoPrompt, imageUrl, {
+      const result = await generateVideoFromImage(videoPrompt, imgUrl, {
         model: videoModel,
         duration,
         ratio: videoRatio,
@@ -379,14 +420,23 @@ async function generateFast(
         generateAudio: true,
       });
 
-      await supabase
-        .from('scenes')
-        .update({
-          video_url: result.videoUrl,
-          video_status: 'completed',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', scene.id);
+      if (useDatabase && supabase) {
+        await supabase
+          .from('scenes')
+          .update({
+            video_url: result.videoUrl,
+            video_status: 'completed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', scene.id);
+      } else {
+        // 更新内存存储
+        const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
+        if (sceneIndex !== -1) {
+          memoryScenes[sceneIndex].videoUrl = result.videoUrl;
+          memoryScenes[sceneIndex].videoStatus = 'completed';
+        }
+      }
 
       results.push({
         sceneId: scene.id,
@@ -398,13 +448,21 @@ async function generateFast(
     } catch (error) {
       console.error(`[快速模式] 分镜 ${scene.scene_number} 视频生成失败:`, error);
 
-      await supabase
-        .from('scenes')
-        .update({
-          video_status: 'failed',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', scene.id);
+      if (useDatabase && supabase) {
+        await supabase
+          .from('scenes')
+          .update({
+            video_status: 'failed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', scene.id);
+      } else {
+        // 更新内存存储
+        const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
+        if (sceneIndex !== -1) {
+          memoryScenes[sceneIndex].videoStatus = 'failed';
+        }
+      }
 
       results.push({
         sceneId: scene.id,
