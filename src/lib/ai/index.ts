@@ -281,7 +281,7 @@ async function invokeBotForImageGeneration(
     throw new Error('通过 Bot 调用图像生成需要配置 Bot ID。请在 Coze 平台创建配置了图像生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
-  logger.info('Invoking Bot for image generation', { botId })
+  logger.info('Invoking Bot for image generation', { botId, promptLength: prompt.length })
   
   // 调用 Bot API，通过特定 prompt 触发图像生成 Skill
   const response = await fetch(`${baseUrl}/v3/chat`, {
@@ -297,25 +297,35 @@ async function invokeBotForImageGeneration(
       auto_save_history: false,
       additional_messages: [{
         role: 'user',
-        content: `[图像生成请求]\n请使用图像生成工具生成以下图片：\n${prompt}\n\n请直接返回生成的图片URL，不要添加其他说明。`,
+        content: `请使用图像生成工具生成以下图片：\n${prompt}`,
         content_type: 'text'
       }],
     }),
   })
   
+  // 获取响应文本
+  const responseText = await response.text()
+  console.log('[Bot Image] Response status:', response.status)
+  console.log('[Bot Image] Response preview:', responseText.slice(0, 500))
+  
   if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText}`)
+    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText} - ${responseText}`)
   }
   
-  const data = await response.json()
+  // 解析响应
+  let data
+  try {
+    data = JSON.parse(responseText)
+  } catch {
+    throw new Error(`Bot API 返回无效 JSON: ${responseText.slice(0, 200)}`)
+  }
+  
+  // 检查是否有错误码
+  if (data.code && data.code !== 0) {
+    throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
+  }
   
   // 解析 Bot 返回的内容，提取图片 URL
-  // Bot 返回的格式可能是：
-  // 1. 直接返回图片 URL
-  // 2. 返回包含图片的消息内容
-  // 3. 返回 JSON 格式的结果
-  
   let content = ''
   if (data.data?.[0]?.content) {
     content = data.data[0].content
@@ -324,6 +334,8 @@ async function invokeBotForImageGeneration(
   } else if (data.content) {
     content = data.content
   }
+  
+  console.log('[Bot Image] Content length:', content.length, 'preview:', content.slice(0, 300))
   
   // 从内容中提取图片 URL
   const urls: string[] = []
@@ -335,19 +347,29 @@ async function invokeBotForImageGeneration(
     urls.push(match[1])
   }
   
-  // 匹配直接的 URL
+  // 匹配直接的图片 URL
   if (urls.length === 0) {
-    const urlRegex = /(https?:\/\/[^\s\)]+\.(?:png|jpg|jpeg|gif|webp))/gi
+    const urlRegex = /(https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|gif|webp|image))/gi
     while ((match = urlRegex.exec(content)) !== null) {
       urls.push(match[1])
     }
   }
   
-  // 匹配 Coze 图片链接格式
+  // 匹配 Coze 文件链接格式
   if (urls.length === 0) {
-    const cozeUrlRegex = /(https?:\/\/[^\s\)]+\/file\/[^\s\)]+)/gi
+    const cozeUrlRegex = /(https?:\/\/[^\s"'<>]+\/file\/[^\s"'<>]+)/gi
     while ((match = cozeUrlRegex.exec(content)) !== null) {
       urls.push(match[1])
+    }
+  }
+  
+  // 匹配 Coze CDN 链接
+  if (urls.length === 0) {
+    const cdnUrlRegex = /(https?:\/\/[^\s"'<>]*\.coze\.cn[^\s"'<>]*)/gi
+    while ((match = cdnUrlRegex.exec(content)) !== null) {
+      if (match[1].includes('image') || match[1].includes('file') || match[1].includes('cdn')) {
+        urls.push(match[1])
+      }
     }
   }
   
@@ -691,31 +713,34 @@ export async function generateImage(
   try {
     logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
 
-    // 策略1: 先尝试沙箱内置凭证
-    try {
-      const sdkConfig = new Config()
-      const client = new ImageGenerationClient(sdkConfig, headers)
+    // 策略1: 先尝试沙箱内置凭证（仅在有沙箱环境时）
+    const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
+    if (hasSandboxCredentials) {
+      try {
+        const sdkConfig = new Config()
+        const client = new ImageGenerationClient(sdkConfig, headers)
 
-      const response = await client.generate({
-        prompt,
-        size: options?.size || DEFAULT_IMAGE_SIZE,
-        watermark: options?.watermark ?? false,
-        responseFormat: options?.responseFormat || 'url',
-      })
+        const response = await client.generate({
+          prompt,
+          size: options?.size || DEFAULT_IMAGE_SIZE,
+          watermark: options?.watermark ?? false,
+          responseFormat: options?.responseFormat || 'url',
+        })
 
-      if (response.data && Array.isArray(response.data)) {
-        const helper = client.getResponseHelper(response)
-        if (helper.success) {
-          logger.info('Image generation completed with sandbox credentials', { count: helper.imageUrls.length })
-          return {
-            urls: helper.imageUrls,
-            b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+        if (response.data && Array.isArray(response.data)) {
+          const helper = client.getResponseHelper(response)
+          if (helper.success) {
+            logger.info('Image generation completed with sandbox credentials', { count: helper.imageUrls.length })
+            return {
+              urls: helper.imageUrls,
+              b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+            }
           }
         }
+      } catch (sandboxErr) {
+        const errMsg = sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr)
+        logger.warn('Sandbox credentials failed, trying user config:', { error: errMsg })
       }
-    } catch (sandboxErr) {
-      const errMsg = sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr)
-      logger.warn('Sandbox credentials failed, trying user config:', { error: errMsg })
     }
 
     // 策略2: 尝试用户配置的 PAT
