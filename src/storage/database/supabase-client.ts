@@ -13,25 +13,13 @@ let cachedClient: any = null;
 let cachedDbType: DatabaseType | null = null;
 
 /**
- * 加载环境变量
- */
-function loadEnv(): void {
-  try {
-    require('dotenv').config();
-  } catch {
-    // dotenv 不可用
-  }
-}
-
-/**
  * 获取数据库类型
+ * Next.js 会自动加载 .env 文件，无需手动加载
  */
 export function getDatabaseType(): DatabaseType {
   if (cachedDbType) {
     return cachedDbType;
   }
-  
-  loadEnv();
   
   const dbType = process.env.DATABASE_TYPE?.toLowerCase();
   if (dbType === 'mysql') {
@@ -66,8 +54,6 @@ export function getSupabaseClient(token?: string): any {
     return cachedClient;
   }
   
-  loadEnv();
-  
   const dbType = getDatabaseType();
   
   // 如果是内存模式，返回内存存储客户端
@@ -76,18 +62,13 @@ export function getSupabaseClient(token?: string): any {
     return cachedClient;
   }
   
-  // 如果配置了 MySQL，尝试动态加载 mysql2
+  // 如果配置了 MySQL，尝试动态加载 mysql2（注意：MySQL 需要 async 初始化）
   if (dbType === 'mysql') {
-    try {
-      const { createMySqlClient } = require('./mysql-client');
-      cachedClient = createMySqlClient();
-      return cachedClient;
-    } catch (err) {
-      console.warn('MySQL not available, falling back to memory storage:', err);
-      cachedClient = createMemoryClient();
-      cachedDbType = 'memory';
-      return cachedClient;
-    }
+    // MySQL 需要 async 初始化，同步调用时回退到内存存储
+    console.warn('MySQL requires async initialization, using memory storage. Consider using Supabase for better compatibility.');
+    cachedClient = createMemoryClient();
+    cachedDbType = 'memory';
+    return cachedClient;
   }
   
   // 使用 Supabase
@@ -114,6 +95,7 @@ export function getSupabaseClient(token?: string): any {
 
 /**
  * 创建内存存储客户端
+ * 实现完整的 Supabase-like API
  */
 function createMemoryClient() {
   const storage: Record<string, any[]> = {
@@ -121,98 +103,182 @@ function createMemoryClient() {
     characters: [],
     scenes: [],
     episodes: [],
+    user_settings: [],
   };
   
   let idCounter = 1;
   
   const generateId = () => `${Date.now()}-${idCounter++}`;
   
-  return {
-    from: (table: string) => ({
-      select: (fields: string = '*') => ({
-        order: (column: string, options?: { ascending?: boolean }) => ({
-          limit: (count: number) => ({
-            then: async (resolve: (value: { data: any[] | null; error: any | null }) => void) => {
-              const data = storage[table] || [];
-              resolve({ data, error: null });
-            }
-          }),
-          then: async (resolve: (value: { data: any[] | null; error: any | null }) => void) => {
-            const data = storage[table] || [];
-            resolve({ data, error: null });
-          }
-        }),
-        eq: (column: string, value: any) => ({
+  /**
+   * 构建查询链
+   */
+  function buildQueryChain(table: string) {
+    let filters: Array<{ type: string; column: string; value: any }> = [];
+    let orders: Array<{ column: string; ascending: boolean }> = [];
+    let limitCount: number | null = null;
+    
+    const executeQuery = async () => {
+      let data = [...(storage[table] || [])];
+      
+      // 应用过滤条件
+      for (const filter of filters) {
+        if (filter.type === 'eq') {
+          data = data.filter(item => item[filter.column] === filter.value);
+        } else if (filter.type === 'in') {
+          data = data.filter(item => filter.value.includes(item[filter.column]));
+        } else if (filter.type === 'neq') {
+          data = data.filter(item => item[filter.column] !== filter.value);
+        }
+      }
+      
+      // 应用排序
+      for (const order of orders) {
+        data.sort((a, b) => {
+          const aVal = a[order.column];
+          const bVal = b[order.column];
+          if (aVal === bVal) return 0;
+          const cmp = aVal < bVal ? -1 : 1;
+          return order.ascending ? cmp : -cmp;
+        });
+      }
+      
+      // 应用限制
+      if (limitCount !== null) {
+        data = data.slice(0, limitCount);
+      }
+      
+      return data;
+    };
+    
+    const chain = {
+      select: (fields: string = '*') => {
+        const selectChain = {
+          eq: (column: string, value: any) => {
+            filters.push({ type: 'eq', column, value });
+            return selectChain;
+          },
+          neq: (column: string, value: any) => {
+            filters.push({ type: 'neq', column, value });
+            return selectChain;
+          },
+          in: (column: string, value: any[]) => {
+            filters.push({ type: 'in', column, value });
+            return selectChain;
+          },
+          order: (column: string, options?: { ascending?: boolean }) => {
+            orders.push({ column, ascending: options?.ascending ?? true });
+            return selectChain;
+          },
+          limit: (count: number) => {
+            limitCount = count;
+            return selectChain;
+          },
           single: async () => {
-            const data = storage[table] || [];
-            const item = data.find(item => item[column] === value);
-            return { data: item || null, error: null };
+            const data = await executeQuery();
+            const item = data[0] || null;
+            return { data: item, error: item ? null : { message: 'Not found' } };
+          },
+          maybeSingle: async () => {
+            const data = await executeQuery();
+            const item = data[0] || null;
+            return { data: item, error: null };
           },
           then: async (resolve: (value: { data: any[] | null; error: any | null }) => void) => {
-            const data = storage[table] || [];
-            const filtered = data.filter(item => item[column] === value);
-            resolve({ data: filtered, error: null });
+            const data = await executeQuery();
+            resolve({ data, error: null });
           }
-        }),
-        then: async (resolve: (value: { data: any[] | null; error: any | null }) => void) => {
-          const data = storage[table] || [];
-          resolve({ data, error: null });
-        }
-      }),
-      insert: (data: any) => ({
-        select: () => ({
-          single: async () => {
-            const item = {
-              id: generateId(),
-              ...data,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            };
-            if (!storage[table]) storage[table] = [];
-            storage[table].push(item);
-            return { data: item, error: null };
+        };
+        return selectChain;
+      },
+      insert: (data: any | any[]) => {
+        const items = Array.isArray(data) ? data : [data];
+        const insertedItems: any[] = [];
+        
+        const insertChain = {
+          select: () => ({
+            single: async () => {
+              const item = {
+                id: generateId(),
+                ...items[0],
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+              if (!storage[table]) storage[table] = [];
+              storage[table].push(item);
+              return { data: item, error: null };
+            }
+          }),
+          then: async (resolve: (value: { data: any | null; error: any | null }) => void) => {
+            for (const itemData of items) {
+              const item = {
+                id: generateId(),
+                ...itemData,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+              if (!storage[table]) storage[table] = [];
+              storage[table].push(item);
+              insertedItems.push(item);
+            }
+            resolve({ data: insertedItems.length === 1 ? insertedItems[0] : insertedItems, error: null });
           }
-        }),
-        then: async (resolve: (value: { data: any | null; error: any | null }) => void) => {
-          const item = {
-            id: generateId(),
-            ...data,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          if (!storage[table]) storage[table] = [];
-          storage[table].push(item);
-          resolve({ data: item, error: null });
-        }
-      }),
-      update: (data: any) => ({
-        eq: (column: string, value: any) => ({
+        };
+        return insertChain;
+      },
+      update: (data: any) => {
+        let updateFilters: Array<{ type: string; column: string; value: any }> = [];
+        
+        const updateChain = {
+          eq: (column: string, value: any) => {
+            updateFilters.push({ type: 'eq', column, value });
+            return updateChain;
+          },
           select: () => ({
             single: async () => {
               const items = storage[table] || [];
-              const index = items.findIndex(item => item[column] === value);
-              if (index !== -1) {
-                items[index] = { ...items[index], ...data, updated_at: new Date().toISOString() };
-                return { data: items[index], error: null };
+              let targetItem = items.find(item => {
+                return updateFilters.every(f => item[f.column] === f.value);
+              });
+              
+              if (targetItem) {
+                Object.assign(targetItem, data, { updated_at: new Date().toISOString() });
+                return { data: targetItem, error: null };
               }
               return { data: null, error: { message: 'Not found' } };
             }
           })
-        })
-      }),
-      delete: () => ({
-        eq: (column: string, value: any) => ({
+        };
+        return updateChain;
+      },
+      delete: () => {
+        let deleteFilters: Array<{ type: string; column: string; value: any }> = [];
+        
+        const deleteChain = {
+          eq: (column: string, value: any) => {
+            deleteFilters.push({ type: 'eq', column, value });
+            return deleteChain;
+          },
           then: async (resolve: (value: { data: any | null; error: any | null }) => void) => {
             const items = storage[table] || [];
-            const index = items.findIndex(item => item[column] === value);
+            const index = items.findIndex(item => {
+              return deleteFilters.every(f => item[f.column] === f.value);
+            });
             if (index !== -1) {
               items.splice(index, 1);
             }
             resolve({ data: null, error: null });
           }
-        })
-      })
-    })
+        };
+        return deleteChain;
+      }
+    };
+    
+    return chain;
+  }
+  
+  return {
+    from: (table: string) => buildQueryChain(table)
   };
 }
 

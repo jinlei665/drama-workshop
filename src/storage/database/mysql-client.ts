@@ -6,26 +6,13 @@
 let pool: any = null;
 
 /**
- * 加载环境变量
+ * 动态加载 mysql2（ESM 兼容）
  */
-function loadEnv(): void {
+async function loadMysql2(): Promise<any> {
   try {
-    require('dotenv').config();
-  } catch {
-    // dotenv 不可用
-  }
-}
-
-/**
- * 动态加载 mysql2
- * 使用 Function 构造器来避免 Webpack 静态分析
- */
-function loadMysql2(): any {
-  try {
-    // 使用 Function 构造器来避免 Webpack 解析 require
-    // eslint-disable-next-line no-new-func
-    const dynamicRequire = new Function('module', 'return require(module)');
-    return dynamicRequire('mysql2/promise');
+    // 使用动态 import 代替 require
+    const mysql = await import('mysql2/promise');
+    return mysql.default || mysql;
   } catch (err) {
     console.warn('mysql2 not available:', err);
     return null;
@@ -33,11 +20,9 @@ function loadMysql2(): any {
 }
 
 /**
- * 创建 MySQL 客户端
+ * 创建 MySQL 客户端（异步版本）
  */
-export function createMySqlClient() {
-  loadEnv();
-  
+export async function createMySqlClientAsync() {
   const databaseUrl = process.env.DATABASE_URL;
   
   if (!databaseUrl || !databaseUrl.startsWith('mysql://')) {
@@ -45,7 +30,7 @@ export function createMySqlClient() {
   }
   
   // 动态导入 mysql2
-  const mysql = loadMysql2();
+  const mysql = await loadMysql2();
   if (!mysql) {
     throw new Error('mysql2 package not available. Please install it with: pnpm add mysql2');
   }
@@ -63,6 +48,21 @@ export function createMySqlClient() {
   });
   
   return createQueryBuilder(pool);
+}
+
+/**
+ * 创建 MySQL 客户端（同步版本，向后兼容）
+ * 注意：此版本在 ESM 环境下可能失败，建议使用 createMySqlClientAsync
+ */
+export function createMySqlClient() {
+  const databaseUrl = process.env.DATABASE_URL;
+  
+  if (!databaseUrl || !databaseUrl.startsWith('mysql://')) {
+    throw new Error('MySQL not configured');
+  }
+  
+  // 尝试同步加载（可能在某些环境下失败）
+  throw new Error('MySQL client requires async initialization. Please use Supabase client instead.');
 }
 
 /**

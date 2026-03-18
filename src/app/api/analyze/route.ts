@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL } from "@/lib/ai"
+import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL, getServerAIConfig } from "@/lib/ai"
 import { memoryCharacters, memoryScenes, generateId } from "@/lib/memory-storage"
-import { getUserAIServiceConfig } from "@/lib/model-config"
 
 // 增加超时配置 - Next.js API 路由最大执行时间
 export const maxDuration = 300 // 5分钟
@@ -14,8 +13,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "内容不能为空" }, { status: 400 })
   }
 
-  // 使用统一配置获取用户设置
-  const aiConfig = await getUserAIServiceConfig(request.headers)
+  // 使用服务端配置获取用户设置
+  const aiConfig = await getServerAIConfig()
   
   // 获取用户配置（可选，用于日志）
   let userSettings: {

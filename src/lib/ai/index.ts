@@ -132,6 +132,32 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
 }
 
 /**
+ * 获取服务端 AI 配置（供 API 路由使用）
+ */
+export async function getServerAIConfig(): Promise<{
+  apiKey?: string
+  baseUrl?: string
+  model: string
+  useSystemDefault: boolean
+}> {
+  const userConfig = await getUserCozeConfig()
+  
+  if (userConfig.apiKey) {
+    return {
+      apiKey: userConfig.apiKey,
+      baseUrl: userConfig.baseUrl,
+      model: DEFAULT_LLM_MODEL,
+      useSystemDefault: false,
+    }
+  }
+  
+  return {
+    model: DEFAULT_LLM_MODEL,
+    useSystemDefault: true,
+  }
+}
+
+/**
  * 创建 LLM 客户端
  * 支持用户配置的 Coze API Key
  */
