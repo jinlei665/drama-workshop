@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     // 获取项目信息和分镜列表
     let project: any = null;
     let scenesList: any[] = [];
+    let actuallyUseDatabase = false;
 
     if (useDatabase && supabase) {
       const { data, error: projectError } = await supabase
@@ -66,29 +67,34 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (projectError) {
-        console.error('获取项目失败:', projectError);
+        console.warn('获取项目失败，回退到内存存储:', projectError.message);
+      } else if (data) {
+        project = data;
+        actuallyUseDatabase = true;
+
+        // 获取分镜列表（按序号排序）
+        let query = supabase
+          .from('scenes')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('scene_number', { ascending: true });
+
+        if (sceneIds && sceneIds.length > 0) {
+          query = query.in('id', sceneIds);
+        }
+
+        const { data: scenesData, error: scenesError } = await query;
+
+        if (scenesError) {
+          console.warn('获取分镜失败:', scenesError.message);
+        }
+        scenesList = scenesData || [];
       }
-      project = data;
-
-      // 获取分镜列表（按序号排序）
-      let query = supabase
-        .from('scenes')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('scene_number', { ascending: true });
-
-      if (sceneIds && sceneIds.length > 0) {
-        query = query.in('id', sceneIds);
-      }
-
-      const { data: scenesData, error: scenesError } = await query;
-
-      if (scenesError) {
-        console.error('获取分镜失败:', scenesError);
-      }
-      scenesList = scenesData || [];
-    } else {
-      // 使用内存存储
+    }
+    
+    // 如果数据库中没有找到，回退到内存存储
+    if (!project) {
+      console.log('从内存存储获取项目:', projectId);
       project = memoryProjects.find(p => p.id === projectId);
       scenesList = memoryScenes
         .filter(s => s.projectId === projectId)
@@ -107,7 +113,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 过滤出有图片的分镜（支持 image_key 和 imageUrl）
-    const scenesWithImages = scenesList.filter((s: { image_key?: string; imageUrl?: string }) => s.image_key || s.imageUrl);
+    const scenesWithImages = scenesList.filter((s: { image_key?: string; image_url?: string; imageUrl?: string }) => s.image_key || s.image_url || s.imageUrl);
     
     if (scenesWithImages.length === 0) {
       return NextResponse.json(
@@ -117,7 +123,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 更新所有分镜的视频状态为 generating（仅数据库模式）
-    if (useDatabase && supabase) {
+    if (actuallyUseDatabase && supabase) {
       const sceneIdsToUpdate = scenesWithImages.map((s: { id: string }) => s.id);
       await supabase
         .from('scenes')
@@ -138,13 +144,13 @@ export async function POST(request: NextRequest) {
 
     // 根据模式选择生成方式
     if (mode === 'fast') {
-      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, useDatabase);
+      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase);
     } else {
-      results = await generateSequential(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, useDatabase);
+      results = await generateSequential(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase);
     }
 
     // 更新项目状态（仅数据库模式）
-    if (useDatabase && supabase) {
+    if (actuallyUseDatabase && supabase) {
       const completedCount = results.filter(r => r.status === 'completed').length;
       await supabase
         .from('projects')

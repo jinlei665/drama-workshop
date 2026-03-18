@@ -52,17 +52,21 @@ export async function POST(request: NextRequest) {
     style = project.style
   }
   
-  // 从数据库获取
+  // 从数据库获取风格
+  let actuallyUseDatabase = false
   if (isDatabaseConfigured()) {
     const supabase = getSupabaseClient()
-    const { data: projectData } = await supabase
+    const { data: projectData, error } = await supabase
       .from('projects')
       .select('style')
       .eq('id', projectId)
-      .single()
+      .maybeSingle()
     
-    if (projectData?.style) {
-      style = projectData.style
+    if (!error && projectData) {
+      actuallyUseDatabase = true
+      if (projectData.style) {
+        style = projectData.style
+      }
     }
   }
 
@@ -72,7 +76,7 @@ export async function POST(request: NextRequest) {
   // 获取分镜列表
   let scenesList: any[] = []
 
-  if (isDatabaseConfigured()) {
+  if (actuallyUseDatabase && isDatabaseConfigured()) {
     const supabase = getSupabaseClient()
     let query = supabase
       .from('scenes')
@@ -90,12 +94,19 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await query
 
-    if (error || !data || data.length === 0) {
-      return new Response(JSON.stringify({ error: '没有可用的分镜' }), { status: 400 })
+    if (error) {
+      console.warn('数据库查询分镜失败，回退到内存存储:', error.message)
     }
-    scenesList = data
-  } else {
-    // 使用内存存储
+    if (data && data.length > 0) {
+      scenesList = data
+    } else {
+      // 数据库没有数据，回退到内存
+      actuallyUseDatabase = false
+    }
+  }
+  
+  // 如果不使用数据库或数据库没有数据，使用内存存储
+  if (!actuallyUseDatabase || scenesList.length === 0) {
     scenesList = memoryScenes.filter(s => s.projectId === projectId)
       .sort((a, b) => a.sceneNumber - b.sceneNumber)
 
@@ -143,14 +154,17 @@ export async function POST(request: NextRequest) {
 
       // 获取用户配置
       const userConfig = getCozeConfigFromMemory()
-      const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
       
-      // 使用用户配置或默认配置
-      const config = new Config({
-        apiKey: userConfig?.apiKey || undefined,
-        baseUrl: userConfig?.baseUrl || defaultBaseUrl,
-        timeout: 300000,
-      })
+      // 使用 SDK 默认配置（会自动从环境变量获取 API Key 和 baseUrl）
+      // 只有在用户明确配置了 apiKey 时才覆盖默认配置
+      const config = userConfig?.apiKey 
+        ? new Config({
+            apiKey: userConfig.apiKey,
+            baseUrl: userConfig.baseUrl || undefined,
+            timeout: 300000,
+          })
+        : new Config({ timeout: 300000 })  // 使用默认配置，自动从环境变量获取凭证
+      
       const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
       const client = new VideoGenerationClient(config, customHeaders)
 
@@ -168,7 +182,8 @@ export async function POST(request: NextRequest) {
         console.warn("Storage not available:", e)
       }
 
-      const supabase = isDatabaseConfigured() ? getSupabaseClient() : null
+      // 只在数据库真正有数据时使用数据库
+      const supabase = actuallyUseDatabase ? getSupabaseClient() : null
       const videoModel = 'doubao-seedance-1-5-pro-251215'
 
       // 延迟函数
@@ -305,6 +320,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 顺序生成
+      const results: { success: boolean }[] = []
       for (let i = 0; i < scenesWithImages.length; i++) {
         if (isAborted) break
 
@@ -313,13 +329,12 @@ export async function POST(request: NextRequest) {
           await delay(5000)
         }
 
-        await generateSingleVideo(scenesWithImages[i], i)
+        const result = await generateSingleVideo(scenesWithImages[i], i)
+        results.push(result || { success: false })
       }
 
       // 完成
-      const completedCount = scenesWithImages.filter((s: any) => 
-        (s.video_status || s.videoStatus) === 'completed'
-      ).length
+      const completedCount = results.filter(r => r.success).length
       sendEvent('done', {
         total: scenesWithImages.length,
         completed: completedCount,
