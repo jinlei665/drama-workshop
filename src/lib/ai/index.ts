@@ -211,6 +211,247 @@ export async function getServerAIConfig(): Promise<{
   }
 }
 
+// ==================== Bot Skills 调用 ====================
+
+/**
+ * 获取用户配置的 Bot ID
+ * 用于通过 Bot 调用 Skills（如图像生成、视频生成）
+ */
+async function getBotId(): Promise<string | null> {
+  try {
+    // 先尝试从数据库获取
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      try {
+        const db = getSupabaseClient()
+        const { data, error } = await db
+          .from('user_settings')
+          .select('coze_bot_id')
+          .maybeSingle()
+        
+        if (!error && data?.coze_bot_id) {
+          console.log('[AI Config] Got bot_id from database')
+          return data.coze_bot_id
+        }
+      } catch {
+        // 数据库不可用，继续尝试内存存储
+      }
+    }
+    
+    // 尝试从内存存储获取
+    const { getSettingsFromMemory } = await import('@/lib/memory-store')
+    const settings = getSettingsFromMemory()
+    if (settings?.coze_bot_id) {
+      console.log('[AI Config] Got bot_id from memory store')
+      return settings.coze_bot_id as string
+    }
+  } catch {
+    // 忽略错误
+  }
+  
+  return null
+}
+
+/**
+ * 通过 Bot 调用图像生成 Skill
+ * 当 PAT 没有 ImageGenerationClient 权限时，可以通过配置了图像生成 Skill 的 Bot 来调用
+ * 
+ * 使用方法：
+ * 1. 在 Coze 平台创建一个 Bot
+ * 2. 给 Bot 配置图像生成 Skill
+ * 3. 在设置页面配置 Bot ID
+ * 
+ * @param prompt 图像生成提示词
+ * @param config API 配置（apiKey, baseUrl）
+ * @returns 生成的图像 URL 列表
+ */
+async function invokeBotForImageGeneration(
+  prompt: string,
+  config?: { apiKey?: string; baseUrl?: string }
+): Promise<{ urls: string[] }> {
+  const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
+  const botId = await getBotId()
+  
+  if (!apiKey) {
+    throw new Error('通过 Bot 调用图像生成需要配置 Coze API Key')
+  }
+  
+  if (!botId) {
+    throw new Error('通过 Bot 调用图像生成需要配置 Bot ID。请在 Coze 平台创建配置了图像生成 Skill 的智能体，并在设置页面配置 Bot ID。')
+  }
+  
+  logger.info('Invoking Bot for image generation', { botId })
+  
+  // 调用 Bot API，通过特定 prompt 触发图像生成 Skill
+  const response = await fetch(`${baseUrl}/v3/chat`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      bot_id: botId,
+      user_id: 'drama-workshop-image-gen',
+      stream: false,
+      auto_save_history: false,
+      additional_messages: [{
+        role: 'user',
+        content: `[图像生成请求]\n请使用图像生成工具生成以下图片：\n${prompt}\n\n请直接返回生成的图片URL，不要添加其他说明。`,
+        content_type: 'text'
+      }],
+    }),
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText}`)
+  }
+  
+  const data = await response.json()
+  
+  // 解析 Bot 返回的内容，提取图片 URL
+  // Bot 返回的格式可能是：
+  // 1. 直接返回图片 URL
+  // 2. 返回包含图片的消息内容
+  // 3. 返回 JSON 格式的结果
+  
+  let content = ''
+  if (data.data?.[0]?.content) {
+    content = data.data[0].content
+  } else if (data.messages?.[0]?.content) {
+    content = data.messages[0].content
+  } else if (data.content) {
+    content = data.content
+  }
+  
+  // 从内容中提取图片 URL
+  const urls: string[] = []
+  
+  // 匹配 Markdown 图片语法 ![alt](url)
+  const markdownRegex = /!\[.*?\]\((https?:\/\/[^\s\)]+)\)/g
+  let match
+  while ((match = markdownRegex.exec(content)) !== null) {
+    urls.push(match[1])
+  }
+  
+  // 匹配直接的 URL
+  if (urls.length === 0) {
+    const urlRegex = /(https?:\/\/[^\s\)]+\.(?:png|jpg|jpeg|gif|webp))/gi
+    while ((match = urlRegex.exec(content)) !== null) {
+      urls.push(match[1])
+    }
+  }
+  
+  // 匹配 Coze 图片链接格式
+  if (urls.length === 0) {
+    const cozeUrlRegex = /(https?:\/\/[^\s\)]+\/file\/[^\s\)]+)/gi
+    while ((match = cozeUrlRegex.exec(content)) !== null) {
+      urls.push(match[1])
+    }
+  }
+  
+  if (urls.length === 0) {
+    logger.warn('Bot returned no image URLs', { content: content.slice(0, 500) })
+    throw new Error('Bot 未返回有效的图片链接。请确保 Bot 已正确配置图像生成 Skill。')
+  }
+  
+  logger.info('Bot image generation completed', { count: urls.length })
+  return { urls }
+}
+
+/**
+ * 通过 Bot 调用视频生成 Skill
+ * 当 PAT 没有 VideoGenerationClient 权限时，可以通过配置了视频生成 Skill 的 Bot 来调用
+ * 
+ * @param prompt 视频生成提示词
+ * @param config API 配置（apiKey, baseUrl）
+ * @returns 生成的视频 URL
+ */
+async function invokeBotForVideoGeneration(
+  prompt: string,
+  config?: { apiKey?: string; baseUrl?: string }
+): Promise<{ videoUrl: string }> {
+  const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
+  const botId = await getBotId()
+  
+  if (!apiKey) {
+    throw new Error('通过 Bot 调用视频生成需要配置 Coze API Key')
+  }
+  
+  if (!botId) {
+    throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
+  }
+  
+  logger.info('Invoking Bot for video generation', { botId })
+  
+  // 调用 Bot API，通过特定 prompt 触发视频生成 Skill
+  const response = await fetch(`${baseUrl}/v3/chat`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      bot_id: botId,
+      user_id: 'drama-workshop-video-gen',
+      stream: false,
+      auto_save_history: false,
+      additional_messages: [{
+        role: 'user',
+        content: `[视频生成请求]\n请使用视频生成工具生成以下视频：\n${prompt}\n\n请直接返回生成的视频URL，不要添加其他说明。`,
+        content_type: 'text'
+      }],
+    }),
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText}`)
+  }
+  
+  const data = await response.json()
+  
+  // 解析 Bot 返回的内容，提取视频 URL
+  let content = ''
+  if (data.data?.[0]?.content) {
+    content = data.data[0].content
+  } else if (data.messages?.[0]?.content) {
+    content = data.messages[0].content
+  } else if (data.content) {
+    content = data.content
+  }
+  
+  // 从内容中提取视频 URL
+  let videoUrl = ''
+  
+  // 匹配视频 URL（mp4, webm 等格式）
+  const videoRegex = /(https?:\/\/[^\s\)]+\.(?:mp4|webm|mov))/i
+  const match = videoRegex.exec(content)
+  if (match) {
+    videoUrl = match[1]
+  }
+  
+  // 匹配 Coze 视频链接格式
+  if (!videoUrl) {
+    const cozeUrlRegex = /(https?:\/\/[^\s\)]+\/file\/[^\s\)]+)/i
+    const cozeMatch = cozeUrlRegex.exec(content)
+    if (cozeMatch) {
+      videoUrl = cozeMatch[1]
+    }
+  }
+  
+  if (!videoUrl) {
+    logger.warn('Bot returned no video URL', { content: content.slice(0, 500) })
+    throw new Error('Bot 未返回有效的视频链接。请确保 Bot 已正确配置视频生成 Skill。')
+  }
+  
+  logger.info('Bot video generation completed', { videoUrl })
+  return { videoUrl }
+}
+
+// ==================== LLM 服务 ====================
+
 /**
  * 创建 LLM 客户端
  * 支持用户配置的 Coze API Key
@@ -477,49 +718,68 @@ export async function generateImage(
       logger.warn('Sandbox credentials failed, trying user config:', { error: errMsg })
     }
 
-    // 策略2: 回退到用户配置
+    // 策略2: 尝试用户配置的 PAT
     const userConfig = await getUserCozeConfig()
     const apiKey = config?.apiKey || userConfig?.apiKey
     
-    if (!apiKey) {
-      throw new Error('图像生成失败：沙箱凭证不可用，且未配置用户 API Key。如果您在本地部署，请在设置页面配置 Coze API Key。')
-    }
+    if (apiKey) {
+      try {
+        logger.info('Trying image generation with user credentials')
+        
+        const userConfigObj = new Config({
+          apiKey,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl || 'https://api.coze.cn',
+          timeout: 180000,
+        })
+        const client = new ImageGenerationClient(userConfigObj, headers)
 
-    logger.info('Trying image generation with user credentials')
-    
-    const userConfigObj = new Config({
-      apiKey,
-      baseUrl: config?.baseUrl || userConfig?.baseUrl || 'https://api.coze.cn',
-      timeout: 180000,
-    })
-    const client = new ImageGenerationClient(userConfigObj, headers)
+        const response = await client.generate({
+          prompt,
+          size: options?.size || DEFAULT_IMAGE_SIZE,
+          watermark: options?.watermark ?? false,
+          responseFormat: options?.responseFormat || 'url',
+        })
 
-    const response = await client.generate({
-      prompt,
-      size: options?.size || DEFAULT_IMAGE_SIZE,
-      watermark: options?.watermark ?? false,
-      responseFormat: options?.responseFormat || 'url',
-    })
-
-    if (!response.data || !Array.isArray(response.data)) {
-      if (response.error) {
-        throw new Error(`图像生成失败: ${response.error.message || JSON.stringify(response.error)}`)
+        if (response.data && Array.isArray(response.data)) {
+          const helper = client.getResponseHelper(response)
+          if (helper.success) {
+            logger.info('Image generation completed with user credentials', { count: helper.imageUrls.length })
+            return {
+              urls: helper.imageUrls,
+              b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+            }
+          }
+        }
+        
+        if (response.error) {
+          throw new Error(`图像生成失败: ${response.error.message || JSON.stringify(response.error)}`)
+        }
+      } catch (patErr) {
+        const errMsg = patErr instanceof Error ? patErr.message : String(patErr)
+        logger.warn('User PAT failed for image generation:', { error: errMsg })
+        // PAT 失败，继续尝试 Bot Skills
       }
-      throw new Error('图像生成 API 返回格式错误')
     }
 
-    const helper = client.getResponseHelper(response)
-
-    if (!helper.success) {
-      throw new Error(helper.errorMessages.join('; ') || '图像生成失败')
+    // 策略3: 通过 Bot 调用 Skills
+    logger.info('Trying image generation via Bot Skills')
+    try {
+      const botResult = await invokeBotForImageGeneration(prompt, {
+        apiKey: apiKey || undefined,
+        baseUrl: config?.baseUrl || userConfig?.baseUrl,
+      })
+      
+      if (botResult.urls.length > 0) {
+        logger.info('Image generation completed via Bot Skills', { count: botResult.urls.length })
+        return { urls: botResult.urls }
+      }
+    } catch (botErr) {
+      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+      logger.warn('Bot Skills failed for image generation:', { error: errMsg })
     }
 
-    logger.info('Image generation completed with user credentials', { count: helper.imageUrls.length })
-
-    return {
-      urls: helper.imageUrls,
-      b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
-    }
+    // 所有策略都失败
+    throw new Error('图像生成失败：所有方式均不可用。请确保：(1) 在沙箱环境中运行，或 (2) 配置有效的 Coze API Key，或 (3) 创建配置了图像生成 Skill 的 Bot 并配置 Bot ID。')
   } catch (err) {
     logger.error('Image generation failed', err)
     
@@ -658,11 +918,12 @@ export async function generateVideo(
   const savedProxy = disableProxy()
   
   try {
-    const client = await createVideoClientAsync(config, headers)
-
     logger.info('Video generation started', { prompt: prompt.slice(0, 100) })
 
+    // 策略1: 尝试直接调用视频生成 API
     try {
+      const client = await createVideoClientAsync(config, headers)
+
       const content = [{ type: 'text' as const, text: prompt }]
 
       const response = await client.videoGeneration(content, {
@@ -674,24 +935,46 @@ export async function generateVideo(
         watermark: options?.watermark ?? false,
       })
 
-      if (!response.videoUrl) {
-        throw new Error('Video generation failed: no video URL returned')
+      if (response.videoUrl) {
+        logger.info('Video generation completed via direct API')
+        return {
+          videoUrl: response.videoUrl,
+          lastFrameUrl: response.lastFrameUrl || undefined,
+        }
       }
-
-      logger.info('Video generation completed')
-
-      return {
-        videoUrl: response.videoUrl,
-        lastFrameUrl: response.lastFrameUrl || undefined,
-      }
-    } catch (err) {
-      logger.error('Video generation failed', err)
-
-      if (err instanceof APIError) {
-        throw Errors.AIRequestFailed('Video', `${err.message} (status: ${err.statusCode})`)
-      }
-      throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
+    } catch (directErr) {
+      const errMsg = directErr instanceof Error ? directErr.message : String(directErr)
+      logger.warn('Direct video generation API failed:', { error: errMsg })
+      // 直接调用失败，尝试 Bot Skills
     }
+
+    // 策略2: 通过 Bot 调用 Skills
+    logger.info('Trying video generation via Bot Skills')
+    try {
+      const userConfig = await getUserCozeConfig()
+      const botResult = await invokeBotForVideoGeneration(prompt, {
+        apiKey: config?.apiKey || userConfig?.apiKey || undefined,
+        baseUrl: config?.baseUrl || userConfig?.baseUrl,
+      })
+      
+      if (botResult.videoUrl) {
+        logger.info('Video generation completed via Bot Skills')
+        return { videoUrl: botResult.videoUrl }
+      }
+    } catch (botErr) {
+      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+      logger.warn('Bot Skills failed for video generation:', { error: errMsg })
+    }
+
+    // 所有策略都失败
+    throw new Error('视频生成失败：所有方式均不可用。请确保：(1) 在沙箱环境中运行，或 (2) 配置有效的 Coze API Key，或 (3) 创建配置了视频生成 Skill 的 Bot 并配置 Bot ID。')
+  } catch (err) {
+    logger.error('Video generation failed', err)
+
+    if (err instanceof APIError) {
+      throw Errors.AIRequestFailed('Video', `${err.message} (status: ${err.statusCode})`)
+    }
+    throw err
   } finally {
     // 恢复代理设置
     restoreProxy(savedProxy)
