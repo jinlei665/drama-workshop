@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     -- Coze API 配置
     coze_api_key VARCHAR(500),
     coze_base_url VARCHAR(200) DEFAULT 'https://api.coze.com',
+    coze_bot_id VARCHAR(100),
     -- LLM 配置
     llm_provider VARCHAR(50) DEFAULT 'doubao',
     llm_model VARCHAR(100) DEFAULT 'doubao-seed-1-8-251228',
