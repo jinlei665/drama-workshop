@@ -450,13 +450,11 @@ export async function generateImage(
   try {
     logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
 
-    // 使用 SDK 默认配置（沙箱环境内置凭证）
-    // 注意：图像生成使用沙箱环境的内置凭证，不使用用户配置的 PAT
-    // 因为 PAT 权限列表中没有图像生成权限选项
-    const sdkConfig = new Config()
-    const client = new ImageGenerationClient(sdkConfig, headers)
-
+    // 策略1: 先尝试沙箱内置凭证
     try {
+      const sdkConfig = new Config()
+      const client = new ImageGenerationClient(sdkConfig, headers)
+
       const response = await client.generate({
         prompt,
         size: options?.size || DEFAULT_IMAGE_SIZE,
@@ -464,34 +462,71 @@ export async function generateImage(
         responseFormat: options?.responseFormat || 'url',
       })
 
-      // 检查响应格式
-      if (!response.data || !Array.isArray(response.data)) {
-        if (response.error) {
-          throw new Error(`图像生成失败: ${response.error.message || JSON.stringify(response.error)}`)
+      if (response.data && Array.isArray(response.data)) {
+        const helper = client.getResponseHelper(response)
+        if (helper.success) {
+          logger.info('Image generation completed with sandbox credentials', { count: helper.imageUrls.length })
+          return {
+            urls: helper.imageUrls,
+            b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+          }
         }
-        throw new Error(`图像生成 API 返回格式错误`)
       }
-
-      const helper = client.getResponseHelper(response)
-
-      if (!helper.success) {
-        throw new Error(helper.errorMessages.join('; ') || '图像生成失败')
-      }
-
-      logger.info('Image generation completed', { count: helper.imageUrls.length })
-
-      return {
-        urls: helper.imageUrls,
-        b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
-      }
-    } catch (err) {
-      logger.error('Image generation failed', err)
-      
-      if (err instanceof APIError) {
-        throw new Error(`图像生成失败: ${err.message} (status: ${err.statusCode})`)
-      }
-      throw err
+    } catch (sandboxErr) {
+      const errMsg = sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr)
+      logger.warn('Sandbox credentials failed, trying user config:', { error: errMsg })
     }
+
+    // 策略2: 回退到用户配置
+    const userConfig = await getUserCozeConfig()
+    const apiKey = config?.apiKey || userConfig?.apiKey
+    
+    if (!apiKey) {
+      throw new Error('图像生成失败：沙箱凭证不可用，且未配置用户 API Key。如果您在本地部署，请在设置页面配置 Coze API Key。')
+    }
+
+    logger.info('Trying image generation with user credentials')
+    
+    const userConfigObj = new Config({
+      apiKey,
+      baseUrl: config?.baseUrl || userConfig?.baseUrl || 'https://api.coze.cn',
+      timeout: 180000,
+    })
+    const client = new ImageGenerationClient(userConfigObj, headers)
+
+    const response = await client.generate({
+      prompt,
+      size: options?.size || DEFAULT_IMAGE_SIZE,
+      watermark: options?.watermark ?? false,
+      responseFormat: options?.responseFormat || 'url',
+    })
+
+    if (!response.data || !Array.isArray(response.data)) {
+      if (response.error) {
+        throw new Error(`图像生成失败: ${response.error.message || JSON.stringify(response.error)}`)
+      }
+      throw new Error('图像生成 API 返回格式错误')
+    }
+
+    const helper = client.getResponseHelper(response)
+
+    if (!helper.success) {
+      throw new Error(helper.errorMessages.join('; ') || '图像生成失败')
+    }
+
+    logger.info('Image generation completed with user credentials', { count: helper.imageUrls.length })
+
+    return {
+      urls: helper.imageUrls,
+      b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+    }
+  } catch (err) {
+    logger.error('Image generation failed', err)
+    
+    if (err instanceof APIError) {
+      throw new Error(`图像生成失败: ${err.message} (status: ${err.statusCode})`)
+    }
+    throw err
   } finally {
     // 恢复代理设置
     restoreProxy(savedProxy)
@@ -500,7 +535,7 @@ export async function generateImage(
 
 /**
  * 图生图
- * 支持用户配置的 Coze API Key
+ * 优先使用沙箱内置凭证，失败后回退到用户配置
  */
 export async function generateImageFromImage(
   prompt: string,
@@ -509,13 +544,13 @@ export async function generateImageFromImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ urls: string[] }> {
-  // 使用 SDK 默认配置（沙箱环境内置凭证）
-  const sdkConfig = new Config()
-  const client = new ImageGenerationClient(sdkConfig, headers)
-
-  logger.info('Image-to-image generation started')
-
+  // 策略1: 先尝试沙箱内置凭证
   try {
+    const sdkConfig = new Config()
+    const client = new ImageGenerationClient(sdkConfig, headers)
+
+    logger.info('Image-to-image generation started with sandbox credentials')
+
     const response = await client.generate({
       prompt,
       image: imageUrl,
@@ -524,16 +559,45 @@ export async function generateImageFromImage(
     })
 
     const helper = client.getResponseHelper(response)
-
-    if (!helper.success) {
-      throw new Error(helper.errorMessages.join('; '))
+    if (helper.success) {
+      return { urls: helper.imageUrls }
     }
-
-    return { urls: helper.imageUrls }
-  } catch (err) {
-    logger.error('Image-to-image generation failed', err)
-    throw Errors.AIRequestFailed('Image', err instanceof Error ? err.message : undefined)
+  } catch (sandboxErr) {
+    const errMsg = sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr)
+    logger.warn('Sandbox credentials failed for image-to-image:', { error: errMsg })
   }
+
+  // 策略2: 回退到用户配置
+  const userConfig = await getUserCozeConfig()
+  const apiKey = config?.apiKey || userConfig?.apiKey
+  
+  if (!apiKey) {
+    throw new Error('图像生成失败：沙箱凭证不可用，且未配置用户 API Key。')
+  }
+
+  const userConfigObj = new Config({
+    apiKey,
+    baseUrl: config?.baseUrl || userConfig?.baseUrl || 'https://api.coze.cn',
+    timeout: 180000,
+  })
+  const client = new ImageGenerationClient(userConfigObj, headers)
+
+  logger.info('Image-to-image generation started with user credentials')
+
+  const response = await client.generate({
+    prompt,
+    image: imageUrl,
+    size: options?.size || DEFAULT_IMAGE_SIZE,
+    watermark: options?.watermark ?? false,
+  })
+
+  const helper = client.getResponseHelper(response)
+
+  if (!helper.success) {
+    throw new Error(helper.errorMessages.join('; '))
+  }
+
+  return { urls: helper.imageUrls }
 }
 
 // ==================== 视频生成服务 ====================
