@@ -4,7 +4,7 @@ import { S3Storage } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 import { memoryScenes, memoryProjects } from "@/lib/memory-storage"
 import { getStylePrompt } from "@/lib/styles"
-import axios from "axios"
+import { downloadFile } from "@/lib/utils"
 
 // POST /api/generate/scene-image - 生成分镜图片（短剧视频分镜）
 export async function POST(request: NextRequest) {
@@ -97,11 +97,8 @@ export async function POST(request: NextRequest) {
     const imageUrl = result.urls[0]
     console.log("Image generated successfully:", imageUrl)
 
-    // 下载图片
-    const imageResponse = await axios.get(imageUrl, {
-      responseType: "arraybuffer",
-    })
-    const imageBuffer = Buffer.from(imageResponse.data)
+    // 下载图片（禁用代理）
+    const imageBuffer = await downloadFile(imageUrl)
 
     // 尝试上传到对象存储
     let fileKey: string | null = null

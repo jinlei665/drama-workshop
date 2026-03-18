@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
-import axios from "axios"
+import { downloadFile } from "@/lib/utils"
 
 // GET /api/scenes/[id]/download - 下载单个分镜视频
 export async function GET(
@@ -27,18 +27,14 @@ export async function GET(
   }
 
   try {
-    // 下载视频文件
-    const response = await axios.get(scene.video_url, {
-      responseType: "arraybuffer",
-    })
-
-    const videoBuffer = Buffer.from(response.data)
+    // 下载视频文件（禁用代理）
+    const videoBuffer = await downloadFile(scene.video_url)
     
     // 生成文件名
     const fileName = `scene_${scene.scene_number}_${scene.title || 'untitled'}.mp4`
 
     // 返回视频文件
-    return new NextResponse(videoBuffer, {
+    return new NextResponse(new Uint8Array(videoBuffer), {
       headers: {
         "Content-Type": "video/mp4",
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import { S3Storage } from "coze-coding-dev-sdk"
-import axios from "axios"
+import { downloadFile } from "@/lib/utils"
 import { exec } from "child_process"
 import { promisify } from "util"
 import fs from "fs/promises"
@@ -58,17 +58,14 @@ export async function POST(
     const tempDir = `/tmp/merge_${id}_${Date.now()}`
     await fs.mkdir(tempDir, { recursive: true })
 
-    // 下载所有视频文件
+    // 下载所有视频文件（禁用代理）
     const videoFiles: string[] = []
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i]
       const videoPath = path.join(tempDir, `video_${i}.mp4`)
       
-      const response = await axios.get(scene.video_url, {
-        responseType: "arraybuffer",
-      })
-      
-      await fs.writeFile(videoPath, Buffer.from(response.data))
+      const videoBuffer = await downloadFile(scene.video_url)
+      await fs.writeFile(videoPath, videoBuffer)
       videoFiles.push(videoPath)
     }
 
@@ -171,18 +168,14 @@ export async function GET(
   }
 
   try {
-    // 下载视频文件
-    const response = await axios.get(episode.merged_video_url, {
-      responseType: "arraybuffer",
-    })
-
-    const videoBuffer = Buffer.from(response.data)
+    // 下载视频文件（禁用代理）
+    const videoBuffer = await downloadFile(episode.merged_video_url)
     
     // 生成文件名
     const fileName = `S${episode.season_number}E${episode.episode_number}_${episode.title || 'episode'}.mp4`
 
     // 返回视频文件
-    return new NextResponse(videoBuffer, {
+    return new NextResponse(new Uint8Array(videoBuffer), {
       headers: {
         "Content-Type": "video/mp4",
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,

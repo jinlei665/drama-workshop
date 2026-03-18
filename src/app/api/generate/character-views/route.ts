@@ -4,7 +4,7 @@ import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supa
 import { memoryCharacters, memoryProjects } from "@/lib/memory-storage"
 import { getCharacterStylePrompt } from "@/lib/styles"
 import { generateImage } from "@/lib/ai"
-import axios from "axios"
+import { downloadFile } from "@/lib/utils"
 
 // POST /api/generate/character-views - 生成人物三视图（短剧角色设定）
 export async function POST(request: NextRequest) {
@@ -85,11 +85,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 下载图片
-    const imageResponse = await axios.get(imageUrl, {
-      responseType: "arraybuffer",
-    })
-    const imageBuffer = Buffer.from(imageResponse.data)
+    // 下载图片（禁用代理）
+    const imageBuffer = await downloadFile(imageUrl)
 
     // 尝试上传到对象存储
     let fileKey: string | null = null

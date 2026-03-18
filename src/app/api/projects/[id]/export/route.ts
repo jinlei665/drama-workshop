@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import { S3Storage } from "coze-coding-dev-sdk"
-import axios from "axios"
+import { downloadFile } from "@/lib/utils"
 import archiver from "archiver"
 import { Readable } from "stream"
 
@@ -110,8 +110,8 @@ export async function GET(
         if (char.front_view_key) {
           try {
             const url = await storage.generatePresignedUrl({ key: char.front_view_key, expireTime: 3600 })
-            const response = await axios.get(url as string, { responseType: "arraybuffer" })
-            archive.append(Buffer.from(response.data), { name: `characters/${char.name}/front_view.png` })
+            const buffer = await downloadFile(url as string)
+            archive.append(buffer, { name: `characters/${char.name}/front_view.png` })
           } catch (e) {
             console.log(`跳过人物 ${char.name} 正面图`)
           }
@@ -121,8 +121,8 @@ export async function GET(
         if (char.side_view_key) {
           try {
             const url = await storage.generatePresignedUrl({ key: char.side_view_key, expireTime: 3600 })
-            const response = await axios.get(url as string, { responseType: "arraybuffer" })
-            archive.append(Buffer.from(response.data), { name: `characters/${char.name}/side_view.png` })
+            const buffer = await downloadFile(url as string)
+            archive.append(buffer, { name: `characters/${char.name}/side_view.png` })
           } catch (e) {
             console.log(`跳过人物 ${char.name} 侧面图`)
           }
@@ -132,8 +132,8 @@ export async function GET(
         if (char.back_view_key) {
           try {
             const url = await storage.generatePresignedUrl({ key: char.back_view_key, expireTime: 3600 })
-            const response = await axios.get(url as string, { responseType: "arraybuffer" })
-            archive.append(Buffer.from(response.data), { name: `characters/${char.name}/back_view.png` })
+            const buffer = await downloadFile(url as string)
+            archive.append(buffer, { name: `characters/${char.name}/back_view.png` })
           } catch (e) {
             console.log(`跳过人物 ${char.name} 背面图`)
           }
@@ -142,8 +142,8 @@ export async function GET(
         // 配音
         if (char.voice_url) {
           try {
-            const response = await axios.get(char.voice_url, { responseType: "arraybuffer" })
-            archive.append(Buffer.from(response.data), { name: `characters/${char.name}/voice.mp3` })
+            const buffer = await downloadFile(char.voice_url)
+            archive.append(buffer, { name: `characters/${char.name}/voice.mp3` })
           } catch (e) {
             console.log(`跳过人物 ${char.name} 配音`)
           }
@@ -159,8 +159,8 @@ export async function GET(
         // 分镜图片
         if (scene.image_url) {
           try {
-            const response = await axios.get(scene.image_url, { responseType: "arraybuffer" })
-            archive.append(Buffer.from(response.data), { name: `${sceneFolder}/image.png` })
+            const buffer = await downloadFile(scene.image_url)
+            archive.append(buffer, { name: `${sceneFolder}/image.png` })
           } catch (e) {
             console.log(`跳过分镜 ${scene.scene_number} 图片`)
           }
@@ -169,8 +169,8 @@ export async function GET(
         // 分镜视频
         if (scene.video_url) {
           try {
-            const response = await axios.get(scene.video_url, { responseType: "arraybuffer" })
-            archive.append(Buffer.from(response.data), { name: `${sceneFolder}/video.mp4` })
+            const buffer = await downloadFile(scene.video_url)
+            archive.append(buffer, { name: `${sceneFolder}/video.mp4` })
           } catch (e) {
             console.log(`跳过分镜 ${scene.scene_number} 视频`)
           }
@@ -184,8 +184,8 @@ export async function GET(
         if (episode.merged_video_url) {
           const fileName = `episodes/S${episode.season_number}E${episode.episode_number}_${episode.title || 'episode'}.mp4`
           try {
-            const response = await axios.get(episode.merged_video_url, { responseType: "arraybuffer" })
-            archive.append(Buffer.from(response.data), { name: fileName })
+            const buffer = await downloadFile(episode.merged_video_url)
+            archive.append(buffer, { name: fileName })
           } catch (e) {
             console.log(`跳过剧集 S${episode.season_number}E${episode.episode_number} 视频`)
           }

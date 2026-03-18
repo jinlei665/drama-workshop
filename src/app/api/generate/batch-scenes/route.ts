@@ -4,7 +4,7 @@ import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supa
 import { memoryScenes, memoryCharacters, memoryProjects } from "@/lib/memory-storage"
 import { getStylePrompt } from "@/lib/styles"
 import { generateImage } from "@/lib/ai"
-import axios from "axios"
+import { downloadFile } from "@/lib/utils"
 
 // POST /api/generate/batch-scenes - 批量生成分镜图片
 export async function POST(request: NextRequest) {
@@ -175,10 +175,7 @@ export async function POST(request: NextRequest) {
       // 尝试上传到存储
       if (storage) {
         try {
-          const imageResponse = await axios.get(imageUrl, {
-            responseType: "arraybuffer",
-          })
-          const imageBuffer = Buffer.from(imageResponse.data)
+          const imageBuffer = await downloadFile(imageUrl)
 
           fileKey = await storage.uploadFile({
             fileContent: imageBuffer,
