@@ -7,6 +7,28 @@ import { getVideoStylePrompt } from '@/lib/styles'
 
 export const maxDuration = 300 // 5分钟超时
 
+// 禁用代理工具函数
+function disableProxy(): { http?: string; https?: string } | null {
+  const proxy = {
+    http: process.env.HTTP_PROXY,
+    https: process.env.HTTPS_PROXY,
+  }
+  if (proxy.http || proxy.https) {
+    delete process.env.HTTP_PROXY
+    delete process.env.HTTPS_PROXY
+    delete process.env.http_proxy
+    delete process.env.https_proxy
+    return proxy
+  }
+  return null
+}
+
+function restoreProxy(proxy: { http?: string; https?: string } | null): void {
+  if (!proxy) return
+  if (proxy.http) process.env.HTTP_PROXY = proxy.http
+  if (proxy.https) process.env.HTTPS_PROXY = proxy.https
+}
+
 /**
  * POST /api/generate/videos-stream
  * 流式生成视频，实时返回进度
@@ -90,6 +112,9 @@ export async function POST(request: NextRequest) {
   const scenesWithImages = scenesList.filter((s: any) => 
     s.image_key || s.image_url || s.imageUrl
   )
+
+  // 禁用代理，避免本地代理干扰
+  const savedProxy = disableProxy()
 
   // 创建可读流
   const encoder = new TextEncoder()
@@ -302,10 +327,14 @@ export async function POST(request: NextRequest) {
         style,
       })
 
+      // 恢复代理设置
+      restoreProxy(savedProxy)
       controller.close()
     },
     cancel() {
       isAborted = true
+      // 恢复代理设置
+      restoreProxy(savedProxy)
     }
   })
 

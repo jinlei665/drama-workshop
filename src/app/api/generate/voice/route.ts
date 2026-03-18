@@ -5,6 +5,28 @@ import { memoryCharacters } from "@/lib/memory-storage"
 import { getCozeConfigFromMemory } from "@/lib/memory-store"
 import axios from "axios"
 
+// 禁用代理工具函数
+function disableProxy(): { http?: string; https?: string } | null {
+  const proxy = {
+    http: process.env.HTTP_PROXY,
+    https: process.env.HTTPS_PROXY,
+  }
+  if (proxy.http || proxy.https) {
+    delete process.env.HTTP_PROXY
+    delete process.env.HTTPS_PROXY
+    delete process.env.http_proxy
+    delete process.env.https_proxy
+    return proxy
+  }
+  return null
+}
+
+function restoreProxy(proxy: { http?: string; https?: string } | null): void {
+  if (!proxy) return
+  if (proxy.http) process.env.HTTP_PROXY = proxy.http
+  if (proxy.https) process.env.HTTPS_PROXY = proxy.https
+}
+
 // 语音风格映射到 speaker ID
 const VOICE_STYLE_MAP: Record<string, string> = {
   // 通用风格
@@ -90,6 +112,9 @@ export async function POST(request: NextRequest) {
   // 使用提供的文本或角色描述
   const textContent = text || character.description || character.personality || `我是${character.name}。`
 
+  // 禁用代理，避免本地代理干扰
+  const savedProxy = disableProxy()
+  
   try {
     // 初始化 TTS 客户端
     const config = new Config({
@@ -156,5 +181,8 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : "语音生成失败" },
       { status: 500 }
     )
+  } finally {
+    // 恢复代理设置
+    restoreProxy(savedProxy)
   }
 }

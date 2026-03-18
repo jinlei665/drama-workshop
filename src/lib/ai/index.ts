@@ -17,6 +17,40 @@ import {
 } from 'coze-coding-dev-sdk'
 import { Errors, withRetry, logger } from '@/lib/errors'
 
+// ==================== 代理处理工具 ====================
+
+/**
+ * 临时禁用代理，避免本地代理干扰 API 请求
+ * 在用户本地环境（如 Windows + Clash）中，代理可能导致连接失败
+ */
+function disableProxy(): { http?: string; https?: string } | null {
+  const proxy = {
+    http: process.env.HTTP_PROXY,
+    https: process.env.HTTPS_PROXY,
+  }
+  
+  // 只有存在代理设置时才禁用
+  if (proxy.http || proxy.https) {
+    delete process.env.HTTP_PROXY
+    delete process.env.HTTPS_PROXY
+    delete process.env.http_proxy
+    delete process.env.https_proxy
+    return proxy
+  }
+  
+  return null
+}
+
+/**
+ * 恢复代理设置
+ */
+function restoreProxy(proxy: { http?: string; https?: string } | null): void {
+  if (!proxy) return
+  
+  if (proxy.http) process.env.HTTP_PROXY = proxy.http
+  if (proxy.https) process.env.HTTPS_PROXY = proxy.https
+}
+
 // ==================== 类型定义 ====================
 
 /** AI 服务配置 */
@@ -410,37 +444,45 @@ export async function generateImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ urls: string[]; b64List?: string[] }> {
-  const client = await createImageClientAsync(config, headers)
-
-  logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
-
+  // 禁用代理，避免本地代理干扰
+  const savedProxy = disableProxy()
+  
   try {
-    const response = await client.generate({
-      prompt,
-      size: options?.size || DEFAULT_IMAGE_SIZE,
-      watermark: options?.watermark ?? false,
-      responseFormat: options?.responseFormat || 'url',
-    })
+    const client = await createImageClientAsync(config, headers)
 
-    const helper = client.getResponseHelper(response)
+    logger.info('Image generation started', { prompt: prompt.slice(0, 100), size: options?.size })
 
-    if (!helper.success) {
-      throw new Error(helper.errorMessages.join('; '))
+    try {
+      const response = await client.generate({
+        prompt,
+        size: options?.size || DEFAULT_IMAGE_SIZE,
+        watermark: options?.watermark ?? false,
+        responseFormat: options?.responseFormat || 'url',
+      })
+
+      const helper = client.getResponseHelper(response)
+
+      if (!helper.success) {
+        throw new Error(helper.errorMessages.join('; '))
+      }
+
+      logger.info('Image generation completed', { count: helper.imageUrls.length })
+
+      return {
+        urls: helper.imageUrls,
+        b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+      }
+    } catch (err) {
+      logger.error('Image generation failed', err)
+
+      if (err instanceof APIError) {
+        throw Errors.AIRequestFailed('Image', `${err.message} (status: ${err.statusCode})`)
+      }
+      throw Errors.AIRequestFailed('Image', err instanceof Error ? err.message : undefined)
     }
-
-    logger.info('Image generation completed', { count: helper.imageUrls.length })
-
-    return {
-      urls: helper.imageUrls,
-      b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
-    }
-  } catch (err) {
-    logger.error('Image generation failed', err)
-
-    if (err instanceof APIError) {
-      throw Errors.AIRequestFailed('Image', `${err.message} (status: ${err.statusCode})`)
-    }
-    throw Errors.AIRequestFailed('Image', err instanceof Error ? err.message : undefined)
+  } finally {
+    // 恢复代理设置
+    restoreProxy(savedProxy)
   }
 }
 
@@ -534,39 +576,47 @@ export async function generateVideo(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  const client = await createVideoClientAsync(config, headers)
-
-  logger.info('Video generation started', { prompt: prompt.slice(0, 100) })
-
+  // 禁用代理，避免本地代理干扰
+  const savedProxy = disableProxy()
+  
   try {
-    const content = [{ type: 'text' as const, text: prompt }]
+    const client = await createVideoClientAsync(config, headers)
 
-    const response = await client.videoGeneration(content, {
-      model: options?.model || DEFAULT_VIDEO_MODEL,
-      duration: options?.duration ?? 5,
-      ratio: options?.ratio ?? '16:9',
-      resolution: options?.resolution ?? '720p',
-      generateAudio: options?.generateAudio ?? true,
-      watermark: options?.watermark ?? false,
-    })
+    logger.info('Video generation started', { prompt: prompt.slice(0, 100) })
 
-    if (!response.videoUrl) {
-      throw new Error('Video generation failed: no video URL returned')
+    try {
+      const content = [{ type: 'text' as const, text: prompt }]
+
+      const response = await client.videoGeneration(content, {
+        model: options?.model || DEFAULT_VIDEO_MODEL,
+        duration: options?.duration ?? 5,
+        ratio: options?.ratio ?? '16:9',
+        resolution: options?.resolution ?? '720p',
+        generateAudio: options?.generateAudio ?? true,
+        watermark: options?.watermark ?? false,
+      })
+
+      if (!response.videoUrl) {
+        throw new Error('Video generation failed: no video URL returned')
+      }
+
+      logger.info('Video generation completed')
+
+      return {
+        videoUrl: response.videoUrl,
+        lastFrameUrl: response.lastFrameUrl || undefined,
+      }
+    } catch (err) {
+      logger.error('Video generation failed', err)
+
+      if (err instanceof APIError) {
+        throw Errors.AIRequestFailed('Video', `${err.message} (status: ${err.statusCode})`)
+      }
+      throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
     }
-
-    logger.info('Video generation completed')
-
-    return {
-      videoUrl: response.videoUrl,
-      lastFrameUrl: response.lastFrameUrl || undefined,
-    }
-  } catch (err) {
-    logger.error('Video generation failed', err)
-
-    if (err instanceof APIError) {
-      throw Errors.AIRequestFailed('Video', `${err.message} (status: ${err.statusCode})`)
-    }
-    throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
+  } finally {
+    // 恢复代理设置
+    restoreProxy(savedProxy)
   }
 }
 
@@ -581,40 +631,48 @@ export async function generateVideoFromImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  const client = await createVideoClientAsync(config, headers)
-
-  logger.info('Image-to-video generation started')
-
+  // 禁用代理，避免本地代理干扰
+  const savedProxy = disableProxy()
+  
   try {
-    const content = [
-      {
-        type: 'image_url' as const,
-        image_url: { url: firstFrameUrl },
-        role: 'first_frame' as const,
-      },
-      { type: 'text' as const, text: prompt },
-    ]
+    const client = await createVideoClientAsync(config, headers)
 
-    const response = await client.videoGeneration(content, {
-      model: options?.model || DEFAULT_VIDEO_MODEL,
-      duration: options?.duration ?? 5,
-      ratio: options?.ratio ?? '16:9',
-      resolution: options?.resolution ?? '720p',
-      generateAudio: options?.generateAudio ?? true,
-      returnLastFrame: true,
-    })
+    logger.info('Image-to-video generation started')
 
-    if (!response.videoUrl) {
-      throw new Error('Video generation failed: no video URL returned')
+    try {
+      const content = [
+        {
+          type: 'image_url' as const,
+          image_url: { url: firstFrameUrl },
+          role: 'first_frame' as const,
+        },
+        { type: 'text' as const, text: prompt },
+      ]
+
+      const response = await client.videoGeneration(content, {
+        model: options?.model || DEFAULT_VIDEO_MODEL,
+        duration: options?.duration ?? 5,
+        ratio: options?.ratio ?? '16:9',
+        resolution: options?.resolution ?? '720p',
+        generateAudio: options?.generateAudio ?? true,
+        returnLastFrame: true,
+      })
+
+      if (!response.videoUrl) {
+        throw new Error('Video generation failed: no video URL returned')
+      }
+
+      return {
+        videoUrl: response.videoUrl,
+        lastFrameUrl: response.lastFrameUrl || undefined,
+      }
+    } catch (err) {
+      logger.error('Image-to-video generation failed', err)
+      throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
     }
-
-    return {
-      videoUrl: response.videoUrl,
-      lastFrameUrl: response.lastFrameUrl || undefined,
-    }
-  } catch (err) {
-    logger.error('Image-to-video generation failed', err)
-    throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
+  } finally {
+    // 恢复代理设置
+    restoreProxy(savedProxy)
   }
 }
 
@@ -630,41 +688,49 @@ export async function generateVideoFromFrames(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string }> {
-  const client = await createVideoClientAsync(config, headers)
-
-  logger.info('Frame-to-video generation started')
-
+  // 禁用代理，避免本地代理干扰
+  const savedProxy = disableProxy()
+  
   try {
-    const content = [
-      {
-        type: 'image_url' as const,
-        image_url: { url: firstFrameUrl },
-        role: 'first_frame' as const,
-      },
-      {
-        type: 'image_url' as const,
-        image_url: { url: lastFrameUrl },
-        role: 'last_frame' as const,
-      },
-      { type: 'text' as const, text: prompt },
-    ]
+    const client = await createVideoClientAsync(config, headers)
 
-    const response = await client.videoGeneration(content, {
-      model: options?.model || DEFAULT_VIDEO_MODEL,
-      duration: options?.duration ?? 5,
-      ratio: options?.ratio ?? '16:9',
-      resolution: options?.resolution ?? '720p',
-      generateAudio: options?.generateAudio ?? true,
-    })
+    logger.info('Frame-to-video generation started')
 
-    if (!response.videoUrl) {
-      throw new Error('Video generation failed: no video URL returned')
+    try {
+      const content = [
+        {
+          type: 'image_url' as const,
+          image_url: { url: firstFrameUrl },
+          role: 'first_frame' as const,
+        },
+        {
+          type: 'image_url' as const,
+          image_url: { url: lastFrameUrl },
+          role: 'last_frame' as const,
+        },
+        { type: 'text' as const, text: prompt },
+      ]
+
+      const response = await client.videoGeneration(content, {
+        model: options?.model || DEFAULT_VIDEO_MODEL,
+        duration: options?.duration ?? 5,
+        ratio: options?.ratio ?? '16:9',
+        resolution: options?.resolution ?? '720p',
+        generateAudio: options?.generateAudio ?? true,
+      })
+
+      if (!response.videoUrl) {
+        throw new Error('Video generation failed: no video URL returned')
+      }
+
+      return { videoUrl: response.videoUrl }
+    } catch (err) {
+      logger.error('Frame-to-video generation failed', err)
+      throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
     }
-
-    return { videoUrl: response.videoUrl }
-  } catch (err) {
-    logger.error('Frame-to-video generation failed', err)
-    throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
+  } finally {
+    // 恢复代理设置
+    restoreProxy(savedProxy)
   }
 }
 

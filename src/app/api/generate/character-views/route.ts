@@ -24,10 +24,26 @@ export async function POST(request: NextRequest) {
   const userConfig = getCozeConfigFromMemory()
   const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
   
+  // 检查是否有 API Key
+  if (!userConfig?.apiKey) {
+    return NextResponse.json(
+      { error: "请先在设置页面配置 Coze API Key" },
+      { status: 400 }
+    )
+  }
+  
+  // 禁用代理（避免本地代理干扰）
+  const originalProxy = {
+    http: process.env.HTTP_PROXY,
+    https: process.env.HTTPS_PROXY,
+  }
+  delete process.env.HTTP_PROXY
+  delete process.env.HTTPS_PROXY
+  
   // 使用用户配置或默认配置
   const config = new Config({
-    apiKey: userConfig?.apiKey || undefined,
-    baseUrl: userConfig?.baseUrl || defaultBaseUrl,
+    apiKey: userConfig.apiKey,
+    baseUrl: userConfig.baseUrl || defaultBaseUrl,
     timeout: 180000, // 3分钟
   })
   
@@ -175,5 +191,9 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : "生成人物视图失败" },
       { status: 500 }
     )
+  } finally {
+    // 恢复代理设置
+    if (originalProxy.http) process.env.HTTP_PROXY = originalProxy.http
+    if (originalProxy.https) process.env.HTTPS_PROXY = originalProxy.https
   }
 }
