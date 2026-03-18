@@ -1,11 +1,6 @@
 /**
  * Coze API 直接调用实现
  * 用于支持用户自己的 Coze API Key (pat-xxx)
- * 
- * 使用方式：
- * 1. 在 Coze 平台创建一个智能体
- * 2. 获取 bot_id（URL 中的数字）
- * 3. 在设置中配置 API Key 和 Bot ID
  */
 
 import { Errors, logger } from '@/lib/errors'
@@ -26,10 +21,6 @@ export interface CozeMessage {
 
 /**
  * 直接调用 Coze API（使用流式，然后收集完整响应）
- * 
- * SSE 格式：
- * event:conversation.message.completed
- * data:{"id":"xxx","content":"实际回复内容","type":"answer",...}
  */
 export async function invokeCozeDirect(
   messages: CozeMessage[],
@@ -45,24 +36,18 @@ export async function invokeCozeDirect(
     throw new Error('需要配置 Bot ID。请在 Coze 平台创建智能体并获取 Bot ID。')
   }
 
-  logger.info('Coze Direct API call started', { 
-    botId, 
-    baseUrl,
-    messageCount: messages.length 
-  })
+  logger.info('Coze Direct API call started', { botId, baseUrl, messageCount: messages.length })
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeout)
 
   try {
-    // 构建 additional_messages
     const additionalMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content,
       content_type: 'text'
     }))
 
-    // 使用流式 API
     const response = await fetch(`${baseUrl}/v3/chat`, {
       method: 'POST',
       headers: {
@@ -86,7 +71,6 @@ export async function invokeCozeDirect(
       throw new Error(`Coze API 请求失败: ${response.status} ${response.statusText}`)
     }
 
-    // 读取流式响应
     const reader = response.body?.getReader()
     if (!reader) {
       throw new Error('无法获取响应流')
@@ -96,11 +80,14 @@ export async function invokeCozeDirect(
     let buffer = ''
     let fullContent = ''
     let currentEvent = ''
+    let deltaCount = 0
 
     while (true) {
       const { done, value } = await reader.read()
-      
-      if (done) break
+      if (done) {
+        console.log('[Coze Stream] Stream done')
+        break
+      }
 
       buffer += decoder.decode(value, { stream: true })
       
@@ -122,43 +109,39 @@ export async function invokeCozeDirect(
           }
         }
 
-        if (!eventData) continue
-        if (eventData === '[DONE]') continue
+        if (!eventData || eventData === '[DONE]') continue
 
         try {
           const data = JSON.parse(eventData)
           
-          // 调试日志
-          if (currentEvent) {
-            console.log('[Coze Stream] Event:', currentEvent)
+          // 只打印关键事件
+          if (currentEvent === 'conversation.message.completed') {
+            console.log('[Coze Stream] Message completed, type:', data.type, 'content length:', data.content?.length || 0)
+          } else if (currentEvent === 'conversation.chat.completed') {
+            console.log('[Coze Stream] Chat completed')
+          } else if (currentEvent === 'error') {
+            console.log('[Coze Stream] Error:', data.msg)
+          } else if (currentEvent === 'conversation.message.delta') {
+            deltaCount++
+            // 只打印一次进度
+            if (deltaCount === 1 || deltaCount % 50 === 0) {
+              console.log('[Coze Stream] Processing... delta events:', deltaCount)
+            }
           }
 
-          // 处理已完成的消息 - 这里包含完整的回答
+          // 处理已完成的消息
           if (currentEvent === 'conversation.message.completed') {
-            // 只处理 type=answer 的消息
             if (data.type === 'answer' && data.content) {
-              fullContent = data.content  // 使用完整内容，不是增量
-              console.log('[Coze Stream] Got answer, length:', data.content.length)
+              fullContent = data.content
             }
           }
           
-          // 处理增量消息（可选，用于实时显示）
-          if (currentEvent === 'conversation.message.delta') {
-            // delta 事件的 content 可能为空，实际在 reasoning_content 中
-            // 我们等待 completed 事件获取完整内容
-          }
-          
           // 处理错误
-          if (currentEvent === 'error' || data.code) {
-            const errorMsg = data.msg || JSON.stringify(data)
-            throw new Error(`Coze API 错误: ${errorMsg}`)
+          if (currentEvent === 'error' || (data.code && data.code !== 0)) {
+            throw new Error(`Coze API 错误: ${data.msg || JSON.stringify(data)}`)
           }
         } catch (parseError) {
-          if (parseError instanceof SyntaxError) {
-            // JSON 解析错误，忽略
-            console.warn('[Coze Stream] JSON parse error:', eventData.substring(0, 100))
-            continue
-          }
+          if (parseError instanceof SyntaxError) continue
           throw parseError
         }
       }
@@ -167,38 +150,29 @@ export async function invokeCozeDirect(
     clearTimeout(timeoutId)
 
     if (!fullContent) {
-      logger.error('Coze API returned empty content')
-      throw new Error('Coze API 返回空内容，请检查智能体是否正确配置了人设')
+      logger.error('Coze API returned empty content', { deltaCount })
+      throw new Error('Coze API 返回空内容。可能智能体未正确配置，请在 Coze 平台检查智能体的人设设置。')
     }
 
-    logger.info('Coze Direct API call completed', { responseLength: fullContent.length })
+    logger.info('Coze Direct API call completed', { responseLength: fullContent.length, deltaCount })
     return fullContent
 
   } catch (error) {
     clearTimeout(timeoutId)
-    
     if (error instanceof Error && error.name === 'AbortError') {
       throw Errors.AITimeout('Coze')
     }
-    
-    logger.error('Coze Direct API call failed', error)
     throw error
   }
 }
 
-/**
- * 获取用户的 Coze 配置（包含 bot_id）
- */
 export async function getCozeDirectConfig(): Promise<CozeDirectConfig | null> {
   try {
-    // 尝试从内存存储获取
     const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
     const memoryConfig = getCozeConfigFromMemory()
     
     if (memoryConfig?.apiKey) {
-      // 尝试获取 bot_id
       const botId = await getCozeBotId()
-      
       return {
         apiKey: memoryConfig.apiKey,
         baseUrl: memoryConfig.baseUrl,
@@ -206,9 +180,7 @@ export async function getCozeDirectConfig(): Promise<CozeDirectConfig | null> {
       }
     }
     
-    // 尝试从数据库获取
     const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-    
     if (isDatabaseConfigured()) {
       const db = getSupabaseClient()
       const { data, error } = await db
@@ -224,16 +196,10 @@ export async function getCozeDirectConfig(): Promise<CozeDirectConfig | null> {
         }
       }
     }
-  } catch {
-    // 忽略错误
-  }
-  
+  } catch {}
   return null
 }
 
-/**
- * 获取 Coze Bot ID
- */
 async function getCozeBotId(): Promise<string | null> {
   try {
     const { getSettingsFromMemory } = await import('@/lib/memory-store')
