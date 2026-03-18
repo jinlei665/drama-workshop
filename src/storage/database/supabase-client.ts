@@ -1,12 +1,14 @@
 /**
  * 统一数据库客户端
  * 自动检测数据库类型，支持：
- * - 本地 MySQL（推荐用于本地开发）
  * - Supabase（推荐用于云部署）
+ * - 内存存储（默认，无需配置）
+ * 
+ * 注意：MySQL 支持已移除，请使用 Supabase 或内存存储
  */
 
 // 类型定义
-export type DatabaseType = 'mysql' | 'supabase' | 'memory';
+export type DatabaseType = 'supabase' | 'memory';
 
 // 缓存的客户端
 let cachedClient: any = null;
@@ -21,24 +23,11 @@ export function getDatabaseType(): DatabaseType {
     return cachedDbType;
   }
   
-  const dbType = process.env.DATABASE_TYPE?.toLowerCase();
-  if (dbType === 'mysql') {
-    cachedDbType = 'mysql';
-    return 'mysql';
-  }
-  
   // 检查是否配置了 Supabase
   const supabaseUrl = process.env.COZE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (supabaseUrl) {
     cachedDbType = 'supabase';
     return 'supabase';
-  }
-  
-  // 检查是否有 MySQL 连接字符串
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl && databaseUrl.startsWith('mysql://')) {
-    cachedDbType = 'mysql';
-    return 'mysql';
   }
   
   // 默认使用内存存储
@@ -47,7 +36,7 @@ export function getDatabaseType(): DatabaseType {
 }
 
 /**
- * 获取 Supabase 客户端
+ * 获取数据库客户端
  */
 export function getSupabaseClient(token?: string): any {
   if (cachedClient) {
@@ -62,16 +51,7 @@ export function getSupabaseClient(token?: string): any {
     return cachedClient;
   }
   
-  // 如果配置了 MySQL，尝试动态加载 mysql2（注意：MySQL 需要 async 初始化）
-  if (dbType === 'mysql') {
-    // MySQL 需要 async 初始化，同步调用时回退到内存存储
-    console.warn('MySQL requires async initialization, using memory storage. Consider using Supabase for better compatibility.');
-    cachedClient = createMemoryClient();
-    cachedDbType = 'memory';
-    return cachedClient;
-  }
-  
-  // 使用 Supabase
+  // 使用 Supabase（动态加载，避免客户端打包）
   const url = process.env.COZE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.COZE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   
@@ -82,7 +62,10 @@ export function getSupabaseClient(token?: string): any {
     return cachedClient;
   }
   
-  const { createClient } = require('@supabase/supabase-js');
+  // 动态导入 @supabase/supabase-js
+  // 使用 eval 避免被 Webpack/Turbopack 静态分析
+  // eslint-disable-next-line no-eval
+  const createClient = eval("require('@supabase/supabase-js')").createClient;
   
   cachedClient = createClient(url, anonKey, {
     global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
@@ -297,34 +280,27 @@ export function isSupabaseConfigured(): boolean {
   return isDatabaseConfigured();
 }
 
-// 导出本地数据库客户端（动态加载）
+/**
+ * 获取数据库客户端（兼容旧代码）
+ */
 export const getDb = async () => {
-  const dbType = getDatabaseType();
-  
-  if (dbType === 'memory') {
-    return getSupabaseClient();
-  }
-  
-  if (dbType === 'mysql') {
-    try {
-      const { getDb: getMySqlDb } = require('./mysql-client');
-      return getMySqlDb();
-    } catch {
-      return getSupabaseClient();
-    }
-  }
-  
   return getSupabaseClient();
 };
 
+/**
+ * 执行 SQL（内存存储不支持）
+ */
 export const executeSql = async (sql: string, params?: any[]) => {
   const db = await getDb();
   if (db.execute) {
     return db.execute(sql, params);
   }
-  throw new Error('SQL execution not supported');
+  throw new Error('SQL execution not supported in memory mode');
 };
 
+/**
+ * 关闭数据库连接
+ */
 export const closeDatabase = async () => {
   cachedClient = null;
   cachedDbType = null;
