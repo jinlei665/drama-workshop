@@ -3,6 +3,7 @@ import { ImageGenerationClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 import { memoryCharacters, memoryProjects } from "@/lib/memory-storage"
 import { getCharacterStylePrompt } from "@/lib/styles"
+import { getCozeConfigFromMemory } from "@/lib/memory-store"
 import axios from "axios"
 
 // POST /api/generate/character-views - 生成人物三视图（短剧角色设定）
@@ -19,8 +20,22 @@ export async function POST(request: NextRequest) {
   // 提取请求头用于转发
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
 
-  // 使用系统默认配置（无需 API Key）
-  const config = new Config()
+  // 获取用户配置
+  const userConfig = getCozeConfigFromMemory()
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
+  // 使用用户配置或默认配置
+  const config = new Config({
+    apiKey: userConfig?.apiKey || undefined,
+    baseUrl: userConfig?.baseUrl || defaultBaseUrl,
+    timeout: 180000, // 3分钟
+  })
+  
+  console.log('[Character Views] Config:', {
+    hasApiKey: !!userConfig?.apiKey,
+    baseUrl: userConfig?.baseUrl || defaultBaseUrl,
+  })
+  
   const imageClient = new ImageGenerationClient(config, customHeaders)
 
   try {
