@@ -1,7 +1,12 @@
 /**
- * MySQL 客户端（完全动态加载）
+ * MySQL 客户端（仅服务端使用）
  * 仅在配置了 MySQL 时才尝试加载 mysql2
+ * 
+ * 注意：此模块依赖 Node.js 原生模块，只能在服务端使用
  */
+
+// 标记为服务端专用
+import 'server-only';
 
 let pool: any = null;
 
@@ -10,7 +15,6 @@ let pool: any = null;
  */
 async function loadMysql2(): Promise<any> {
   try {
-    // 使用动态 import 代替 require
     const mysql = await import('mysql2/promise');
     return mysql.default || mysql;
   } catch (err) {
