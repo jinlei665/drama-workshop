@@ -284,6 +284,7 @@ async function invokeBotForImageGeneration(
   logger.info('Invoking Bot for image generation', { botId, promptLength: prompt.length })
   
   // 调用 Bot API，通过特定 prompt 触发图像生成 Skill
+  // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
   const response = await fetch(`${baseUrl}/v3/chat`, {
     method: 'POST',
     headers: {
@@ -293,7 +294,7 @@ async function invokeBotForImageGeneration(
     body: JSON.stringify({
       bot_id: botId,
       user_id: 'drama-workshop-image-gen',
-      stream: false,
+      stream: true,
       auto_save_history: false,
       additional_messages: [{
         role: 'user',
@@ -303,36 +304,106 @@ async function invokeBotForImageGeneration(
     }),
   })
   
-  // 获取响应文本
-  const responseText = await response.text()
-  console.log('[Bot Image] Response status:', response.status)
-  console.log('[Bot Image] Response preview:', responseText.slice(0, 500))
-  
+  // 处理流式响应
   if (!response.ok) {
-    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText} - ${responseText}`)
+    const errorText = await response.text()
+    console.log('[Bot Image] Response status:', response.status)
+    console.log('[Bot Image] Response preview:', errorText.slice(0, 500))
+    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText} - ${errorText}`)
   }
   
-  // 解析响应
-  let data
-  try {
-    data = JSON.parse(responseText)
-  } catch {
-    throw new Error(`Bot API 返回无效 JSON: ${responseText.slice(0, 200)}`)
-  }
+  console.log('[Bot Image] Response status:', response.status)
+  console.log('[Bot Image] Content-Type:', response.headers.get('content-type'))
   
-  // 检查是否有错误码
-  if (data.code && data.code !== 0) {
-    throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
-  }
-  
-  // 解析 Bot 返回的内容，提取图片 URL
+  // 检查是否是流式响应
+  const contentType = response.headers.get('content-type') || ''
   let content = ''
-  if (data.data?.[0]?.content) {
-    content = data.data[0].content
-  } else if (data.messages?.[0]?.content) {
-    content = data.messages[0].content
-  } else if (data.content) {
-    content = data.content
+  
+  if (contentType.includes('text/event-stream') || contentType.includes('application/stream+json')) {
+    // 处理 SSE 流式响应
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法获取响应流')
+    }
+    
+    const decoder = new TextDecoder()
+    let buffer = ''
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      
+      // 按双换行分割事件
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+      
+      for (const eventBlock of events) {
+        if (!eventBlock.trim()) continue
+        
+        const lines = eventBlock.split('\n')
+        let eventData = ''
+        
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            eventData = line.slice(5).trim()
+          }
+        }
+        
+        if (!eventData || eventData === '[DONE]') continue
+        
+        try {
+          const data = JSON.parse(eventData)
+          
+          // 处理 conversation.message.completed 事件
+          if (data.type === 'answer' && data.content) {
+            content = data.content
+          }
+          
+          // 处理 delta 事件
+          if (data.content && typeof data.content === 'string') {
+            content += data.content
+          }
+          
+          // 检查错误
+          if (data.code && data.code !== 0) {
+            throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
+          }
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) {
+            continue
+          }
+          throw parseError
+        }
+      }
+    }
+  } else {
+    // 非 SSE 响应（可能是错误）
+    const responseText = await response.text()
+    console.log('[Bot Image] Non-stream response:', responseText.slice(0, 500))
+    
+    // 尝试解析为 JSON
+    try {
+      const data = JSON.parse(responseText)
+      
+      // 检查错误码
+      if (data.code && data.code !== 0) {
+        throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
+      }
+      
+      // 提取内容
+      if (data.data?.[0]?.content) {
+        content = data.data[0].content
+      } else if (data.messages?.[0]?.content) {
+        content = data.messages[0].content
+      } else if (data.content) {
+        content = data.content
+      }
+    } catch {
+      // 可能整个响应就是内容
+      content = responseText
+    }
   }
   
   console.log('[Bot Image] Content length:', content.length, 'preview:', content.slice(0, 300))
@@ -408,6 +479,7 @@ async function invokeBotForVideoGeneration(
   logger.info('Invoking Bot for video generation', { botId })
   
   // 调用 Bot API，通过特定 prompt 触发视频生成 Skill
+  // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
   const response = await fetch(`${baseUrl}/v3/chat`, {
     method: 'POST',
     headers: {
@@ -417,7 +489,7 @@ async function invokeBotForVideoGeneration(
     body: JSON.stringify({
       bot_id: botId,
       user_id: 'drama-workshop-video-gen',
-      stream: false,
+      stream: true,
       auto_save_history: false,
       additional_messages: [{
         role: 'user',
@@ -432,16 +504,64 @@ async function invokeBotForVideoGeneration(
     throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText}`)
   }
   
-  const data = await response.json()
+  // 处理流式响应
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('无法获取响应流')
+  }
   
-  // 解析 Bot 返回的内容，提取视频 URL
+  const decoder = new TextDecoder()
+  let buffer = ''
   let content = ''
-  if (data.data?.[0]?.content) {
-    content = data.data[0].content
-  } else if (data.messages?.[0]?.content) {
-    content = data.messages[0].content
-  } else if (data.content) {
-    content = data.content
+  
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    
+    buffer += decoder.decode(value, { stream: true })
+    
+    // 按双换行分割事件
+    const events = buffer.split('\n\n')
+    buffer = events.pop() || ''
+    
+    for (const eventBlock of events) {
+      if (!eventBlock.trim()) continue
+      
+      const lines = eventBlock.split('\n')
+      let eventData = ''
+      
+      for (const line of lines) {
+        if (line.startsWith('data:')) {
+          eventData = line.slice(5).trim()
+        }
+      }
+      
+      if (!eventData || eventData === '[DONE]') continue
+      
+      try {
+        const data = JSON.parse(eventData)
+        
+        // 处理 conversation.message.completed 事件
+        if (data.type === 'answer' && data.content) {
+          content = data.content
+        }
+        
+        // 处理 delta 事件
+        if (data.content && typeof data.content === 'string') {
+          content += data.content
+        }
+        
+        // 检查错误
+        if (data.code && data.code !== 0) {
+          throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
+        }
+      } catch (parseError) {
+        if (parseError instanceof SyntaxError) {
+          continue
+        }
+        throw parseError
+      }
+    }
   }
   
   // 从内容中提取视频 URL
@@ -765,20 +885,59 @@ export async function generateImage(
           responseFormat: options?.responseFormat || 'url',
         })
 
-        if (response.data && Array.isArray(response.data)) {
-          const helper = client.getResponseHelper(response)
-          if (helper.success) {
-            logger.info('Image generation completed with user credentials', { count: helper.imageUrls.length })
-            return {
-              urls: helper.imageUrls,
-              b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+        // 检查响应结构
+        console.log('[User PAT] Response structure:', {
+          hasData: !!response.data,
+          dataType: Array.isArray(response.data) ? 'array' : typeof response.data,
+          hasError: !!response.error,
+          error: response.error,
+        })
+        
+        // 处理错误响应
+        if (response.error) {
+          const errorMsg = response.error.message || JSON.stringify(response.error)
+          // 检查是否是权限错误
+          if (errorMsg.includes('token') || errorMsg.includes('权限') || errorMsg.includes('permission')) {
+            throw new Error('PAT 权限不足：请确保您的 Coze PAT 有「图像生成」权限')
+          }
+          throw new Error(`图像生成失败: ${errorMsg}`)
+        }
+        
+        // 检查数据是否有效
+        if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+          try {
+            const helper = client.getResponseHelper(response)
+            if (helper.success && helper.imageUrls.length > 0) {
+              logger.info('Image generation completed with user credentials', { count: helper.imageUrls.length })
+              return {
+                urls: helper.imageUrls,
+                b64List: helper.imageB64List.length > 0 ? helper.imageB64List : undefined,
+              }
+            }
+          } catch (helperErr) {
+            // getResponseHelper 可能因为响应格式不正确而失败
+            const errMsg = helperErr instanceof Error ? helperErr.message : String(helperErr)
+            console.log('[User PAT] getResponseHelper failed:', errMsg)
+            
+            // 尝试直接从 response.data 提取 URL
+            if (response.data && Array.isArray(response.data)) {
+              const urls = response.data
+                .filter((item: unknown): item is { url: string } => 
+                  typeof item === 'object' && item !== null && 'url' in item
+                )
+                .map((item: { url: string }) => item.url)
+              
+              if (urls.length > 0) {
+                logger.info('Image generation completed with user credentials (direct extract)', { count: urls.length })
+                return { urls }
+              }
             }
           }
         }
         
-        if (response.error) {
-          throw new Error(`图像生成失败: ${response.error.message || JSON.stringify(response.error)}`)
-        }
+        // 响应格式不正确，可能是权限问题
+        console.log('[User PAT] Invalid response format, full response:', JSON.stringify(response).slice(0, 500))
+        throw new Error('PAT 可能没有图像生成权限，请检查您的 Coze PAT 配置')
       } catch (patErr) {
         const errMsg = patErr instanceof Error ? patErr.message : String(patErr)
         logger.warn('User PAT failed for image generation:', { error: errMsg })
