@@ -14,8 +14,11 @@ import {
   DEFAULT_LLM_MODEL,
   DEFAULT_IMAGE_SIZE,
   DEFAULT_VIDEO_MODEL,
-  AVAILABLE_LLM_MODELS,
 } from '@/lib/ai'
+import {
+  saveSettingsToMemory,
+  getSettingsFromMemory,
+} from '@/lib/memory-store'
 
 // 默认设置（使用系统自带模型，无需 API Key）
 function getDefaultSettings() {
@@ -54,9 +57,6 @@ function getDefaultSettings() {
   }
 }
 
-// 内存存储（用于开发环境，当数据库不可用时）
-let memorySettings: Record<string, unknown> | null = null
-
 /**
  * GET /api/settings
  * 获取设置
@@ -83,6 +83,7 @@ export async function GET() {
     }
 
     // 使用内存设置或默认设置
+    const memorySettings = getSettingsFromMemory()
     const settings = memorySettings
       ? { ...getDefaultSettings(), ...memorySettings }
       : getDefaultSettings()
@@ -191,7 +192,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // 保存到内存
-    memorySettings = {
+    saveSettingsToMemory({
       coze_api_key: body.cozeApiKey,
       coze_base_url: body.cozeBaseUrl,
       llm_provider: body.llmProvider,
@@ -216,7 +217,7 @@ export async function PUT(request: NextRequest) {
       voice_default_style: body.voiceDefaultStyle,
       ffmpeg_path: body.ffmpegPath,
       ffprobe_path: body.ffprobePath,
-    }
+    })
 
     return successResponse({
       saved: true,

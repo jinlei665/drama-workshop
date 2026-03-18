@@ -104,25 +104,39 @@ export const AVAILABLE_LLM_MODELS = [
 
 /**
  * 获取用户配置的 Coze API Key
- * 优先级：传入参数 > 用户设置 > 环境变量
+ * 优先级：传入参数 > 用户设置（数据库或内存） > 环境变量
  */
 async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string }> {
   try {
+    // 先尝试从数据库获取
     const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
     
     if (isDatabaseConfigured()) {
-      const db = getSupabaseClient()
-      const { data } = await db
-        .from('user_settings')
-        .select('coze_api_key, coze_base_url')
-        .maybeSingle()
-      
-      if (data?.coze_api_key) {
-        return {
-          apiKey: data.coze_api_key,
-          baseUrl: data.coze_base_url || undefined,
+      try {
+        const db = getSupabaseClient()
+        const { data, error } = await db
+          .from('user_settings')
+          .select('coze_api_key, coze_base_url')
+          .maybeSingle()
+        
+        if (!error && data?.coze_api_key) {
+          console.log('[AI Config] Got config from database')
+          return {
+            apiKey: data.coze_api_key,
+            baseUrl: data.coze_base_url || undefined,
+          }
         }
+      } catch {
+        // 数据库不可用，继续尝试内存存储
       }
+    }
+    
+    // 尝试从内存存储获取
+    const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
+    const memoryConfig = getCozeConfigFromMemory()
+    if (memoryConfig?.apiKey) {
+      console.log('[AI Config] Got config from memory store')
+      return memoryConfig
     }
   } catch {
     // 忽略错误，使用默认配置
@@ -168,10 +182,19 @@ export async function createLLMClientAsync(
   // 获取用户配置
   const userConfig = await getUserCozeConfig()
   
+  // 优先级：传入参数 > 用户配置 > 环境变量 > 默认值
+  // 国内用户默认使用 api.coze.cn
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
   const clientConfig = new Config({
     apiKey: config?.apiKey || userConfig.apiKey, // 优先使用传入参数，其次用户配置
-    baseUrl: config?.baseUrl || userConfig.baseUrl,
+    baseUrl: config?.baseUrl || userConfig.baseUrl || defaultBaseUrl,
     timeout: config?.timeout || 120000, // 2分钟超时
+  })
+
+  console.log('[LLM Client] Config:', {
+    hasApiKey: !!(config?.apiKey || userConfig.apiKey),
+    baseUrl: config?.baseUrl || userConfig.baseUrl || defaultBaseUrl,
   })
 
   return new LLMClient(clientConfig, headers)
@@ -184,9 +207,12 @@ export function createLLMClient(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): LLMClient {
+  // 国内用户默认使用 api.coze.cn
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
   const clientConfig = new Config({
     apiKey: config?.apiKey, // 可选，系统会自动处理
-    baseUrl: config?.baseUrl,
+    baseUrl: config?.baseUrl || defaultBaseUrl,
     timeout: config?.timeout || 120000, // 2分钟超时
   })
 
@@ -337,9 +363,12 @@ export async function createImageClientAsync(
   // 获取用户配置
   const userConfig = await getUserCozeConfig()
   
+  // 国内用户默认使用 api.coze.cn
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
   const clientConfig = new Config({
     apiKey: config?.apiKey || userConfig.apiKey,
-    baseUrl: config?.baseUrl || userConfig.baseUrl,
+    baseUrl: config?.baseUrl || userConfig.baseUrl || defaultBaseUrl,
     timeout: config?.timeout || 180000, // 3分钟超时
   })
 
@@ -353,9 +382,12 @@ export function createImageClient(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): ImageGenerationClient {
+  // 国内用户默认使用 api.coze.cn
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
   const clientConfig = new Config({
     apiKey: config?.apiKey,
-    baseUrl: config?.baseUrl,
+    baseUrl: config?.baseUrl || defaultBaseUrl,
     timeout: config?.timeout || 180000, // 3分钟超时
   })
 
@@ -455,9 +487,12 @@ export async function createVideoClientAsync(
   // 获取用户配置
   const userConfig = await getUserCozeConfig()
   
+  // 国内用户默认使用 api.coze.cn
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
   const clientConfig = new Config({
     apiKey: config?.apiKey || userConfig.apiKey,
-    baseUrl: config?.baseUrl || userConfig.baseUrl,
+    baseUrl: config?.baseUrl || userConfig.baseUrl || defaultBaseUrl,
     timeout: config?.timeout || 600000, // 10分钟超时
   })
 
@@ -471,9 +506,12 @@ export function createVideoClient(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): VideoGenerationClient {
+  // 国内用户默认使用 api.coze.cn
+  const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+  
   const clientConfig = new Config({
     apiKey: config?.apiKey,
-    baseUrl: config?.baseUrl,
+    baseUrl: config?.baseUrl || defaultBaseUrl,
     timeout: config?.timeout || 600000, // 10分钟超时
   })
 
