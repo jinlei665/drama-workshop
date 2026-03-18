@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { ImageGenerationClient, Config, HeaderUtils } from "coze-coding-dev-sdk"
+import { ImageGenerationClient, Config, HeaderUtils, APIError } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 import { memoryCharacters, memoryProjects } from "@/lib/memory-storage"
 import { getCharacterStylePrompt } from "@/lib/styles"
@@ -51,8 +51,6 @@ export async function POST(request: NextRequest) {
     hasApiKey: !!userConfig?.apiKey,
     baseUrl: userConfig?.baseUrl || defaultBaseUrl,
   })
-  
-  const imageClient = new ImageGenerationClient(config, customHeaders)
 
   try {
     // 获取项目风格
@@ -99,12 +97,28 @@ export async function POST(request: NextRequest) {
 
     console.log(`Generating character views for ${characterId} with style ${style}:`, basePrompt.substring(0, 100))
 
+    // 创建图像生成客户端
+    const imageClient = new ImageGenerationClient(config, customHeaders)
+
     // 生成三视图
-    const response = await imageClient.generate({
-      prompt: basePrompt,
-      size: "2K",
-      watermark: false,
-    })
+    let response
+    try {
+      response = await imageClient.generate({
+        prompt: basePrompt,
+        size: "2K",
+        watermark: false,
+      })
+      console.log('[Character Views] Raw response:', JSON.stringify(response, null, 2))
+    } catch (genError) {
+      console.error('[Character Views] Generate error:', genError)
+      if (genError instanceof APIError) {
+        return NextResponse.json(
+          { error: `图像生成失败: ${genError.message} (status: ${genError.statusCode})` },
+          { status: 500 }
+        )
+      }
+      throw genError
+    }
 
     const helper = imageClient.getResponseHelper(response)
 
