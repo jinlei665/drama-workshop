@@ -113,6 +113,23 @@ export async function invokeCozeDirect(
       
       buffer += rawChunk
       
+      // 检查是否是 JSON 错误响应（非 SSE 格式）
+      if (rawChunk.startsWith('{') && rawChunk.includes('"code"')) {
+        try {
+          const errorData = JSON.parse(rawChunk)
+          if (errorData.code && errorData.code !== 0) {
+            logger.error('Coze API returned error in stream', errorData)
+            throw new Error(`Coze API 错误 (code: ${errorData.code}): ${errorData.msg}`)
+          }
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) {
+            // 不是 JSON，继续处理为 SSE
+          } else {
+            throw parseError
+          }
+        }
+      }
+      
       // 按双换行分割事件
       const events = buffer.split('\n\n')
       buffer = events.pop() || ''
