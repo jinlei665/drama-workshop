@@ -114,6 +114,7 @@ export async function POST(request: NextRequest) {
     }
     
     // 尝试保存到数据库
+    let savedToDatabase = false
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
       
@@ -133,6 +134,7 @@ export async function POST(request: NextRequest) {
           .single()
         
         if (!error && data) {
+          savedToDatabase = true
           // 触发异步分析
           triggerAnalysis(data.id, project.sourceContent, project.style).catch(console.error)
           
@@ -149,13 +151,21 @@ export async function POST(request: NextRequest) {
               updatedAt: data.updated_at,
             }
           }, 201)
+        } else if (error) {
+          console.warn('⚠️ 数据库保存失败，请确保已在 Supabase 中创建必要的表！')
+          console.warn('⚠️ 错误详情:', error.message)
+          console.warn('⚠️ 数据将保存到内存，刷新页面后会丢失！')
         }
       }
     } catch (dbError) {
-      console.warn('Database not available, saving to memory:', dbError)
+      console.warn('⚠️ 数据库不可用，数据将保存到内存，刷新页面后会丢失！')
+      console.warn('⚠️ 请在 Supabase 中执行建表 SQL 或注释掉 NEXT_PUBLIC_SUPABASE_URL')
     }
     
     // 保存到内存
+    if (!savedToDatabase) {
+      console.log('📝 保存到内存存储:', project.id, project.name)
+    }
     memoryProjects.unshift(project)
     
     // 触发异步分析

@@ -29,6 +29,7 @@ export async function GET(
     const { id } = await params
     
     // 尝试从数据库获取
+    let useDatabase = false
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
       
@@ -42,29 +43,35 @@ export async function GET(
           .eq('id', id)
           .maybeSingle()
         
+        // 如果表不存在或其他数据库错误，回退到内存存储
         if (projectError) {
-          console.error('Database error:', projectError)
-        }
-        
-        if (project) {
+          console.warn('Database query error, falling back to memory:', projectError.message)
+        } else if (project) {
+          useDatabase = true
           // 获取人物
-          const { data: characters } = await db
+          const { data: characters, error: charError } = await db
             .from('characters')
             .select('*')
             .eq('project_id', id)
           
+          if (charError) console.warn('Failed to fetch characters:', charError.message)
+          
           // 获取分镜
-          const { data: scenes } = await db
+          const { data: scenes, error: sceneError } = await db
             .from('scenes')
             .select('*')
             .eq('project_id', id)
             .order('scene_number', { ascending: true })
           
+          if (sceneError) console.warn('Failed to fetch scenes:', sceneError.message)
+          
           // 获取剧集
-          const { data: episodes } = await db
+          const { data: episodes, error: epError } = await db
             .from('episodes')
             .select('*')
             .eq('project_id', id)
+          
+          if (epError) console.warn('Failed to fetch episodes:', epError.message)
           
           return successResponse({
             project: {
@@ -89,6 +96,7 @@ export async function GET(
               sideViewKey: c.side_view_key,
               backViewKey: c.back_view_key,
               status: c.status,
+              imageUrl: c.image_url,
               createdAt: c.created_at,
             })),
             scenes: (scenes || []).map((s: any) => ({
@@ -116,7 +124,7 @@ export async function GET(
       console.warn('Database not available, using memory storage:', dbError)
     }
     
-    // 使用内存存储
+    // 使用内存存储（数据库未配置或查询失败时）
     const project = memoryProjects.find(p => p.id === id)
     
     if (!project) {
