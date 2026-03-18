@@ -48,16 +48,6 @@ export async function invokeCozeDirect(
       content_type: 'text'
     }))
 
-    // 打印请求内容，方便调试
-    console.log('\n========== Coze API 请求内容 ==========')
-    console.log('Bot ID:', botId)
-    console.log('Messages:')
-    additionalMessages.forEach((msg, i) => {
-      console.log(`\n--- Message ${i + 1} (${msg.role}) ---`)
-      console.log(msg.content.slice(0, 500) + (msg.content.length > 500 ? '...(截断)' : ''))
-    })
-    console.log('========================================\n')
-
     const response = await fetch(`${baseUrl}/v3/chat`, {
       method: 'POST',
       headers: {
@@ -95,15 +85,11 @@ export async function invokeCozeDirect(
     while (true) {
       const { done, value } = await reader.read()
       if (done) {
-        console.log('[Coze Stream] Stream done, total delta:', deltaCount, 'content length:', fullContent.length)
+        console.log('[Coze Stream] Stream done')
         break
       }
 
-      // 打印原始响应数据
-      const chunk = decoder.decode(value, { stream: true })
-      console.log('[Coze Stream] Raw chunk:', chunk.slice(0, 500))
-      
-      buffer += chunk
+      buffer += decoder.decode(value, { stream: true })
       
       // 按双换行分割事件
       const events = buffer.split('\n\n')
@@ -123,38 +109,31 @@ export async function invokeCozeDirect(
           }
         }
 
-        // 打印每个事件
-        console.log(`[Coze Stream] Event: ${currentEvent}, Data: ${eventData.slice(0, 200)}${eventData.length > 200 ? '...' : ''}`)
-
         if (!eventData || eventData === '[DONE]') continue
 
         try {
           const data = JSON.parse(eventData)
           
-          // 处理 delta 事件 - 增量内容（流式输出的关键）
-          if (currentEvent === 'conversation.message.delta') {
-            deltaCount++
-            // delta 事件中的 content 是增量内容，需要累加
-            if (data.content) {
-              fullContent += data.content
-            }
-            if (deltaCount === 1 || deltaCount % 50 === 0) {
-              console.log('[Coze Stream] Delta events:', deltaCount, 'content length:', fullContent.length)
-            }
-          }
-          
-          // 处理已完成的消息
+          // 只打印关键事件
           if (currentEvent === 'conversation.message.completed') {
             console.log('[Coze Stream] Message completed, type:', data.type, 'content length:', data.content?.length || 0)
-            // 如果 delta 没有内容，从 completed 消息中获取
-            if (!fullContent && data.content) {
-              fullContent = data.content
+          } else if (currentEvent === 'conversation.chat.completed') {
+            console.log('[Coze Stream] Chat completed')
+          } else if (currentEvent === 'error') {
+            console.log('[Coze Stream] Error:', data.msg)
+          } else if (currentEvent === 'conversation.message.delta') {
+            deltaCount++
+            // 只打印一次进度
+            if (deltaCount === 1 || deltaCount % 50 === 0) {
+              console.log('[Coze Stream] Processing... delta events:', deltaCount)
             }
           }
-          
-          // 处理 chat 完成
-          if (currentEvent === 'conversation.chat.completed') {
-            console.log('[Coze Stream] Chat completed')
+
+          // 处理已完成的消息
+          if (currentEvent === 'conversation.message.completed') {
+            if (data.type === 'answer' && data.content) {
+              fullContent = data.content
+            }
           }
           
           // 处理错误
