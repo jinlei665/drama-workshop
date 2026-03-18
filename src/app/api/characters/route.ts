@@ -4,7 +4,7 @@
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination } from '@/lib/api/response'
-import { memoryCharacters, generateId } from '@/lib/memory-storage'
+import { memoryCharacters, generateUUID } from '@/lib/memory-storage'
 
 /**
  * GET /api/characters
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     }
     
     const character = {
-      id: generateId('char'),
+      id: generateUUID(),  // 使用 UUID 格式
       name: body.name,
       description: body.description,
       appearance: body.appearance,
@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await db
           .from('characters')
           .insert({
+            id: character.id,  // 显式传入 ID
             name: character.name,
             description: character.description,
             appearance: character.appearance,

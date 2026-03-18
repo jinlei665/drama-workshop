@@ -5,7 +5,7 @@
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination } from '@/lib/api/response'
-import { memoryProjects, generateId } from '@/lib/memory-storage'
+import { memoryProjects, generateId, generateUUID } from '@/lib/memory-storage'
 
 /**
  * GET /api/projects
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
     
     const project = {
-      id: generateId('proj'),
+      id: generateUUID(),  // 使用 UUID 格式
       name: body.name,
       sourceContent: body.sourceContent,
       sourceType: body.sourceType || 'novel',
@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await db
           .from('projects')
           .insert({
+            id: project.id,  // 显式传入 ID
             name: project.name,
             source_content: project.sourceContent,
             source_type: project.sourceType,

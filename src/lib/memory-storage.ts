@@ -73,6 +73,22 @@ let idCounter = 1
 /**
  * 生成唯一 ID
  */
+/**
+ * 生成 UUID v4 格式的 ID
+ */
+export function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0
+    const v = c === 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
+/**
+ * 生成唯一 ID
+ * @param prefix 可选前缀，用于内存存储模式
+ * @returns 内存存储模式返回带前缀的 ID，数据库模式返回 UUID
+ */
 export function generateId(prefix: string = ''): string {
   return prefix ? `${prefix}_${Date.now()}_${idCounter++}` : `${Date.now()}_${idCounter++}`
 }

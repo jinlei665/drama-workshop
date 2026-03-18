@@ -8,7 +8,7 @@
  */
 
 // 导入全局内存存储，确保与 memory-storage.ts 同步
-import { memoryProjects, memoryCharacters, memoryScenes, memoryEpisodes } from '@/lib/memory-storage';
+import { memoryProjects, memoryCharacters, memoryScenes, memoryEpisodes, generateUUID } from '@/lib/memory-storage';
 
 // 类型定义
 export type DatabaseType = 'supabase' | 'memory';
@@ -223,7 +223,7 @@ function createMemoryClient() {
           select: () => ({
             single: async () => {
               const item = {
-                id: items[0].id || generateId(),
+                id: items[0].id || generateUUID(),
                 ...items[0],
                 created_at: items[0].created_at || items[0].createdAt || new Date().toISOString(),
                 updated_at: items[0].updated_at || items[0].updatedAt || new Date().toISOString(),
@@ -237,7 +237,7 @@ function createMemoryClient() {
             const tableData = getTable(table);
             for (const itemData of items) {
               const item = {
-                id: itemData.id || generateId(),
+                id: itemData.id || generateUUID(),
                 ...itemData,
                 created_at: itemData.created_at || itemData.createdAt || new Date().toISOString(),
                 updated_at: itemData.updated_at || itemData.updatedAt || new Date().toISOString(),
