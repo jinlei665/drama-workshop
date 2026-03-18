@@ -28,13 +28,6 @@ export async function GET(request: NextRequest) {
           .select('*')
           .order('created_at', { ascending: false })
         
-        console.log('[Projects API] Database query result:', {
-          hasError: !!error,
-          errorMessage: error?.message,
-          dataLength: data?.length,
-          firstItem: data?.[0]?.id,
-        })
-        
         // 只有当没有错误且有数据时才使用数据库
         // 如果表不存在，error.code 会是 '42P01' (PostgreSQL)
         if (!error && data && data.length > 0) {
