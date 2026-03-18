@@ -24,53 +24,12 @@ export interface CozeMessage {
   content: string
 }
 
-/** Coze API 响应 */
-interface CozeChatResponse {
-  code: number
-  msg: string
-  data?: {
-    id: string
-    conversation_id: string
-    status: string
-    usage?: {
-      token_count: number
-      input_tokens: number
-      output_tokens: number
-    }
-    messages?: Array<{
-      id: string
-      role: string
-      type: string
-      content: string
-      content_type: string
-    }>
-  }
-  detail?: {
-    logid: string
-  }
-}
-
-/** 流式响应事件 */
-interface CozeStreamEvent {
-  event: string
-  data?: {
-    id: string
-    conversation_id: string
-    status: string
-    messages?: Array<{
-      id: string
-      role: string
-      type: string
-      content: string
-      content_type: string
-    }>
-  }
-  msg?: string
-  code?: number
-}
-
 /**
  * 直接调用 Coze API（使用流式，然后收集完整响应）
+ * 
+ * SSE 格式：
+ * event:conversation.message.completed
+ * data:{"id":"xxx","content":"实际回复内容","type":"answer",...}
  */
 export async function invokeCozeDirect(
   messages: CozeMessage[],
@@ -114,7 +73,7 @@ export async function invokeCozeDirect(
       body: JSON.stringify({
         bot_id: botId,
         user_id: 'drama-workshop-user',
-        stream: true,  // 使用流式
+        stream: true,
         auto_save_history: true,
         additional_messages: additionalMessages,
       }),
@@ -136,7 +95,7 @@ export async function invokeCozeDirect(
     const decoder = new TextDecoder()
     let buffer = ''
     let fullContent = ''
-    let chatStatus = ''
+    let currentEvent = ''
 
     while (true) {
       const { done, value } = await reader.read()
@@ -145,57 +104,62 @@ export async function invokeCozeDirect(
 
       buffer += decoder.decode(value, { stream: true })
       
-      // 解析 SSE 事件
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+      // 按双换行分割事件
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
 
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const data = line.slice(5).trim()
+      for (const eventBlock of events) {
+        if (!eventBlock.trim()) continue
+
+        const lines = eventBlock.split('\n')
+        let eventData = ''
+        
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            currentEvent = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
+            eventData = line.slice(5).trim()
+          }
+        }
+
+        if (!eventData) continue
+        if (eventData === '[DONE]') continue
+
+        try {
+          const data = JSON.parse(eventData)
           
-          if (data === '[DONE]') {
+          // 调试日志
+          if (currentEvent) {
+            console.log('[Coze Stream] Event:', currentEvent)
+          }
+
+          // 处理已完成的消息 - 这里包含完整的回答
+          if (currentEvent === 'conversation.message.completed') {
+            // 只处理 type=answer 的消息
+            if (data.type === 'answer' && data.content) {
+              fullContent = data.content  // 使用完整内容，不是增量
+              console.log('[Coze Stream] Got answer, length:', data.content.length)
+            }
+          }
+          
+          // 处理增量消息（可选，用于实时显示）
+          if (currentEvent === 'conversation.message.delta') {
+            // delta 事件的 content 可能为空，实际在 reasoning_content 中
+            // 我们等待 completed 事件获取完整内容
+          }
+          
+          // 处理错误
+          if (currentEvent === 'error' || data.code) {
+            const errorMsg = data.msg || JSON.stringify(data)
+            throw new Error(`Coze API 错误: ${errorMsg}`)
+          }
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) {
+            // JSON 解析错误，忽略
+            console.warn('[Coze Stream] JSON parse error:', eventData.substring(0, 100))
             continue
           }
-
-          try {
-            const event = JSON.parse(data)
-            
-            // 调试日志
-            if (event.event) {
-              console.log('[Coze Stream] Event:', event.event)
-            }
-
-            // 处理对话状态
-            if (event.event === 'conversation.chat.completed') {
-              chatStatus = 'completed'
-            }
-            
-            // 处理已完成的消息
-            if (event.event === 'conversation.message.completed') {
-              if (event.data?.content && event.data?.type === 'answer') {
-                fullContent += event.data.content
-              }
-            }
-            
-            // 处理增量消息
-            if (event.event === 'conversation.message.delta') {
-              if (event.data?.content) {
-                fullContent += event.data.content
-              }
-            }
-            
-            // 处理错误
-            if (event.event === 'error' || event.code) {
-              const errorMsg = event.msg || JSON.stringify(event)
-              throw new Error(`Coze API 错误: ${errorMsg}`)
-            }
-          } catch (parseError) {
-            if (parseError instanceof SyntaxError) {
-              // JSON 解析错误，可能是分片数据，忽略
-              continue
-            }
-            throw parseError
-          }
+          throw parseError
         }
       }
     }
@@ -203,8 +167,8 @@ export async function invokeCozeDirect(
     clearTimeout(timeoutId)
 
     if (!fullContent) {
-      logger.error('Coze API returned empty content', { chatStatus })
-      throw new Error('Coze API 返回空内容，请检查智能体配置')
+      logger.error('Coze API returned empty content')
+      throw new Error('Coze API 返回空内容，请检查智能体是否正确配置了人设')
     }
 
     logger.info('Coze Direct API call completed', { responseLength: fullContent.length })
@@ -218,126 +182,6 @@ export async function invokeCozeDirect(
     }
     
     logger.error('Coze Direct API call failed', error)
-    throw error
-  }
-}
-
-/**
- * 流式调用 Coze API
- */
-export async function* streamCozeDirect(
-  messages: CozeMessage[],
-  config: CozeDirectConfig
-): AsyncGenerator<string> {
-  const { apiKey, baseUrl = 'https://api.coze.cn', botId, timeout = 120000 } = config
-
-  if (!apiKey) {
-    throw Errors.AIConfigMissing('Coze')
-  }
-
-  if (!botId) {
-    throw new Error('需要配置 Bot ID。请在 Coze 平台创建智能体并获取 Bot ID。')
-  }
-
-  logger.info('Coze Direct API stream started', { botId, baseUrl })
-
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeout)
-
-  try {
-    const additionalMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.content,
-      content_type: 'text'
-    }))
-
-    const response = await fetch(`${baseUrl}/v3/chat`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
-      },
-      body: JSON.stringify({
-        bot_id: botId,
-        user_id: 'drama-workshop-user',
-        stream: true,
-        auto_save_history: true,
-        additional_messages: additionalMessages,
-      }),
-      signal: controller.signal,
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Coze API 请求失败: ${response.status}`)
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error('无法获取响应流')
-    }
-
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      
-      // 解析 SSE 事件
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const data = line.slice(5).trim()
-          
-          if (data === '[DONE]') {
-            clearTimeout(timeoutId)
-            return
-          }
-
-          try {
-            const event: CozeStreamEvent = JSON.parse(data)
-            
-            // 处理消息增量事件
-            if (event.event === 'conversation.message.delta' && event.data?.messages) {
-              for (const msg of event.data.messages) {
-                if (msg.content) {
-                  yield msg.content
-                }
-              }
-            }
-            
-            // 处理错误事件
-            if (event.event === 'error') {
-              throw new Error(`Coze API 流式错误: ${event.msg || '未知错误'}`)
-            }
-          } catch (parseError) {
-            // 忽略解析错误，继续处理
-            if (parseError instanceof SyntaxError) {
-              continue
-            }
-            throw parseError
-          }
-        }
-      }
-    }
-
-    clearTimeout(timeoutId)
-    logger.info('Coze Direct API stream completed')
-  } catch (error) {
-    clearTimeout(timeoutId)
-    
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw Errors.AITimeout('Coze')
-    }
-    
-    logger.error('Coze Direct API stream failed', error)
     throw error
   }
 }
