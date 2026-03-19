@@ -45,7 +45,14 @@ export async function POST(request: NextRequest) {
 
   // 获取分镜数据
   let scenes: any[] = []
-  let characterMap = new Map()
+  // 人物数据结构，包含参考图信息
+  let characterMap = new Map<string, { 
+    id: string
+    name: string
+    appearance?: string
+    frontViewKey?: string
+    imageUrl?: string
+  }>()
 
   if (isDatabaseConfigured()) {
     const supabase = getSupabaseClient()
@@ -64,14 +71,20 @@ export async function POST(request: NextRequest) {
     }
     scenes = dbScenes
 
-    // 获取人物数据
+    // 获取人物数据（包含参考图）
     const { data: characters } = await supabase
       .from("characters")
-      .select("*")
+      .select("id, name, appearance, front_view_key, image_url")
       .eq("project_id", projectId)
 
     characterMap = new Map(
-      (characters || []).map((c: any) => [c.id, c])
+      (characters || []).map((c: any) => [c.id, {
+        id: c.id,
+        name: c.name,
+        appearance: c.appearance,
+        frontViewKey: c.front_view_key,
+        imageUrl: c.image_url,
+      }])
     )
   } else {
     // 使用内存存储
@@ -87,7 +100,13 @@ export async function POST(request: NextRequest) {
 
     memoryCharacters
       .filter(c => c.projectId === projectId)
-      .forEach(c => characterMap.set(c.id, c))
+      .forEach(c => characterMap.set(c.id, {
+        id: c.id,
+        name: c.name,
+        appearance: c.appearance,
+        frontViewKey: c.frontViewKey,
+        imageUrl: c.imageUrl,
+      }))
   }
 
   // 使用统一的图像生成接口（沙箱环境内置凭证）
@@ -134,14 +153,22 @@ export async function POST(request: NextRequest) {
         memoryScenes[idx].status = "generating"
       }
 
-      // 获取出场人物描述
+      // 获取出场人物信息（包含参考图）
       const charIds = scene.character_ids || scene.characterIds || []
-      const charDescriptions = charIds
-        .map((id: string) => {
-          const char = characterMap.get(id) as { id: string; appearance?: string } | undefined
-          return char?.appearance
-        })
+      const sceneCharacters = charIds
+        .map((id: string) => characterMap.get(id))
         .filter(Boolean)
+      
+      // 获取人物描述文本
+      const charDescriptions = sceneCharacters
+        .map((c: { appearance?: string } | undefined) => c?.appearance)
+        .filter(Boolean)
+      
+      // 获取人物参考图URL（用于保持人物一致性）
+      // 优先使用 frontViewKey（三视图），其次是 imageUrl
+      const characterReferenceImages = sceneCharacters
+        .map((c: { frontViewKey?: string; imageUrl?: string } | undefined) => c?.frontViewKey || c?.imageUrl)
+        .filter(Boolean) as string[]
 
       // 构建真人实拍风格提示词
       const description = scene.description
@@ -160,11 +187,16 @@ export async function POST(request: NextRequest) {
       prompt += "，4K画质，细节丰富"
 
       console.log(`Generating scene ${sceneId} with style ${style}:`, prompt.substring(0, 100))
+      if (characterReferenceImages.length > 0) {
+        console.log(`  Using ${characterReferenceImages.length} character reference images for consistency`)
+      }
 
       // 生成图片（使用沙箱环境内置凭证）
+      // 关键改进：传入人物参考图以保持一致性
       const imageResult = await generateImage(prompt, {
         size: '2K',
         watermark: false,
+        image: characterReferenceImages.length > 0 ? characterReferenceImages : undefined,
       }, undefined, customHeaders)
 
       // 下载图片

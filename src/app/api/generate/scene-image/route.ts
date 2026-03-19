@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { generateImage } from "@/lib/ai"
 import { S3Storage } from "coze-coding-dev-sdk"
 import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
-import { memoryScenes, memoryProjects } from "@/lib/memory-storage"
+import { memoryScenes, memoryProjects, memoryCharacters } from "@/lib/memory-storage"
 import { getStylePrompt } from "@/lib/styles"
 import { downloadFile } from "@/lib/utils"
 
 // POST /api/generate/scene-image - 生成分镜图片（短剧视频分镜）
 export async function POST(request: NextRequest) {
-  const { sceneId, description, emotion, characterDescriptions } = await request.json()
+  const { sceneId, description, emotion, characterDescriptions, characterIds } = await request.json()
 
   if (!sceneId || !description) {
     return NextResponse.json(
@@ -20,11 +20,12 @@ export async function POST(request: NextRequest) {
   try {
     // 获取项目风格
     let style = 'realistic_cinema'
+    let projectId = ''
     
     // 从内存获取
     const sceneIndex = memoryScenes.findIndex(s => s.id === sceneId)
     if (sceneIndex !== -1) {
-      const projectId = memoryScenes[sceneIndex].projectId
+      projectId = memoryScenes[sceneIndex].projectId
       const project = memoryProjects.find(p => p.id === projectId)
       if (project?.style) {
         style = project.style
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
         .single()
       
       if (sceneData?.project_id) {
+        projectId = sceneData.project_id
         const { data: projectData } = await supabase
           .from('projects')
           .select('style')
@@ -57,6 +59,34 @@ export async function POST(request: NextRequest) {
 
     // 获取风格提示词
     const stylePrompt = getStylePrompt(style)
+
+    // 获取人物参考图（用于保持人物一致性）
+    let characterReferenceImages: string[] = []
+    
+    // 如果传入了 characterIds，获取人物的参考图
+    if (characterIds && characterIds.length > 0) {
+      if (isDatabaseConfigured()) {
+        const supabase = getSupabaseClient()
+        const { data: characters } = await supabase
+          .from('characters')
+          .select('id, front_view_key, image_url')
+          .in('id', characterIds)
+        
+        if (characters) {
+          characterReferenceImages = characters
+            .map((c: any) => c.front_view_key || c.image_url)
+            .filter(Boolean)
+        }
+      } else {
+        // 从内存获取
+        characterReferenceImages = characterIds
+          .map((id: string) => {
+            const char = memoryCharacters.find(c => c.id === id)
+            return char?.frontViewKey || char?.imageUrl
+          })
+          .filter(Boolean) as string[]
+      }
+    }
 
     // 构建分镜提示词
     let prompt = `${stylePrompt}，${description}`
@@ -73,6 +103,9 @@ export async function POST(request: NextRequest) {
     prompt += "，4K画质，细节丰富"
 
     console.log(`Generating scene image for ${sceneId} with style ${style}:`, prompt.substring(0, 100))
+    if (characterReferenceImages.length > 0) {
+      console.log(`  Using ${characterReferenceImages.length} character reference images for consistency`)
+    }
 
     // 更新状态为生成中
     if (isDatabaseConfigured()) {
@@ -89,9 +122,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 使用系统自带的图像生成服务
+    // 关键改进：传入人物参考图以保持一致性
     const result = await generateImage(prompt, {
       size: '2K',
       watermark: false,
+      image: characterReferenceImages.length > 0 ? characterReferenceImages : undefined,
     })
 
     const imageUrl = result.urls[0]
@@ -157,6 +192,7 @@ export async function POST(request: NextRequest) {
       imageUrl: viewUrl,
       fileKey,
       style,
+      usedCharacterReferences: characterReferenceImages.length,
     })
   } catch (error) {
     console.error("Generate scene image error:", error)

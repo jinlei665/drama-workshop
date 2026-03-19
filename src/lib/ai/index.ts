@@ -94,6 +94,8 @@ export interface ImageGenerationOptions {
   size?: '2K' | '4K' | string
   watermark?: boolean
   responseFormat?: 'url' | 'b64_json'
+  /** 参考图片URL（用于图生图，保持人物一致性） */
+  image?: string | string[]
 }
 
 /** 视频生成选项 */
@@ -1072,6 +1074,7 @@ export async function generateImage(
           size: options?.size || DEFAULT_IMAGE_SIZE,
           watermark: options?.watermark ?? false,
           responseFormat: options?.responseFormat || 'url',
+          image: options?.image,  // 参考图片，用于保持人物一致性
         })
 
         if (response.data && Array.isArray(response.data)) {
@@ -1127,6 +1130,7 @@ export async function generateImage(
           size: options?.size || DEFAULT_IMAGE_SIZE,
           watermark: options?.watermark ?? false,
           responseFormat: options?.responseFormat || 'url',
+          image: options?.image,  // 参考图片，用于保持人物一致性
         })
 
         // 检查响应结构
