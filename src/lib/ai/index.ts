@@ -863,12 +863,13 @@ export async function createLLMClientAsync(
   const clientConfig = new Config({
     apiKey: config?.apiKey || userConfig.apiKey, // 优先使用传入参数，其次用户配置
     baseUrl: config?.baseUrl || userConfig.baseUrl || defaultBaseUrl,
-    timeout: config?.timeout || 120000, // 2分钟超时
+    timeout: config?.timeout || 300000, // 5分钟超时（分析长文本可能需要更长时间）
   })
 
   console.log('[LLM Client] Config:', {
     hasApiKey: !!(config?.apiKey || userConfig.apiKey),
     baseUrl: config?.baseUrl || userConfig.baseUrl || defaultBaseUrl,
+    timeout: clientConfig.timeout,
   })
 
   return new LLMClient(clientConfig, headers)
@@ -887,7 +888,7 @@ export function createLLMClient(
   const clientConfig = new Config({
     apiKey: config?.apiKey, // 可选，系统会自动处理
     baseUrl: config?.baseUrl || defaultBaseUrl,
-    timeout: config?.timeout || 120000, // 2分钟超时
+    timeout: config?.timeout || 300000, // 5分钟超时
   })
 
   return new LLMClient(clientConfig, headers)
@@ -971,7 +972,7 @@ export async function invokeLLM(
           thinking: options?.thinking ?? 'disabled',
           caching: options?.caching ?? 'disabled',
         }),
-      { maxRetries: 3, delay: 5000 }
+      { maxRetries: 1, delay: 3000 } // 减少重试次数，避免长时间等待
     )
 
     logger.info('LLM invoke completed', { responseLength: response.content.length })
@@ -983,7 +984,8 @@ export async function invokeLLM(
       throw Errors.AIRequestFailed('LLM', `${err.message} (status: ${err.statusCode})`)
     }
     if (err instanceof Error && err.message.includes('timeout')) {
-      throw Errors.AITimeout('LLM')
+      // 添加更友好的错误提示
+      throw new Error('LLM 请求超时。可能原因：(1) 网络连接不稳定，请检查网络；(2) 服务繁忙，请稍后重试；(3) 建议在设置中配置您自己的 Coze API Key')
     }
     throw Errors.AIRequestFailed('LLM', err instanceof Error ? err.message : undefined)
   }
