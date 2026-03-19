@@ -193,7 +193,7 @@ async function generateSequential(
   videoModel: string,
   videoResolution: '480p' | '720p' | '1080p',
   videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
-  useDatabase: boolean
+  actuallyUseDatabase: boolean
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
   let previousLastFrame: string | null = null;
@@ -238,8 +238,8 @@ async function generateSequential(
       });
 
       // 更新数据库或内存
-      if (useDatabase && supabase) {
-        await supabase
+      if (actuallyUseDatabase && supabase) {
+        const { error: updateError } = await supabase
           .from('scenes')
           .update({
             video_url: result.videoUrl,
@@ -248,12 +248,21 @@ async function generateSequential(
             updated_at: new Date().toISOString(),
           })
           .eq('id', scene.id);
+        
+        if (updateError) {
+          console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, updateError.message);
+        } else {
+          console.log(`分镜 ${scene.scene_number} 数据库更新成功，video_url:`, result.videoUrl?.substring(0, 50) + '...');
+        }
       } else {
         // 更新内存存储
         const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
         if (sceneIndex !== -1) {
           memoryScenes[sceneIndex].videoUrl = result.videoUrl;
           memoryScenes[sceneIndex].videoStatus = 'completed';
+          console.log(`分镜 ${scene.scene_number} 内存更新成功`);
+        } else {
+          console.warn(`分镜 ${scene.scene_number} 在内存中未找到`);
         }
       }
 
@@ -270,7 +279,7 @@ async function generateSequential(
     } catch (error) {
       console.error(`分镜 ${scene.scene_number} 视频生成失败:`, error);
       
-      if (useDatabase && supabase) {
+      if (actuallyUseDatabase && supabase) {
         await supabase
           .from('scenes')
           .update({
@@ -395,7 +404,7 @@ async function generateFast(
   videoModel: string,
   videoResolution: '480p' | '720p' | '1080p',
   videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
-  useDatabase: boolean
+  actuallyUseDatabase: boolean
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
 
@@ -426,7 +435,7 @@ async function generateFast(
         generateAudio: true,
       });
 
-      if (useDatabase && supabase) {
+      if (actuallyUseDatabase && supabase) {
         await supabase
           .from('scenes')
           .update({
@@ -454,7 +463,7 @@ async function generateFast(
     } catch (error) {
       console.error(`[快速模式] 分镜 ${scene.scene_number} 视频生成失败:`, error);
 
-      if (useDatabase && supabase) {
+      if (actuallyUseDatabase && supabase) {
         await supabase
           .from('scenes')
           .update({
