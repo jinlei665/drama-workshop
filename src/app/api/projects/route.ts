@@ -5,7 +5,7 @@
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination } from '@/lib/api/response'
-import { memoryProjects, generateId, generateUUID } from '@/lib/memory-storage'
+import { memoryProjects, generateId } from '@/lib/memory-storage'
 
 /**
  * GET /api/projects
@@ -27,6 +27,13 @@ export async function GET(request: NextRequest) {
           .from('projects')
           .select('*')
           .order('created_at', { ascending: false })
+        
+        console.log('[Projects API] Database query result:', {
+          hasError: !!error,
+          errorMessage: error?.message,
+          dataLength: data?.length,
+          firstItem: data?.[0]?.id,
+        })
         
         // 只有当没有错误且有数据时才使用数据库
         // 如果表不存在，error.code 会是 '42P01' (PostgreSQL)
@@ -102,7 +109,7 @@ export async function POST(request: NextRequest) {
     }
     
     const project = {
-      id: generateUUID(),  // 使用 UUID 格式
+      id: generateId('proj'),
       name: body.name,
       sourceContent: body.sourceContent,
       sourceType: body.sourceType || 'novel',
@@ -123,7 +130,6 @@ export async function POST(request: NextRequest) {
         const { data, error } = await db
           .from('projects')
           .insert({
-            id: project.id,  // 显式传入 ID
             name: project.name,
             source_content: project.sourceContent,
             source_type: project.sourceType,

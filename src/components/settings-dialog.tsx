@@ -202,7 +202,7 @@ function FFmpegConfigSection({
       if (data.configured) {
         toast.success(`FFmpeg 检测成功: v${data.version}`)
       } else {
-        toast.error(data.error?.message || data.error || "FFmpeg 路径无效")
+        toast.error(data.error || "FFmpeg 路径无效")
       }
     } catch {
       toast.error("检测失败")

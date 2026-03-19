@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL, getServerAIConfig } from "@/lib/ai"
 import { invokeCozeDirect, getCozeDirectConfig } from "@/lib/ai/coze-direct"
-import { memoryCharacters, memoryScenes, generateUUID } from "@/lib/memory-storage"
+import { memoryCharacters, memoryScenes, generateId } from "@/lib/memory-storage"
 
 // 增加超时配置 - Next.js API 路由最大执行时间
 export const maxDuration = 300 // 5分钟
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
       // 保存人物
       if (result.characters && result.characters.length > 0) {
         for (const char of result.characters) {
-          const characterId = generateUUID()
+          const characterId = generateId('char')
           
           // 尝试保存到数据库
           let savedToDb = false
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
         }
 
         for (const scene of result.scenes) {
-          const sceneId = generateUUID()
+          const sceneId = generateId('scene')
           
           // 获取人物 ID
           const characterIds: string[] = (scene.characterNames || [])

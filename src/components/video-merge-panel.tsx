@@ -146,7 +146,7 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
           toast.error('FFmpeg 未配置，请先在设置中配置')
           setSettingsOpen(true)
         } else {
-          throw new Error(data.error?.message || data.error || '合并失败')
+          throw new Error(data.error || '合并失败')
         }
         return
       }

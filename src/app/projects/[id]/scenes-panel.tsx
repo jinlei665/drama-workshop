@@ -117,7 +117,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error?.message || data.error || "创建失败")
+        throw new Error(data.error || "创建失败")
       }
 
       toast.success("分镜创建成功")
@@ -162,7 +162,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error?.message || data.error || "更新失败")
+        throw new Error(data.error || "更新失败")
       }
 
       toast.success("分镜更新成功")
@@ -226,7 +226,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error?.message || data.error || "生成失败")
+        throw new Error(data.error || "生成失败")
       }
 
       toast.success("分镜图片生成成功")
@@ -266,7 +266,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error?.message || data.error || "视频生成失败")
+        throw new Error(data.error || "视频生成失败")
       }
 
       if (data.results?.[0]?.status === 'completed') {

@@ -153,7 +153,7 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
 
       const data = await res.json()
       if (!res.ok) {
-        throw new Error(data.error?.message || data.error || "创建失败")
+        throw new Error(data.error || "创建失败")
       }
 
       toast.success("剧集创建成功")
@@ -187,7 +187,7 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error?.message || data.error || "更新失败")
+        throw new Error(data.error || "更新失败")
       }
 
       toast.success("剧集更新成功")
@@ -226,7 +226,7 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error?.message || data.error || "合成失败")
+        throw new Error(data.error || "合成失败")
       }
 
       toast.success(`视频合成成功，共 ${data.sceneCount} 个分镜`)

@@ -133,9 +133,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const data = await res.json()
 
       if (!res.ok) {
-        // 错误可能是对象 { type, code, message } 或字符串
-        const errorMsg = data.error?.message || data.error || "获取项目失败"
-        throw new Error(errorMsg)
+        throw new Error(data.error || "获取项目失败")
       }
 
       // API 返回 { success: true, data: { project, characters, scenes } }
@@ -177,7 +175,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error?.message || data.error || "生成失败")
+        throw new Error(data.error || "生成失败")
       }
 
       toast.success(`生成完成！成功 ${data.results.filter((r: any) => r.status === "completed").length} 个`)
@@ -318,7 +316,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const res = await fetch(`/api/projects/${id}/export`)
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error?.message || data.error || "导出失败")
+        throw new Error(data.error || "导出失败")
       }
 
       const blob = await res.blob()
