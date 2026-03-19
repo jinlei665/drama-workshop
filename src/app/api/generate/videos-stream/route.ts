@@ -249,7 +249,8 @@ export async function POST(request: NextRequest) {
           if (response.videoUrl) {
             // 更新数据库
             if (supabase) {
-              await supabase
+              // 先尝试完整更新
+              const { error: updateError } = await supabase
                 .from('scenes')
                 .update({
                   video_url: response.videoUrl,
@@ -258,6 +259,18 @@ export async function POST(request: NextRequest) {
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', sceneId)
+              
+              // 如果是列不存在的错误，尝试不包含 last_frame_url 的更新
+              if (updateError && updateError.message.includes('last_frame_url')) {
+                await supabase
+                  .from('scenes')
+                  .update({
+                    video_url: response.videoUrl,
+                    video_status: 'completed',
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', sceneId)
+              }
             }
 
             // 更新内存

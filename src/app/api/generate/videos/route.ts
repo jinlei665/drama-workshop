@@ -239,6 +239,7 @@ async function generateSequential(
 
       // 更新数据库或内存
       if (actuallyUseDatabase && supabase) {
+        // 先尝试完整更新（包含 last_frame_url）
         const { error: updateError } = await supabase
           .from('scenes')
           .update({
@@ -250,7 +251,26 @@ async function generateSequential(
           .eq('id', scene.id);
         
         if (updateError) {
-          console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, updateError.message);
+          // 如果是列不存在的错误，尝试不包含 last_frame_url 的更新
+          if (updateError.message.includes('last_frame_url')) {
+            console.warn(`分镜 ${scene.scene_number} 数据库缺少 last_frame_url 列，尝试不包含该字段的更新`);
+            const { error: retryError } = await supabase
+              .from('scenes')
+              .update({
+                video_url: result.videoUrl,
+                video_status: 'completed',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', scene.id);
+            
+            if (retryError) {
+              console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, retryError.message);
+            } else {
+              console.log(`分镜 ${scene.scene_number} 数据库更新成功（无 last_frame_url），video_url:`, result.videoUrl?.substring(0, 50) + '...');
+            }
+          } else {
+            console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, updateError.message);
+          }
         } else {
           console.log(`分镜 ${scene.scene_number} 数据库更新成功，video_url:`, result.videoUrl?.substring(0, 50) + '...');
         }
