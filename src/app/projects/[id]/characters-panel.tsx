@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Dialog,
   DialogContent,
@@ -19,6 +21,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { 
@@ -29,7 +32,12 @@ import {
   Sparkles, 
   Loader2,
   User,
-  Image as ImageIcon
+  Image as ImageIcon,
+  BookmarkPlus,
+  Library,
+  Search,
+  Check,
+  Download
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -56,9 +64,18 @@ interface CharactersPanelProps {
 export function CharactersPanel({ projectId, characters, onUpdate }: CharactersPanelProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false)
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
   const [creating, setCreating] = useState(false)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [addingToLibrary, setAddingToLibrary] = useState<string | null>(null)
+  
+  // 人物库相关状态
+  const [libraryCharacters, setLibraryCharacters] = useState<Character[]>([])
+  const [libraryLoading, setLibraryLoading] = useState(false)
+  const [librarySearch, setLibrarySearch] = useState('')
+  const [importingFromLibrary, setImportingFromLibrary] = useState<string | null>(null)
+  
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -66,6 +83,89 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
     personality: "",
     tags: [] as string[]
   })
+
+  // 加载人物库
+  const loadLibrary = async () => {
+    setLibraryLoading(true)
+    try {
+      const res = await fetch(`/api/character-library?search=${encodeURIComponent(librarySearch)}`)
+      const data = await res.json()
+      if (data.success) {
+        setLibraryCharacters(data.data.characters)
+      }
+    } catch (error) {
+      console.error('加载人物库失败:', error)
+    } finally {
+      setLibraryLoading(false)
+    }
+  }
+
+  // 从人物库导入
+  const handleImportFromLibrary = async (libraryCharacter: Character) => {
+    setImportingFromLibrary(libraryCharacter.id)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/characters`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: libraryCharacter.name,
+          description: libraryCharacter.description,
+          appearance: libraryCharacter.appearance,
+          personality: libraryCharacter.personality,
+          tags: libraryCharacter.tags,
+          imageUrl: libraryCharacter.imageUrl,
+          frontViewKey: libraryCharacter.frontViewKey,
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "导入失败")
+      }
+
+      toast.success(`已从人物库导入「${libraryCharacter.name}」`)
+      setLibraryDialogOpen(false)
+      onUpdate()
+    } catch (error) {
+      console.error("从人物库导入失败:", error)
+      toast.error("导入失败")
+    } finally {
+      setImportingFromLibrary(null)
+    }
+  }
+
+  // 添加人物到人物库
+  const handleAddToLibrary = async (character: Character) => {
+    setAddingToLibrary(character.id)
+    try {
+      const res = await fetch("/api/character-library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: character.name,
+          description: character.description,
+          appearance: character.appearance,
+          personality: character.personality,
+          tags: character.tags,
+          imageUrl: character.imageUrl,
+          frontViewKey: character.frontViewKey,
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "添加失败")
+      }
+
+      toast.success(`「${character.name}」已添加到人物库`)
+    } catch (error) {
+      console.error("添加到人物库失败:", error)
+      toast.error("添加到人物库失败")
+    } finally {
+      setAddingToLibrary(null)
+    }
+  }
 
   // 创建人物
   const handleCreate = async () => {
@@ -218,20 +318,106 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
               添加人物
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>添加人物</DialogTitle>
               <DialogDescription>
-                创建故事中的角色，详细的外貌描述有助于生成一致性的人物形象
+                选择手动创建或从人物库导入角色
               </DialogDescription>
             </DialogHeader>
-            <CharacterForm
-              formData={formData}
-              setFormData={setFormData}
-              onSubmit={handleCreate}
-              loading={creating}
-              submitText="创建人物"
-            />
+            <Tabs defaultValue="create" className="mt-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="create">手动创建</TabsTrigger>
+                <TabsTrigger value="library" onClick={() => loadLibrary()}>
+                  从人物库选择
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="create">
+                <CharacterForm
+                  formData={formData}
+                  setFormData={setFormData}
+                  onSubmit={handleCreate}
+                  loading={creating}
+                  submitText="创建人物"
+                />
+              </TabsContent>
+              
+              <TabsContent value="library">
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="搜索人物库..."
+                      value={librarySearch}
+                      onChange={(e) => setLibrarySearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          loadLibrary()
+                        }
+                      }}
+                      className="pl-9"
+                    />
+                  </div>
+                  
+                  <ScrollArea className="h-[300px] pr-4">
+                    {libraryLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : libraryCharacters.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Library className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p>人物库中暂无人物</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {libraryCharacters.map((char) => (
+                          <Card key={char.id} className="cursor-pointer hover:bg-accent/50 transition-colors">
+                            <CardContent className="p-3">
+                              <div className="flex items-center gap-3">
+                                {char.imageUrl ? (
+                                  <img 
+                                    src={char.imageUrl} 
+                                    alt={char.name}
+                                    className="w-12 h-12 rounded-lg object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center">
+                                    <User className="w-6 h-6 text-muted-foreground" />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-medium truncate">{char.name}</h4>
+                                  <p className="text-sm text-muted-foreground truncate">
+                                    {char.description || '暂无描述'}
+                                  </p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleImportFromLibrary(char)}
+                                  disabled={importingFromLibrary === char.id}
+                                >
+                                  {importingFromLibrary === char.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Download className="w-4 h-4 mr-1" />
+                                      导入
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
 
@@ -269,9 +455,11 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
               key={character.id}
               character={character}
               generating={generating === character.id}
+              addingToLibrary={addingToLibrary === character.id}
               onEdit={() => openEditDialog(character)}
               onDelete={() => handleDelete(character.id)}
               onGenerateViews={() => handleGenerateViews(character)}
+              onAddToLibrary={() => handleAddToLibrary(character)}
             />
           ))}
         </div>
@@ -363,15 +551,19 @@ function CharacterForm({
 function CharacterCard({
   character,
   generating,
+  addingToLibrary,
   onEdit,
   onDelete,
-  onGenerateViews
+  onGenerateViews,
+  onAddToLibrary
 }: {
   character: Character
   generating: boolean
+  addingToLibrary: boolean
   onEdit: () => void
   onDelete: () => void
   onGenerateViews: () => void
+  onAddToLibrary: () => void
 }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
@@ -417,6 +609,12 @@ function CharacterCard({
                 <Sparkles className="w-4 h-4 mr-2" />
                 生成角色造型图
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onAddToLibrary} disabled={addingToLibrary}>
+                <BookmarkPlus className="w-4 h-4 mr-2" />
+                {addingToLibrary ? '添加中...' : '添加到人物库'}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem className="text-destructive" onClick={onDelete}>
                 <Trash2 className="w-4 h-4 mr-2" />
                 删除
