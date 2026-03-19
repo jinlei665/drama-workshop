@@ -47,7 +47,7 @@ npm install -g pnpm
 
 # 安装项目依赖
 pnpm install
-```
+
 
 ### 第三步：下载 FFmpeg
 
