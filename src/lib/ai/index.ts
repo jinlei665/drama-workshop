@@ -746,33 +746,69 @@ ${prompt}
 function extractVideoUrlFromContent(content: string): { videoUrl: string } {
   logger.info('Extracting video URL from content', { contentLength: content.length, preview: content.slice(0, 300) })
   
-  let videoUrl = ''
-  
-  // 匹配视频 URL（mp4, webm 等格式）
-  const videoRegex = /(https?:\/\/[^\s\)]+\.(?:mp4|webm|mov))/i
-  const match = videoRegex.exec(content)
-  if (match) {
-    videoUrl = match[1]
+  // 打印完整内容以便调试（如果内容不太长）
+  if (content.length < 2000) {
+    logger.info('Full Bot response content', { content })
   }
   
-  // 匹配 Coze 视频链接格式
+  let videoUrl = ''
+  
+  // 1. 匹配 Markdown 格式的视频链接: ![video](url)
+  const markdownRegex = /!\[video\]\((https?:\/\/[^)]+)\)/i
+  const markdownMatch = markdownRegex.exec(content)
+  if (markdownMatch) {
+    videoUrl = markdownMatch[1]
+    logger.info('Found video URL in Markdown format', { videoUrl })
+  }
+  
+  // 2. 匹配视频 URL（mp4, webm 等格式）
   if (!videoUrl) {
-    const cozeUrlRegex = /(https?:\/\/[^\s\)]+\/file\/[^\s\)]+)/i
-    const cozeMatch = cozeUrlRegex.exec(content)
-    if (cozeMatch) {
-      videoUrl = cozeMatch[1]
+    const videoRegex = /(https?:\/\/[^\s"'<>]+\.(?:mp4|webm|mov)(?:\?[^\s"'<>]*)?)/i
+    const match = videoRegex.exec(content)
+    if (match) {
+      videoUrl = match[1]
+      logger.info('Found direct video URL', { videoUrl })
     }
   }
   
-  // 匹配 Coze CDN 链接（视频）
+  // 3. 匹配 Coze 文件链接格式 (可能是下载页面)
   if (!videoUrl) {
-    const cdnUrlRegex = /(https?:\/\/[^\s"'<>]*\.coze\.cn[^\s"'<>]*)/gi
-    let cdnMatch
-    while ((cdnMatch = cdnUrlRegex.exec(content)) !== null) {
-      if (cdnMatch[1].includes('video') || cdnMatch[1].includes('file')) {
-        videoUrl = cdnMatch[1]
-        break
-      }
+    // 匹配 coze.cn/file/ 或 coze.com/file/ 格式
+    const cozeFileRegex = /(https?:\/\/[^\s"'<>]*\.?coze\.(?:cn|com)\/file\/[^\s"'<>]+)/i
+    const cozeFileMatch = cozeFileRegex.exec(content)
+    if (cozeFileMatch) {
+      videoUrl = cozeFileMatch[1]
+      logger.info('Found Coze file URL', { videoUrl })
+    }
+  }
+  
+  // 4. 匹配火山引擎 TOS URL
+  if (!videoUrl) {
+    const tosRegex = /(https?:\/\/[^\s"'<>]*\.?tos-cn-[^\s"'<>]+\.volces\.com[^\s"'<>]*)/i
+    const tosMatch = tosRegex.exec(content)
+    if (tosMatch) {
+      videoUrl = tosMatch[1]
+      logger.info('Found Volcengine TOS URL', { videoUrl })
+    }
+  }
+  
+  // 5. 匹配 Coze 存储链接
+  if (!videoUrl) {
+    const cozeStorageRegex = /(https?:\/\/[^\s"'<>]*tos\.coze\.site[^\s"'<>]*)/i
+    const cozeStorageMatch = cozeStorageRegex.exec(content)
+    if (cozeStorageMatch) {
+      videoUrl = cozeStorageMatch[1]
+      logger.info('Found Coze storage URL', { videoUrl })
+    }
+  }
+  
+  // 6. 匹配任何看起来像视频链接的 URL
+  if (!videoUrl) {
+    const anyUrlRegex = /(https?:\/\/[^\s"'<>]*(?:video|file|download|output)[^\s"'<>]*)/i
+    const anyMatch = anyUrlRegex.exec(content)
+    if (anyMatch) {
+      videoUrl = anyMatch[1]
+      logger.info('Found generic video-related URL', { videoUrl })
     }
   }
   
