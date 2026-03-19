@@ -326,10 +326,14 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                 选择手动创建或从人物库导入角色
               </DialogDescription>
             </DialogHeader>
-            <Tabs defaultValue="create" className="mt-4">
+            <Tabs defaultValue="create" className="mt-4" onValueChange={(value) => {
+              if (value === 'library') {
+                loadLibrary()
+              }
+            }}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="create">手动创建</TabsTrigger>
-                <TabsTrigger value="library" onClick={() => loadLibrary()}>
+                <TabsTrigger value="library">
                   从人物库选择
                 </TabsTrigger>
               </TabsList>
