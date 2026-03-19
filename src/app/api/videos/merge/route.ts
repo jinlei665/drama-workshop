@@ -62,6 +62,7 @@ async function getFfmpegPath(): Promise<{ ffmpeg: string; ffprobe: string }> {
 
 /**
  * 下载视频到临时目录
+ * 支持本地路径和远程 URL
  */
 async function downloadVideo(url: string, filename: string): Promise<string> {
   const tmpDir = getTmpDir()
@@ -73,19 +74,38 @@ async function downloadVideo(url: string, filename: string): Promise<string> {
     return filePath
   }
   
-  console.log(`[VideoMerge] 下载视频: ${url.substring(0, 60)}...`)
+  console.log(`[VideoMerge] 获取视频: ${url.substring(0, 60)}...`)
   
-  // 下载视频
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`下载视频失败: HTTP ${response.status} ${response.statusText}`)
+  // 判断是本地路径还是远程 URL
+  if (url.startsWith('/')) {
+    // 本地路径，从 public 目录读取
+    const localPath = join(process.cwd(), 'public', url)
+    
+    if (!existsSync(localPath)) {
+      throw new Error(`本地文件不存在: ${localPath}`)
+    }
+    
+    // 复制到临时目录
+    const buffer = readFileSync(localPath)
+    writeFileSync(filePath, buffer)
+    console.log(`[VideoMerge] 本地文件复制完成: ${filePath} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`)
+    
+    return filePath
+  } else if (url.startsWith('http://') || url.startsWith('https://')) {
+    // 远程 URL，下载视频
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`下载视频失败: HTTP ${response.status} ${response.statusText}`)
+    }
+    
+    const buffer = await response.arrayBuffer()
+    writeFileSync(filePath, Buffer.from(buffer))
+    console.log(`[VideoMerge] 下载完成: ${filePath} (${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB)`)
+    
+    return filePath
+  } else {
+    throw new Error(`无效的视频 URL: ${url}`)
   }
-  
-  const buffer = await response.arrayBuffer()
-  writeFileSync(filePath, Buffer.from(buffer))
-  console.log(`[VideoMerge] 下载完成: ${filePath} (${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB)`)
-  
-  return filePath
 }
 
 /**
