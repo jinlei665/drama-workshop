@@ -3,6 +3,7 @@ import { generateVideoFromImage, DEFAULT_VIDEO_MODEL } from '@/lib/ai';
 import { S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client';
 import { memoryScenes, memoryProjects } from '@/lib/memory-storage';
+import { getCozeConfigFromMemory } from '@/lib/memory-store';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -10,63 +11,105 @@ import * as path from 'path';
  * 下载视频并重新上传到存储
  * 解决 Bot 返回的临时 URL 过期问题
  */
-async function rehostVideo(originalUrl: string, sceneId: string, storage: S3Storage | null): Promise<string> {
+async function rehostVideo(
+  originalUrl: string, 
+  sceneId: string, 
+  storage: S3Storage | null,
+  apiKey?: string
+): Promise<string> {
   console.log(`正在下载并重新托管视频: ${originalUrl.substring(0, 50)}...`);
   
   try {
+    // 构建请求头
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': '*/*',
+      'Accept-Encoding': 'identity', // 避免压缩问题
+    };
+    
+    // 如果是火山引擎 URL，添加特定头
+    if (originalUrl.includes('volces.com') || originalUrl.includes('tos-cn-')) {
+      headers['Referer'] = 'https://www.coze.cn/';
+      headers['Origin'] = 'https://www.coze.cn';
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
+      }
+    }
+    
     // 下载视频
-    const response = await fetch(originalUrl);
+    const response = await fetch(originalUrl, { headers });
     if (!response.ok) {
-      console.warn(`视频下载失败: HTTP ${response.status}`);
-      return originalUrl; // 返回原始 URL
+      console.warn(`视频下载失败: HTTP ${response.status} ${response.statusText}`);
+      // 尝试不带头的请求
+      const retryResponse = await fetch(originalUrl);
+      if (!retryResponse.ok) {
+        console.warn(`重试下载也失败: HTTP ${retryResponse.status}`);
+        return originalUrl; // 返回原始 URL
+      }
+      const arrayBuffer = await retryResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      return await saveVideo(buffer, sceneId, storage, originalUrl);
     }
     
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     console.log(`视频下载完成，大小: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
     
-    // 尝试上传到对象存储
-    if (storage) {
-      try {
-        const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
-        await storage.putObject(key, buffer, 'video/mp4');
-        const publicUrl = await storage.getSignedUrl(key, 3600 * 24 * 7); // 7天有效期
-        console.log(`视频已上传到对象存储: ${key}`);
-        return publicUrl;
-      } catch (uploadErr) {
-        console.warn(`对象存储上传失败，尝试本地存储:`, uploadErr);
-      }
-    }
-    
-    // 本地存储（仅开发环境）
-    const isDev = process.env.NODE_ENV === 'development' || !process.env.COZE_PROJECT_ENV;
-    if (isDev) {
-      try {
-        const publicDir = path.join(process.cwd(), 'public', 'videos', sceneId);
-        if (!fs.existsSync(publicDir)) {
-          fs.mkdirSync(publicDir, { recursive: true });
-        }
-        
-        const filename = `video_${Date.now()}.mp4`;
-        const filePath = path.join(publicDir, filename);
-        fs.writeFileSync(filePath, buffer);
-        
-        const localUrl = `/videos/${sceneId}/${filename}`;
-        console.log(`视频已保存到本地: ${localUrl}`);
-        return localUrl;
-      } catch (localErr) {
-        console.warn(`本地存储失败:`, localErr);
-      }
-    }
-    
-    // 无法重新托管，返回原始 URL
-    console.log(`无法重新托管视频，使用原始 URL`);
-    return originalUrl;
+    return await saveVideo(buffer, sceneId, storage, originalUrl);
   } catch (err) {
     console.error(`视频重新托管失败:`, err);
     return originalUrl;
   }
 }
+
+/**
+ * 保存视频到存储
+ */
+async function saveVideo(
+  buffer: Buffer, 
+  sceneId: string, 
+  storage: S3Storage | null,
+  originalUrl: string
+): Promise<string> {
+  // 尝试上传到对象存储
+  if (storage) {
+    try {
+      const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
+      await storage.putObject(key, buffer, 'video/mp4');
+      const publicUrl = await storage.getSignedUrl(key, 3600 * 24 * 7); // 7天有效期
+      console.log(`视频已上传到对象存储: ${key}`);
+      return publicUrl;
+    } catch (uploadErr) {
+      console.warn(`对象存储上传失败，尝试本地存储:`, uploadErr);
+    }
+  }
+  
+  // 本地存储（仅开发环境）
+  const isDev = process.env.NODE_ENV === 'development' || !process.env.COZE_PROJECT_ENV;
+  if (isDev) {
+    try {
+      const publicDir = path.join(process.cwd(), 'public', 'videos', sceneId);
+      if (!fs.existsSync(publicDir)) {
+        fs.mkdirSync(publicDir, { recursive: true });
+      }
+      
+      const filename = `video_${Date.now()}.mp4`;
+      const filePath = path.join(publicDir, filename);
+      fs.writeFileSync(filePath, buffer);
+      
+      const localUrl = `/videos/${sceneId}/${filename}`;
+      console.log(`视频已保存到本地: ${localUrl}`);
+      return localUrl;
+    } catch (localErr) {
+      console.warn(`本地存储失败:`, localErr);
+    }
+  }
+  
+  // 无法重新托管，返回原始 URL
+  console.log(`无法重新托管视频，使用原始 URL`);
+  return originalUrl;
+}
+
 
 /**
  * 批量生成视频片段
@@ -261,6 +304,10 @@ async function generateSequential(
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
   let previousLastFrame: string | null = null;
+  
+  // 获取用户配置（用于下载视频时的认证）
+  const userConfig = getCozeConfigFromMemory();
+  const apiKey = userConfig?.apiKey;
 
   for (let i = 0; i < scenesWithImages.length; i++) {
     const scene = scenesWithImages[i];
@@ -304,7 +351,7 @@ async function generateSequential(
       // 重新托管视频（解决 Bot 返回的临时 URL 问题）
       let finalVideoUrl = result.videoUrl;
       if (result.videoUrl && (result.videoUrl.includes('tos.coze.site') || result.videoUrl.includes('volces.com'))) {
-        finalVideoUrl = await rehostVideo(result.videoUrl, scene.id, storage);
+        finalVideoUrl = await rehostVideo(result.videoUrl, scene.id, storage, apiKey);
       }
 
       // 更新数据库或内存
