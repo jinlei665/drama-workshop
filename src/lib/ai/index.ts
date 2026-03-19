@@ -153,6 +153,10 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
           .select('coze_api_key, coze_base_url')
           .maybeSingle()
         
+        if (error) {
+          console.log('[AI Config] Database query error:', error.message)
+        }
+        
         if (!error && data?.coze_api_key) {
           console.log('[AI Config] Got config from database')
           return {
@@ -160,22 +164,28 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
             baseUrl: data.coze_base_url || undefined,
           }
         }
-      } catch {
-        // 数据库不可用，继续尝试内存存储
+      } catch (dbError) {
+        console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
       }
     }
     
     // 尝试从内存存储获取
     const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
     const memoryConfig = getCozeConfigFromMemory()
+    console.log('[AI Config] Memory config check:', { 
+      hasConfig: !!memoryConfig, 
+      hasApiKey: !!memoryConfig?.apiKey,
+      baseUrl: memoryConfig?.baseUrl 
+    })
     if (memoryConfig?.apiKey) {
       console.log('[AI Config] Got config from memory store')
       return memoryConfig
     }
-  } catch {
-    // 忽略错误，使用默认配置
+  } catch (err) {
+    console.log('[AI Config] Error getting config:', err instanceof Error ? err.message : String(err))
   }
   
+  console.log('[AI Config] No config found, returning empty')
   return {}
 }
 
@@ -1415,6 +1425,13 @@ export async function generateVideoFromImage(
     logger.info('Trying image-to-video via Bot Skills')
     try {
       const userConfig = await getUserCozeConfig()
+      logger.info('Bot Skills config check', { 
+        hasConfigApiKey: !!config?.apiKey,
+        hasUserConfig: !!userConfig,
+        hasUserApiKey: !!userConfig?.apiKey,
+        userBaseUrl: userConfig?.baseUrl
+      })
+      
       const botResult = await invokeBotForVideoGeneration(
         `[图生视频] 参考图片：${firstFrameUrl}\n\n提示词：${prompt}`,
         {
