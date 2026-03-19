@@ -429,14 +429,14 @@ export function WorkflowEditor({
     const index = portList.findIndex(p => p.name === handleName)
     if (index === -1) return null
     
-    // 节点尺寸常量（与 CSS 类精确对应）
+    // 节点尺寸常量（精确测量）
     const NODE_WIDTH = 208       // w-52 = 13rem = 208px
-    const HEADER_HEIGHT = 44     // 节点头部高度 (py-2=8px*2 + 内容约28px)
-    const PORT_ROW_HEIGHT = 28   // 每个端口行高度 (space-y-1=4px + 内容24px)
+    const HEADER_HEIGHT = 40     // 节点头部高度
+    const PORT_ROW_HEIGHT = 24   // 每个端口行高度
     const PORT_PADDING_Y = 8     // 端口区域内边距垂直方向 (py-2)
     const PORT_PADDING_X = 12    // 端口区域内边距水平方向 (px-3)
     const DIVIDER_HEIGHT = 1     // 分隔线高度 (border-t)
-    const PORT_DOT_RADIUS = 6    // 端口圆点半径 (w-3 h-3 = 12px, 半径=6px)
+    const PORT_DOT_RADIUS = 6    // 端口圆点半径
     
     // 计算输入端口区域高度
     const inputCount = config.inputs?.length || 0
@@ -448,13 +448,13 @@ export function WorkflowEditor({
       // 输入端口在头部下方，左侧
       return {
         x: node.position.x + PORT_PADDING_X + PORT_DOT_RADIUS,
-        y: node.position.y + HEADER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + PORT_ROW_HEIGHT / 2
+        y: node.position.y + HEADER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + 12
       }
     } else {
       // 输出端口在输入端口下方，有分隔线，右侧
       return {
         x: node.position.x + NODE_WIDTH - PORT_PADDING_X - PORT_DOT_RADIUS,
-        y: node.position.y + HEADER_HEIGHT + inputSectionHeight + DIVIDER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + PORT_ROW_HEIGHT / 2
+        y: node.position.y + HEADER_HEIGHT + inputSectionHeight + DIVIDER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + 12
       }
     }
   }, [])
