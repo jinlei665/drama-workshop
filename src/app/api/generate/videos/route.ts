@@ -4,6 +4,7 @@ import { S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client';
 import { memoryScenes, memoryProjects } from '@/lib/memory-storage';
 import { getCozeConfigFromMemory } from '@/lib/memory-store';
+import { getVideoStylePrompt } from '@/lib/styles';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -247,13 +248,18 @@ export async function POST(request: NextRequest) {
       region: 'cn-beijing',
     });
 
+    // 获取项目风格并生成视频风格提示词
+    const style = project?.style || 'realistic_cinema';
+    const stylePrompt = getVideoStylePrompt(style);
+    console.log(`项目风格: ${style}, 视频风格提示词: ${stylePrompt.substring(0, 50)}...`);
+
     let results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
 
     // 根据模式选择生成方式
     if (mode === 'fast') {
-      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase);
+      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt);
     } else {
-      results = await generateSequential(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase);
+      results = await generateSequential(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt);
     }
 
     // 更新项目状态（仅数据库模式）
@@ -300,7 +306,8 @@ async function generateSequential(
   videoModel: string,
   videoResolution: '480p' | '720p' | '1080p',
   videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
-  actuallyUseDatabase: boolean
+  actuallyUseDatabase: boolean,
+  stylePrompt: string
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
   let previousLastFrame: string | null = null;
@@ -333,8 +340,8 @@ async function generateSequential(
         firstFrameUrl = imgUrl;
       }
 
-      // 构建视频描述
-      const videoPrompt = buildVideoPrompt(scene);
+      // 构建视频描述，添加风格提示词
+      const videoPrompt = `${stylePrompt}，${buildVideoPrompt(scene)}`;
       const duration = calculateDuration(scene);
 
       console.log(`开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
@@ -546,7 +553,8 @@ async function generateFast(
   videoModel: string,
   videoResolution: '480p' | '720p' | '1080p',
   videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
-  actuallyUseDatabase: boolean
+  actuallyUseDatabase: boolean,
+  stylePrompt: string
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
 
@@ -564,7 +572,7 @@ async function generateFast(
         throw new Error('无法获取分镜图片URL');
       }
 
-      const videoPrompt = buildVideoPrompt(scene);
+      const videoPrompt = `${stylePrompt}，${buildVideoPrompt(scene)}`;
       const duration = calculateDuration(scene);
 
       console.log(`[快速模式] 开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
@@ -577,11 +585,21 @@ async function generateFast(
         generateAudio: true,
       });
 
+      // 重新托管视频（仅处理火山引擎内部 URL）
+      let finalVideoUrl = result.videoUrl;
+      const userConfig = getCozeConfigFromMemory();
+      if (result.videoUrl && result.videoUrl.includes('volces.com')) {
+        console.log(`[快速模式] 检测到火山引擎内部 URL，尝试重新托管...`);
+        finalVideoUrl = await rehostVideo(result.videoUrl, scene.id, storage, userConfig?.apiKey);
+      } else if (result.videoUrl && result.videoUrl.includes('tos.coze.site')) {
+        console.log(`[快速模式] 使用 Coze 存储 URL: ${result.videoUrl.substring(0, 60)}...`);
+      }
+
       if (actuallyUseDatabase && supabase) {
         await supabase
           .from('scenes')
           .update({
-            video_url: result.videoUrl,
+            video_url: finalVideoUrl,
             video_status: 'completed',
             updated_at: new Date().toISOString(),
           })
@@ -590,7 +608,7 @@ async function generateFast(
         // 更新内存存储
         const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
         if (sceneIndex !== -1) {
-          memoryScenes[sceneIndex].videoUrl = result.videoUrl;
+          memoryScenes[sceneIndex].videoUrl = finalVideoUrl;
           memoryScenes[sceneIndex].videoStatus = 'completed';
         }
       }
@@ -598,7 +616,7 @@ async function generateFast(
       results.push({
         sceneId: scene.id,
         sceneNumber: scene.scene_number,
-        videoUrl: result.videoUrl,
+        videoUrl: finalVideoUrl,
         duration,
         status: 'completed',
       });
