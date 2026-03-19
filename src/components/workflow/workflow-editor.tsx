@@ -453,23 +453,46 @@ export function WorkflowEditor({
     if (!startPos || !endPos) return null
 
     const midX = (startPos.x + endPos.x) / 2
+    
+    // 获取源节点的颜色
+    const sourceConfig = NODE_CONFIG[sourceNode.type]
+    const edgeColor = sourceConfig?.color || '#3b82f6'
 
     return (
-      <g key={edge.id} className="group cursor-pointer">
+      <g key={edge.id} className="group cursor-pointer" style={{ pointerEvents: 'stroke' }}>
+        {/* 更宽的透明路径用于点击 */}
         <path
           d={`M ${startPos.x} ${startPos.y} C ${midX} ${startPos.y}, ${midX} ${endPos.y}, ${endPos.x} ${endPos.y}`}
           fill="none"
           stroke="transparent"
-          strokeWidth="12"
+          strokeWidth="16"
+          style={{ pointerEvents: 'stroke' }}
           onClick={() => deleteEdge(edge.id)}
         />
+        {/* 可见的连接线 */}
         <path
           d={`M ${startPos.x} ${startPos.y} C ${midX} ${startPos.y}, ${midX} ${endPos.y}, ${endPos.x} ${endPos.y}`}
           fill="none"
-          stroke="hsl(var(--primary))"
-          strokeWidth="2"
-          className="group-hover:stroke-red-500 transition-colors"
-          onClick={() => deleteEdge(edge.id)}
+          stroke={edgeColor}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          className="transition-all duration-200"
+          style={{ pointerEvents: 'none' }}
+        />
+        {/* 连接点动画效果 */}
+        <circle
+          cx={startPos.x}
+          cy={startPos.y}
+          r="4"
+          fill={edgeColor}
+          style={{ pointerEvents: 'none' }}
+        />
+        <circle
+          cx={endPos.x}
+          cy={endPos.y}
+          r="4"
+          fill={edgeColor}
+          style={{ pointerEvents: 'none' }}
         />
       </g>
     )
@@ -490,16 +513,28 @@ export function WorkflowEditor({
     if (!startPos) return null
 
     const midX = (startPos.x + mousePos.x) / 2
+    
+    // 获取源节点的颜色
+    const sourceConfig = NODE_CONFIG[sourceNode.type]
+    const edgeColor = sourceConfig?.color || '#3b82f6'
 
     return (
-      <path
-        d={`M ${startPos.x} ${startPos.y} C ${midX} ${startPos.y}, ${midX} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`}
-        fill="none"
-        stroke="hsl(var(--primary))"
-        strokeWidth="2"
-        strokeDasharray="5,5"
-        className="pointer-events-none"
-      />
+      <g style={{ pointerEvents: 'none' }}>
+        <path
+          d={`M ${startPos.x} ${startPos.y} C ${midX} ${startPos.y}, ${midX} ${mousePos.y}, ${mousePos.x} ${mousePos.y}`}
+          fill="none"
+          stroke={edgeColor}
+          strokeWidth="2.5"
+          strokeDasharray="8,4"
+          strokeLinecap="round"
+        />
+        <circle
+          cx={startPos.x}
+          cy={startPos.y}
+          r="5"
+          fill={edgeColor}
+        />
+      </g>
     )
   }, [connectingFrom, nodes, mousePos, getNodePortPosition])
 
@@ -658,19 +693,21 @@ export function WorkflowEditor({
               transformOrigin: '0 0',
             }}
           >
-            {/* 连接线 SVG */}
+            {/* 连接线 SVG - 使用更大的范围确保覆盖所有可能的连接 */}
             <svg 
-              className="absolute pointer-events-none" 
+              className="absolute" 
               style={{ 
                 overflow: 'visible',
-                width: '10000px',
-                height: '10000px',
-                left: '-5000px',
-                top: '-5000px',
+                width: '1px',
+                height: '1px',
+                left: '0',
+                top: '0',
               }}
             >
-              {edges.map(renderEdge)}
-              {renderConnectingLine()}
+              <g style={{ transform: 'translate(0, 0)' }}>
+                {edges.map(renderEdge)}
+                {renderConnectingLine()}
+              </g>
             </svg>
 
             {/* 节点 */}
