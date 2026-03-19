@@ -1203,11 +1203,12 @@ export async function generateVideoFromImage(
   const savedProxy = disableProxy()
   
   try {
-    const client = await createVideoClientAsync(config, headers)
-
     logger.info('Image-to-video generation started')
 
+    // 策略1: 尝试直接调用视频生成 API
     try {
+      const client = await createVideoClientAsync(config, headers)
+
       const content = [
         {
           type: 'image_url' as const,
@@ -1226,18 +1227,49 @@ export async function generateVideoFromImage(
         returnLastFrame: true,
       })
 
-      if (!response.videoUrl) {
-        throw new Error('Video generation failed: no video URL returned')
+      if (response.videoUrl) {
+        logger.info('Image-to-video generation completed via direct API')
+        return {
+          videoUrl: response.videoUrl,
+          lastFrameUrl: response.lastFrameUrl || undefined,
+        }
       }
-
-      return {
-        videoUrl: response.videoUrl,
-        lastFrameUrl: response.lastFrameUrl || undefined,
-      }
-    } catch (err) {
-      logger.error('Image-to-video generation failed', err)
-      throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
+    } catch (directErr) {
+      const errMsg = directErr instanceof Error ? directErr.message : String(directErr)
+      logger.warn('Direct image-to-video API failed:', { error: errMsg })
+      // 直接调用失败，尝试 Bot Skills
     }
+
+    // 策略2: 通过 Bot 调用 Skills
+    logger.info('Trying image-to-video via Bot Skills')
+    try {
+      const userConfig = await getUserCozeConfig()
+      const botResult = await invokeBotForVideoGeneration(
+        `[图生视频] 参考图片：${firstFrameUrl}\n\n提示词：${prompt}`,
+        {
+          apiKey: config?.apiKey || userConfig?.apiKey || undefined,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl,
+        }
+      )
+      
+      if (botResult.videoUrl) {
+        logger.info('Image-to-video generation completed via Bot Skills')
+        return { videoUrl: botResult.videoUrl }
+      }
+    } catch (botErr) {
+      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+      logger.warn('Bot Skills failed for image-to-video:', { error: errMsg })
+    }
+
+    // 所有策略都失败
+    throw new Error('视频生成失败：所有方式均不可用。请确保：(1) 在沙箱环境中运行，或 (2) 配置有效的 Coze API Key，或 (3) 创建配置了视频生成 Skill 的 Bot 并配置 Bot ID。')
+  } catch (err) {
+    logger.error('Image-to-video generation failed', err)
+
+    if (err instanceof APIError) {
+      throw err
+    }
+    throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
   } finally {
     // 恢复代理设置
     restoreProxy(savedProxy)
@@ -1260,11 +1292,12 @@ export async function generateVideoFromFrames(
   const savedProxy = disableProxy()
   
   try {
-    const client = await createVideoClientAsync(config, headers)
-
     logger.info('Frame-to-video generation started')
 
+    // 策略1: 尝试直接调用视频生成 API
     try {
+      const client = await createVideoClientAsync(config, headers)
+
       const content = [
         {
           type: 'image_url' as const,
@@ -1287,15 +1320,46 @@ export async function generateVideoFromFrames(
         generateAudio: options?.generateAudio ?? true,
       })
 
-      if (!response.videoUrl) {
-        throw new Error('Video generation failed: no video URL returned')
+      if (response.videoUrl) {
+        logger.info('Frame-to-video generation completed via direct API')
+        return { videoUrl: response.videoUrl }
       }
-
-      return { videoUrl: response.videoUrl }
-    } catch (err) {
-      logger.error('Frame-to-video generation failed', err)
-      throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
+    } catch (directErr) {
+      const errMsg = directErr instanceof Error ? directErr.message : String(directErr)
+      logger.warn('Direct frame-to-video API failed:', { error: errMsg })
+      // 直接调用失败，尝试 Bot Skills
     }
+
+    // 策略2: 通过 Bot 调用 Skills
+    logger.info('Trying frame-to-video via Bot Skills')
+    try {
+      const userConfig = await getUserCozeConfig()
+      const botResult = await invokeBotForVideoGeneration(
+        `[首尾帧生成视频] 首帧图片：${firstFrameUrl}\n尾帧图片：${lastFrameUrl}\n\n提示词：${prompt}`,
+        {
+          apiKey: config?.apiKey || userConfig?.apiKey || undefined,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl,
+        }
+      )
+      
+      if (botResult.videoUrl) {
+        logger.info('Frame-to-video generation completed via Bot Skills')
+        return { videoUrl: botResult.videoUrl }
+      }
+    } catch (botErr) {
+      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+      logger.warn('Bot Skills failed for frame-to-video:', { error: errMsg })
+    }
+
+    // 所有策略都失败
+    throw new Error('视频生成失败：所有方式均不可用。请确保：(1) 在沙箱环境中运行，或 (2) 配置有效的 Coze API Key，或 (3) 创建配置了视频生成 Skill 的 Bot 并配置 Bot ID。')
+  } catch (err) {
+    logger.error('Frame-to-video generation failed', err)
+
+    if (err instanceof APIError) {
+      throw err
+    }
+    throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
   } finally {
     // 恢复代理设置
     restoreProxy(savedProxy)

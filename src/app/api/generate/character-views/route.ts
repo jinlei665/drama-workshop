@@ -128,9 +128,11 @@ export async function POST(request: NextRequest) {
           .from("characters")
           .update({
             front_view_key: fileKey,
+            image_url: viewUrl,  // 同时更新 image_url 以便前端显示
             updated_at: new Date().toISOString(),
           })
           .eq("id", characterId)
+        console.log("Database updated with image_url:", viewUrl.substring(0, 50) + "...")
       } catch (dbError) {
         console.warn("Failed to update database:", dbError)
       }
