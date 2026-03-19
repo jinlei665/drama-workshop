@@ -478,6 +478,45 @@ async function invokeBotForVideoGeneration(
   
   logger.info('Invoking Bot for video generation', { botId, baseUrl })
   
+  // 构建更清晰的视频生成提示词
+  // 提取图片 URL 和视频描述
+  let imageUrl = ''
+  let videoDescription = prompt
+  
+  // 从 prompt 中提取图片 URL（如果有的话）
+  const urlMatch = prompt.match(/(https?:\/\/[^\s\)]+\.(?:png|jpg|jpeg|gif|webp))/i)
+  if (urlMatch) {
+    imageUrl = urlMatch[1]
+    // 移除图片 URL 部分，保留视频描述
+    videoDescription = prompt.replace(urlMatch[0], '').replace(/参考图片：?\s*/i, '').replace(/提示词：?\s*/i, '').trim()
+  }
+  
+  // 构建提示词
+  let videoPrompt = ''
+  if (imageUrl) {
+    // 图生视频模式
+    videoPrompt = `请根据首帧图片生成视频：
+
+首帧图片：![首帧](${imageUrl})
+
+视频描述：${videoDescription}
+
+请直接返回生成的视频链接。`
+  } else {
+    // 纯文本生成视频模式
+    videoPrompt = `请生成以下视频：
+
+${prompt}
+
+请直接返回生成的视频链接。`
+  }
+  
+  logger.info('Bot video generation prompt', { 
+    hasImageUrl: !!imageUrl, 
+    videoDescriptionLength: videoDescription.length,
+    promptLength: videoPrompt.length
+  })
+  
   // 调用 Bot API，通过特定 prompt 触发视频生成 Skill
   // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
   const response = await fetch(`${baseUrl}/v3/chat`, {
@@ -493,7 +532,7 @@ async function invokeBotForVideoGeneration(
       auto_save_history: false,
       additional_messages: [{
         role: 'user',
-        content: `[视频生成请求]\n请使用视频生成工具生成以下视频：\n${prompt}\n\n请直接返回生成的视频URL，不要添加其他说明。`,
+        content: videoPrompt,
         content_type: 'text'
       }],
     }),
