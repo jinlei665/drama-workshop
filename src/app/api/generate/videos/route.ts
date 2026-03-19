@@ -272,7 +272,8 @@ export async function POST(request: NextRequest) {
     if (mode === 'fast') {
       results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt);
     } else {
-      results = await generateSequential(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt);
+      // 连续模式：传入完整分镜列表用于获取下一个分镜的尾帧
+      results = await generateSequential(scenesWithImages, scenesList, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt);
     }
 
     // 更新项目状态（仅数据库模式）
@@ -320,6 +321,7 @@ function delay(ms: number): Promise<void> {
  */
 async function generateSequential(
   scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
+  allScenes: { id: string; scene_number: number; image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
   storage: S3Storage,
   supabase: ReturnType<typeof getSupabaseClient> | null,
   videoModel: string,
@@ -336,7 +338,10 @@ async function generateSequential(
 
   for (let i = 0; i < scenesWithImages.length; i++) {
     const scene = scenesWithImages[i];
-    const nextScene = scenesWithImages[i + 1]; // 下一个分镜
+    
+    // 从完整分镜列表中获取下一个分镜（按分镜序号查找，而不是数组索引）
+    // 这样即使下一个分镜还没有图片，也能正确找到它
+    const nextScene = allScenes.find(s => s.scene_number === scene.scene_number + 1);
     
     // 添加延迟避免限流（10秒间隔）
     if (i > 0) {
@@ -351,17 +356,15 @@ async function generateSequential(
         throw new Error('无法获取分镜图片URL');
       }
 
-      // 获取下一个分镜图片作为尾帧（如果存在）
+      // 获取下一个分镜图片作为尾帧（如果存在且有图片）
       let lastFrameUrl: string | null = null;
       if (nextScene) {
         lastFrameUrl = await getImageUrl(nextScene, storage);
-        console.log(`分镜 ${scene.scene_number} 将使用分镜 ${nextScene.scene_number} 的图片作为尾帧`);
-        console.log(`下一个分镜图片信息:`, {
-          hasImageUrl: !!nextScene.imageUrl,
-          hasImage_url: !!nextScene.image_url,
-          hasImage_key: !!nextScene.image_key,
-          resolvedLastFrameUrl: lastFrameUrl ? lastFrameUrl.substring(0, 60) + '...' : 'null'
-        });
+        if (lastFrameUrl) {
+          console.log(`分镜 ${scene.scene_number} 将使用分镜 ${nextScene.scene_number} 的图片作为尾帧`);
+        } else {
+          console.log(`分镜 ${scene.scene_number} 的下一个分镜 ${nextScene.scene_number} 没有图片，无法作为尾帧`);
+        }
       } else {
         console.log(`分镜 ${scene.scene_number} 是最后一个分镜，没有尾帧`);
       }
