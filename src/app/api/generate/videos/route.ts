@@ -233,8 +233,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 过滤出有图片的分镜（支持 image_key 和 imageUrl）
-    const scenesWithImages = scenesList.filter((s: { image_key?: string; image_url?: string; imageUrl?: string }) => s.image_key || s.image_url || s.imageUrl);
+    // 过滤出有图片的分镜（支持多种字段名：image_key, image_url, imageKey, imageUrl）
+    const scenesWithImages = scenesList.filter((s: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }) => s.image_key || s.image_url || s.imageKey || s.imageUrl);
     
     if (scenesWithImages.length === 0) {
       return NextResponse.json(
@@ -319,7 +319,7 @@ function delay(ms: number): Promise<void> {
  * - 最后一个视频：仅首帧，无尾帧
  */
 async function generateSequential(
-  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
+  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
   storage: S3Storage,
   supabase: ReturnType<typeof getSupabaseClient> | null,
   videoModel: string,
@@ -356,6 +356,14 @@ async function generateSequential(
       if (nextScene) {
         lastFrameUrl = await getImageUrl(nextScene, storage);
         console.log(`分镜 ${scene.scene_number} 将使用分镜 ${nextScene.scene_number} 的图片作为尾帧`);
+        console.log(`下一个分镜图片信息:`, {
+          hasImageUrl: !!nextScene.imageUrl,
+          hasImage_url: !!nextScene.image_url,
+          hasImage_key: !!nextScene.image_key,
+          resolvedLastFrameUrl: lastFrameUrl ? lastFrameUrl.substring(0, 60) + '...' : 'null'
+        });
+      } else {
+        console.log(`分镜 ${scene.scene_number} 是最后一个分镜，没有尾帧`);
       }
 
       // 构建视频描述，添加风格提示词
@@ -470,31 +478,39 @@ async function generateSequential(
 
 /**
  * 获取分镜图片URL
+ * 支持多种字段名：image_key（数据库）、imageKey（内存）、image_url、imageUrl
  */
-async function getImageUrl(scene: { image_key?: string; image_url?: string; imageUrl?: string }, storage: S3Storage): Promise<string | null> {
+async function getImageUrl(scene: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }, storage: S3Storage): Promise<string | null> {
   // 优先使用直接存储的URL
   if (scene.imageUrl) {
+    console.log(`[getImageUrl] 使用 imageUrl: ${scene.imageUrl.substring(0, 50)}...`);
     return scene.imageUrl;
   }
   
   if (scene.image_url) {
+    console.log(`[getImageUrl] 使用 image_url: ${scene.image_url.substring(0, 50)}...`);
     return scene.image_url;
   }
 
   // 从对象存储获取签名URL
-  if (scene.image_key) {
+  const imageKey = scene.image_key || scene.imageKey;
+  if (imageKey) {
     try {
+      console.log(`[getImageUrl] 从对象存储获取签名URL, key: ${imageKey}`);
       const signedUrl = await storage.generatePresignedUrl({
-        key: scene.image_key,
+        key: imageKey,
         expireTime: 3600,
       });
-      return typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url;
+      const url = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url;
+      console.log(`[getImageUrl] 签名URL: ${url.substring(0, 50)}...`);
+      return url;
     } catch (e) {
-      console.error('获取图片URL失败:', e);
+      console.error('[getImageUrl] 获取图片URL失败:', e);
       return null;
     }
   }
 
+  console.log('[getImageUrl] 未找到图片字段');
   return null;
 }
 
@@ -556,7 +572,7 @@ function buildVideoPrompt(scene: { description: string; dialogue?: string | null
  * 快速生成模式 - 串行生成视频片段
  */
 async function generateFast(
-  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
+  scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
   storage: S3Storage,
   supabase: ReturnType<typeof getSupabaseClient> | null,
   videoModel: string,
