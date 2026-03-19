@@ -29,7 +29,7 @@ function getTmpDir(): string {
 /**
  * 获取 FFmpeg 路径
  */
-async function getFfmpegPath(): Promise<{ ffmpeg: string; ffprobe: string } | null> {
+async function getFfmpegPath(): Promise<{ ffmpeg: string; ffprobe: string }> {
   let ffmpegPath: string | null = null
   let ffprobePath: string | null = null
   
@@ -128,14 +128,6 @@ export async function POST(request: NextRequest) {
     
     // 获取 FFmpeg 路径
     const ffmpegPaths = await getFfmpegPath()
-    if (!ffmpegPaths) {
-      return successResponse({
-        success: false,
-        error: 'FFmpeg 未配置，请先在设置中配置 FFmpeg 路径',
-        needConfig: true
-      })
-    }
-    
     console.log('[VideoMerge] FFmpeg 路径:', ffmpegPaths)
     
     // 验证 FFmpeg 是否可用
@@ -151,12 +143,6 @@ export async function POST(request: NextRequest) {
         details: ffmpegError instanceof Error ? ffmpegError.message : String(ffmpegError)
       })
     }
-      return successResponse({
-        success: false,
-        error: 'FFmpeg 不可用，请检查配置或安装 FFmpeg',
-        needConfig: true
-      })
-    }
     
     // 获取项目分镜数据
     type SceneData = {
@@ -166,7 +152,6 @@ export async function POST(request: NextRequest) {
     }
     
     let scenes: SceneData[] = []
-    let usedDatabase = false
     
     // 先尝试数据库
     try {
@@ -188,7 +173,6 @@ export async function POST(request: NextRequest) {
             sceneNumber: s.scene_number,
             videoUrl: s.video_url || null
           }))
-          usedDatabase = true
           console.log(`[VideoMerge] 从数据库获取 ${scenes.length} 个场景`)
         } else if (error) {
           console.warn('[VideoMerge] 数据库查询失败:', error.message)
