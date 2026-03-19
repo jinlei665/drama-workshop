@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateVideoFromImage, DEFAULT_VIDEO_MODEL } from '@/lib/ai';
+import { generateVideoFromImage, generateVideoFromFrames, DEFAULT_VIDEO_MODEL } from '@/lib/ai';
 import { S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client';
 import { memoryScenes, memoryProjects } from '@/lib/memory-storage';
@@ -310,7 +310,13 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
- * 连续生成模式 - 使用上一帧保持视觉连贯性
+ * 连续生成模式 - 使用下一个分镜图片作为尾帧
+ * 
+ * 逻辑说明：
+ * - 视频1：首帧=分镜1图片，尾帧=分镜2图片
+ * - 视频2：首帧=分镜2图片，尾帧=分镜3图片
+ * - 视频N：首帧=分镜N图片，尾帧=分镜N+1图片（如果有）
+ * - 最后一个视频：仅首帧，无尾帧
  */
 async function generateSequential(
   scenesWithImages: { id: string; scene_number: number; image_key?: string; image_url?: string; imageUrl?: string; description: string; dialogue?: string | null; action?: string | null; emotion?: string | null; metadata?: Record<string, string> }[],
@@ -323,7 +329,6 @@ async function generateSequential(
   stylePrompt: string
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
-  let previousLastFrame: string | null = null;
   
   // 获取用户配置（用于下载视频时的认证）
   const userConfig = getCozeConfigFromMemory();
@@ -331,6 +336,7 @@ async function generateSequential(
 
   for (let i = 0; i < scenesWithImages.length; i++) {
     const scene = scenesWithImages[i];
+    const nextScene = scenesWithImages[i + 1]; // 下一个分镜
     
     // 添加延迟避免限流（10秒间隔）
     if (i > 0) {
@@ -339,34 +345,46 @@ async function generateSequential(
     }
     
     try {
-      let firstFrameUrl: string;
-      
-      // 如果有上一帧，使用它作为首帧
-      if (previousLastFrame) {
-        firstFrameUrl = previousLastFrame;
-      } else {
-        // 获取当前分镜图片的签名URL
-        const imgUrl = await getImageUrl(scene, storage);
-        if (!imgUrl) {
-          throw new Error('无法获取分镜图片URL');
-        }
-        firstFrameUrl = imgUrl;
+      // 获取当前分镜图片作为首帧
+      const firstFrameUrl = await getImageUrl(scene, storage);
+      if (!firstFrameUrl) {
+        throw new Error('无法获取分镜图片URL');
+      }
+
+      // 获取下一个分镜图片作为尾帧（如果存在）
+      let lastFrameUrl: string | null = null;
+      if (nextScene) {
+        lastFrameUrl = await getImageUrl(nextScene, storage);
+        console.log(`分镜 ${scene.scene_number} 将使用分镜 ${nextScene.scene_number} 的图片作为尾帧`);
       }
 
       // 构建视频描述，添加风格提示词
       const videoPrompt = `${stylePrompt}，${buildVideoPrompt(scene)}`;
       const duration = calculateDuration(scene);
 
-      console.log(`开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
+      console.log(`开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒，${lastFrameUrl ? '有尾帧' : '无尾帧'}`);
 
-      // 使用系统自带的视频生成服务
-      const result = await generateVideoFromImage(videoPrompt, firstFrameUrl, {
-        model: videoModel,
-        duration,
-        ratio: videoRatio,
-        resolution: videoResolution,
-        generateAudio: true,
-      });
+      let result: { videoUrl: string; lastFrameUrl?: string };
+      
+      if (lastFrameUrl) {
+        // 有尾帧：使用首尾帧模式生成视频
+        result = await generateVideoFromFrames(videoPrompt, firstFrameUrl, lastFrameUrl, {
+          model: videoModel,
+          duration,
+          ratio: videoRatio,
+          resolution: videoResolution,
+          generateAudio: true,
+        });
+      } else {
+        // 无尾帧（最后一个分镜）：仅使用首帧生成视频
+        result = await generateVideoFromImage(videoPrompt, firstFrameUrl, {
+          model: videoModel,
+          duration,
+          ratio: videoRatio,
+          resolution: videoResolution,
+          generateAudio: true,
+        });
+      }
 
       // 重新托管所有外部视频 URL 到本地，避免跨域问题
       let finalVideoUrl = result.videoUrl;
@@ -384,38 +402,17 @@ async function generateSequential(
 
       // 更新数据库或内存
       if (actuallyUseDatabase && supabase) {
-        // 先尝试完整更新（包含 last_frame_url）
         const { error: updateError } = await supabase
           .from('scenes')
           .update({
             video_url: finalVideoUrl,
-            last_frame_url: result.lastFrameUrl || null,
             video_status: 'completed',
             updated_at: new Date().toISOString(),
           })
           .eq('id', scene.id);
         
         if (updateError) {
-          // 如果是列不存在的错误，尝试不包含 last_frame_url 的更新
-          if (updateError.message.includes('last_frame_url')) {
-            console.warn(`分镜 ${scene.scene_number} 数据库缺少 last_frame_url 列，尝试不包含该字段的更新`);
-            const { error: retryError } = await supabase
-              .from('scenes')
-              .update({
-                video_url: finalVideoUrl,
-                video_status: 'completed',
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', scene.id);
-            
-            if (retryError) {
-              console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, retryError.message);
-            } else {
-              console.log(`分镜 ${scene.scene_number} 数据库更新成功（无 last_frame_url），video_url:`, finalVideoUrl?.substring(0, 50) + '...');
-            }
-          } else {
-            console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, updateError.message);
-          }
+          console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, updateError.message);
         } else {
           console.log(`分镜 ${scene.scene_number} 数据库更新成功，video_url:`, finalVideoUrl?.substring(0, 50) + '...');
         }
@@ -439,7 +436,6 @@ async function generateSequential(
         status: 'completed',
       });
 
-      previousLastFrame = result.lastFrameUrl || null;
       console.log(`分镜 ${scene.scene_number} 视频生成成功`);
     } catch (error) {
       console.error(`分镜 ${scene.scene_number} 视频生成失败:`, error);
@@ -466,9 +462,6 @@ async function generateSequential(
         error: error instanceof Error ? error.message : '未知错误',
         status: 'failed',
       });
-
-      // 失败后重置
-      previousLastFrame = null;
     }
   }
 
