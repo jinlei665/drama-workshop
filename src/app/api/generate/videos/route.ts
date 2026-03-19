@@ -193,23 +193,17 @@ export async function POST(request: NextRequest) {
         project = data;
         actuallyUseDatabase = true;
 
-        // 获取分镜列表（按序号排序）
-        let query = supabase
+        // 获取完整分镜列表（用于查找尾帧，不受 sceneIds 限制）
+        const { data: allScenesData, error: allScenesError } = await supabase
           .from('scenes')
           .select('*')
           .eq('project_id', projectId)
           .order('scene_number', { ascending: true });
 
-        if (sceneIds && sceneIds.length > 0) {
-          query = query.in('id', sceneIds);
+        if (allScenesError) {
+          console.warn('获取完整分镜列表失败:', allScenesError.message);
         }
-
-        const { data: scenesData, error: scenesError } = await query;
-
-        if (scenesError) {
-          console.warn('获取分镜失败:', scenesError.message);
-        }
-        scenesList = scenesData || [];
+        scenesList = allScenesData || [];
       }
     }
     
@@ -217,13 +211,10 @@ export async function POST(request: NextRequest) {
     if (!project) {
       console.log('从内存存储获取项目:', projectId);
       project = memoryProjects.find(p => p.id === projectId);
+      // 获取完整分镜列表（用于查找尾帧，不受 sceneIds 限制）
       scenesList = memoryScenes
         .filter(s => s.projectId === projectId)
         .sort((a, b) => a.sceneNumber - b.sceneNumber);
-      
-      if (sceneIds && sceneIds.length > 0) {
-        scenesList = scenesList.filter(s => sceneIds.includes(s.id));
-      }
     }
 
     if (!project) {
@@ -233,15 +224,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 过滤出有图片的分镜（支持多种字段名：image_key, image_url, imageKey, imageUrl）
-    const scenesWithImages = scenesList.filter((s: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }) => s.image_key || s.image_url || s.imageKey || s.imageUrl);
+    // 过滤出有图片的分镜
+    let scenesWithImages = scenesList.filter((s: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }) => s.image_key || s.image_url || s.imageKey || s.imageUrl);
+    
+    // 如果指定了 sceneIds，只生成这些分镜的视频（但完整列表用于找尾帧）
+    if (sceneIds && sceneIds.length > 0) {
+      scenesWithImages = scenesWithImages.filter((s: { id: string }) => sceneIds.includes(s.id));
+      console.log(`[视频生成] 指定生成 ${sceneIds.length} 个分镜的视频`);
+    }
     
     // 调试日志：显示完整分镜列表
     console.log(`[视频生成] 完整分镜列表: ${scenesList.length} 个分镜`);
-    console.log(`[视频生成] 有图片的分镜: ${scenesWithImages.length} 个`);
+    console.log(`[视频生成] 待生成视频的分镜: ${scenesWithImages.length} 个`);
     scenesList.forEach((s: any) => {
       const hasImage = !!(s.image_key || s.image_url || s.imageKey || s.imageUrl);
-      console.log(`  - 分镜 ${s.scene_number}: ${hasImage ? '有图片' : '无图片'}`);
+      const willGenerate = scenesWithImages.some((sg: any) => sg.id === s.id);
+      console.log(`  - 分镜 ${s.scene_number}: ${hasImage ? '有图片' : '无图片'} ${willGenerate ? '[待生成]' : ''}`);
     });
     
     if (scenesWithImages.length === 0) {
