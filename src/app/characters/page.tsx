@@ -62,9 +62,10 @@ export default function CharactersPage() {
   const fetchCharacters = async () => {
     try {
       setLoading(true)
-      const res = await fetch('/api/characters')
+      // 使用 character-library API 获取人物库数据
+      const res = await fetch('/api/character-library')
       const data = await res.json()
-      setCharacters(data.characters || [])
+      setCharacters(data.data?.characters || [])
     } catch (error) {
       console.error('获取人物列表失败:', error)
       toast.error('获取人物列表失败')
@@ -85,10 +86,18 @@ export default function CharactersPage() {
 
     setCreating(true)
     try {
-      const res = await fetch('/api/characters', {
+      // 使用 character-library API 创建人物
+      const res = await fetch('/api/character-library', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description,
+          appearance: formData.appearance,
+          personality: formData.personality,
+          tags: formData.gender ? [formData.gender, formData.age].filter(Boolean) : (formData.age ? [formData.age] : []),
+          style: formData.style
+        })
       })
       const result = await res.json()
 
@@ -120,7 +129,7 @@ export default function CharactersPage() {
     if (!confirm('确定要删除这个人物吗？')) return
 
     try {
-      const res = await fetch(`/api/characters/${id}`, {
+      const res = await fetch(`/api/character-library?id=${id}`, {
         method: 'DELETE'
       })
 
