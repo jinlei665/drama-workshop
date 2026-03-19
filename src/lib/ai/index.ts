@@ -507,6 +507,42 @@ async function invokeBotForVideoGeneration(
   
   logger.info('Bot video API response ok, processing stream...')
   
+  // 检查响应类型
+  const responseContentType = response.headers.get('content-type') || ''
+  logger.info('Bot video response content-type:', { contentType: responseContentType })
+  
+  // 如果不是流式响应，直接读取完整内容
+  if (!responseContentType.includes('text/event-stream') && !responseContentType.includes('application/stream+json')) {
+    const responseText = await response.text()
+    logger.info('Bot video non-stream response:', { length: responseText.length, preview: responseText.slice(0, 500) })
+    
+    // 尝试解析为 JSON
+    let content = ''
+    try {
+      const data = JSON.parse(responseText)
+      
+      // 检查错误码
+      if (data.code && data.code !== 0) {
+        throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
+      }
+      
+      // 提取内容
+      if (data.data?.[0]?.content) {
+        content = data.data[0].content
+      } else if (data.messages?.[0]?.content) {
+        content = data.messages[0].content
+      } else if (data.content) {
+        content = data.content
+      }
+    } catch {
+      // 可能整个响应就是内容
+      content = responseText
+    }
+    
+    // 从内容中提取视频 URL
+    return extractVideoUrlFromContent(content)
+  }
+  
   // 处理流式响应
   const reader = response.body?.getReader()
   if (!reader) {
@@ -516,58 +552,106 @@ async function invokeBotForVideoGeneration(
   const decoder = new TextDecoder()
   let buffer = ''
   let content = ''
+  let chunkCount = 0
+  let firstChunk = true
   
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    
-    buffer += decoder.decode(value, { stream: true })
-    
-    // 按双换行分割事件
-    const events = buffer.split('\n\n')
-    buffer = events.pop() || ''
-    
-    for (const eventBlock of events) {
-      if (!eventBlock.trim()) continue
-      
-      const lines = eventBlock.split('\n')
-      let eventData = ''
-      
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          eventData = line.slice(5).trim()
-        }
+  // 设置超时（3分钟）
+  const timeout = setTimeout(() => {
+    logger.warn('Bot video stream timeout after 3 minutes', { contentLength: content.length, chunkCount })
+  }, 180000)
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        logger.info('Bot video stream done', { chunkCount, contentLength: content.length })
+        break
       }
       
-      if (!eventData || eventData === '[DONE]') continue
+      chunkCount++
+      const chunk = decoder.decode(value, { stream: true })
       
-      try {
-        const data = JSON.parse(eventData)
+      // 打印第一个 chunk 的内容，用于诊断
+      if (firstChunk) {
+        logger.info('Bot video first chunk received', { 
+          chunkLength: chunk.length, 
+          preview: chunk.slice(0, 500) 
+        })
+        firstChunk = false
+      }
+      
+      buffer += chunk
+      
+      // 每 10 个 chunk 打印一次进度
+      if (chunkCount % 10 === 0) {
+        logger.info('Bot video stream progress', { chunkCount, bufferSize: buffer.length })
+      }
+      
+      // 按双换行分割事件
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+      
+      for (const eventBlock of events) {
+        if (!eventBlock.trim()) continue
         
-        // 处理 conversation.message.completed 事件
-        if (data.type === 'answer' && data.content) {
-          content = data.content
+        const lines = eventBlock.split('\n')
+        let eventData = ''
+        
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            eventData = line.slice(5).trim()
+          }
         }
         
-        // 处理 delta 事件
-        if (data.content && typeof data.content === 'string') {
-          content += data.content
-        }
+        if (!eventData || eventData === '[DONE]') continue
         
-        // 检查错误
-        if (data.code && data.code !== 0) {
-          throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
+        try {
+          const data = JSON.parse(eventData)
+          
+          // 打印关键事件
+          if (data.type === 'answer' || data.type === 'conversation.message.delta') {
+            logger.info('Bot video stream event', { type: data.type, hasContent: !!data.content })
+          }
+          
+          // 处理 conversation.message.completed 事件
+          if (data.type === 'answer' && data.content) {
+            content = data.content
+          }
+          
+          // 处理 delta 事件
+          if (data.content && typeof data.content === 'string') {
+            content += data.content
+          }
+          
+          // 检查错误
+          if (data.code && data.code !== 0) {
+            logger.error('Bot video API error', { code: data.code, msg: data.msg })
+            throw new Error(`Bot API 错误 (code: ${data.code}): ${data.msg}`)
+          }
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) {
+            // JSON 解析失败，可能是非标准格式
+            logger.warn('Bot video JSON parse error', { eventData: eventData.slice(0, 200) })
+            continue
+          }
+          throw parseError
         }
-      } catch (parseError) {
-        if (parseError instanceof SyntaxError) {
-          continue
-        }
-        throw parseError
       }
     }
+  } finally {
+    clearTimeout(timeout)
   }
   
   // 从内容中提取视频 URL
+  return extractVideoUrlFromContent(content)
+}
+
+/**
+ * 从 Bot 响应内容中提取视频 URL
+ */
+function extractVideoUrlFromContent(content: string): { videoUrl: string } {
+  logger.info('Extracting video URL from content', { contentLength: content.length, preview: content.slice(0, 300) })
+  
   let videoUrl = ''
   
   // 匹配视频 URL（mp4, webm 等格式）
@@ -583,6 +667,18 @@ async function invokeBotForVideoGeneration(
     const cozeMatch = cozeUrlRegex.exec(content)
     if (cozeMatch) {
       videoUrl = cozeMatch[1]
+    }
+  }
+  
+  // 匹配 Coze CDN 链接（视频）
+  if (!videoUrl) {
+    const cdnUrlRegex = /(https?:\/\/[^\s"'<>]*\.coze\.cn[^\s"'<>]*)/gi
+    let cdnMatch
+    while ((cdnMatch = cdnUrlRegex.exec(content)) !== null) {
+      if (cdnMatch[1].includes('video') || cdnMatch[1].includes('file')) {
+        videoUrl = cdnMatch[1]
+        break
+      }
     }
   }
   
