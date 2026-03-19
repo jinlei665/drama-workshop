@@ -596,8 +596,12 @@ async function invokeBotForVideoGeneration(
         
         const lines = eventBlock.split('\n')
         let eventData = ''
+        let eventType = ''
         
         for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.slice(6).trim()
+          }
           if (line.startsWith('data:')) {
             eventData = line.slice(5).trim()
           }
@@ -608,19 +612,48 @@ async function invokeBotForVideoGeneration(
         try {
           const data = JSON.parse(eventData)
           
-          // 打印关键事件
-          if (data.type === 'answer' || data.type === 'conversation.message.delta') {
-            logger.info('Bot video stream event', { type: data.type, hasContent: !!data.content })
+          // 打印所有事件类型和关键字段
+          if (chunkCount <= 5 || eventType.includes('completed') || data.status === 'completed') {
+            logger.info('Bot video event detail', { 
+              eventType, 
+              dataType: data.type, 
+              dataStatus: data.status,
+              hasContent: !!data.content,
+              hasDataContent: !!(data.data?.content || data.data?.[0]?.content),
+              dataKeys: Object.keys(data).slice(0, 10)
+            })
           }
           
-          // 处理 conversation.message.completed 事件
+          // 处理各种可能的内容字段
+          // 1. conversation.message.completed 事件
+          if (eventType === 'conversation.message.completed' || data.type === 'conversation.message.completed') {
+            if (data.content) {
+              content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+              logger.info('Bot video got content from message.completed', { contentLength: content.length })
+            }
+          }
+          
+          // 2. answer 事件（带内容）
           if (data.type === 'answer' && data.content) {
-            content = data.content
+            content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
           }
           
-          // 处理 delta 事件
+          // 3. delta 事件
           if (data.content && typeof data.content === 'string') {
             content += data.content
+          }
+          
+          // 4. data 数组格式
+          if (data.data) {
+            if (Array.isArray(data.data)) {
+              for (const item of data.data) {
+                if (item.content) {
+                  content += typeof item.content === 'string' ? item.content : JSON.stringify(item.content)
+                }
+              }
+            } else if (data.data.content) {
+              content += typeof data.data.content === 'string' ? data.data.content : JSON.stringify(data.data.content)
+            }
           }
           
           // 检查错误
