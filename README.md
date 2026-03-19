@@ -279,22 +279,39 @@ S3_SECRET_KEY=minioadmin123
 S3_BUCKET=drama-workshop
 S3_REGION=us-east-1
 
-# ==================== Coze API 配置 ====================
-# 方式一：直接配置 API Key（推荐）
+# ==================== LLM Provider 配置 ====================
+# 可选值: coze (默认) 或 openai-compatible
+# LLM_PROVIDER=coze
+
+# ===== 方式一：使用 Coze API（默认）=====
 COZE_API_KEY=your-coze-api-key
 COZE_BASE_URL=https://api.coze.cn
 COZE_BOT_ID=your-bot-id
 
-# 方式二：分开配置各功能 API（可选）
-LLM_API_KEY=your-coze-api-key
-LLM_BASE_URL=https://api.coze.cn
+# ===== 方式二：使用 OpenAI 兼容 API =====
+# 支持所有 OpenAI 兼容服务：MiniMax、DeepSeek、智谱、Moonshot、Ollama 等
+# LLM_PROVIDER=openai-compatible
+# LLM_API_KEY=your-api-key
+# LLM_BASE_URL=https://api.deepseek.com/v1
+# LLM_MODEL=deepseek-chat
+
+# 常用 OpenAI 兼容服务配置示例：
+# MiniMax:      LLM_BASE_URL=https://api.minimax.chat/v1
+# DeepSeek:     LLM_BASE_URL=https://api.deepseek.com/v1
+# 智谱 GLM:     LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+# Moonshot:     LLM_BASE_URL=https://api.moonshot.cn/v1
+# 通义千问:      LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+# 本地 Ollama:  LLM_BASE_URL=http://localhost:11434/v1
+
+# ==================== 图像/视频生成 API ====================
+# 图像和视频生成目前仅支持 Coze API
 IMAGE_API_KEY=your-coze-api-key
 IMAGE_BASE_URL=https://api.coze.cn
 VIDEO_API_KEY=your-coze-api-key
 VIDEO_BASE_URL=https://api.coze.cn
 
 # ==================== 代理配置（可选）====================
-# 如果网络需要代理访问 Coze API
+# 如果网络需要代理访问 API
 # HTTP_PROXY=http://127.0.0.1:7890
 # HTTPS_PROXY=http://127.0.0.1:7890
 
@@ -332,18 +349,54 @@ pnpm start
 
 ## 🔧 配置说明
 
+### LLM Provider 配置
+
+系统支持两种 LLM Provider：
+
+| Provider | 说明 | 适用场景 |
+|----------|------|----------|
+| `coze` (默认) | 使用 Coze SDK 调用豆包系列模型 | 默认选项，支持多模态 |
+| `openai-compatible` | 使用 OpenAI 兼容 API | 使用第三方模型服务 |
+
+#### OpenAI 兼容服务配置示例
+
+```env
+# 设置 Provider
+LLM_PROVIDER=openai-compatible
+
+# MiniMax
+LLM_API_KEY=your-minimax-api-key
+LLM_BASE_URL=https://api.minimax.chat/v1
+LLM_MODEL=abab6.5s-chat
+
+# DeepSeek
+LLM_API_KEY=your-deepseek-api-key
+LLM_BASE_URL=https://api.deepseek.com/v1
+LLM_MODEL=deepseek-chat
+
+# 智谱 GLM
+LLM_API_KEY=your-zhipu-api-key
+LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+LLM_MODEL=glm-4
+
+# 本地 Ollama
+LLM_API_KEY=ollama
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=llama3
+```
+
 ### API 配置优先级
 
 系统按以下顺序获取 API 配置：
 
-1. **环境变量** - `.env.local` 中的 `COZE_API_KEY` 等
+1. **环境变量** - `.env.local` 中的配置
 2. **用户设置（数据库）** - 在应用设置页面配置的 API Key
 3. **内存存储** - 无数据库时的临时存储
 4. **沙箱环境** - 如果在 Coze 沙箱环境运行
 
-### 图像生成策略
+### 图像/视频生成
 
-系统按以下顺序尝试图像生成：
+图像和视频生成目前仅支持 **Coze API**，不支持第三方服务。系统按以下顺序尝试：
 
 1. **沙箱内置凭证** - 在 Coze 沙箱环境自动使用
 2. **Bot Skills** - 通过配置的 Bot ID 调用图像生成技能

@@ -1,10 +1,15 @@
 /**
  * AI 服务统一接口
  * 使用系统自带的模型服务 (coze-coding-dev-sdk)
+ * 同时支持 OpenAI 兼容格式的第三方模型
  * 
- * LLM 默认模型: doubao-seed-1-8-251228
- * 图像生成: ImageGenerationClient
- * 视频生成: VideoGenerationClient
+ * LLM 默认模型: doubao-seed-1-8-251228 (Coze)
+ * 图像生成: ImageGenerationClient (Coze)
+ * 视频生成: VideoGenerationClient (Coze)
+ * 
+ * 支持的 LLM Provider:
+ * - coze: 豆包/Coze API (默认)
+ * - openai-compatible: 任何 OpenAI 兼容服务 (MiniMax, DeepSeek, 智谱, Moonshot, Ollama 等)
  */
 
 import {
@@ -16,6 +21,11 @@ import {
   APIError,
 } from 'coze-coding-dev-sdk'
 import { Errors, withRetry, logger } from '@/lib/errors'
+import { 
+  OpenAICompatibleClient, 
+  OPENAI_COMPATIBLE_PROVIDERS,
+  type ProviderKey 
+} from './openai-compatible'
 
 // ==================== 代理处理工具 ====================
 
@@ -112,6 +122,12 @@ export interface VideoGenerationOptions {
 
 /** 系统默认 LLM 模型 */
 export const DEFAULT_LLM_MODEL = 'doubao-seed-1-8-251228'
+
+/** LLM Provider 类型 */
+export type LLMProvider = 'coze' | 'openai-compatible'
+
+/** 默认 LLM Provider */
+export const DEFAULT_LLM_PROVIDER: LLMProvider = 'coze'
 
 /** 系统默认图像模型 */
 export const DEFAULT_IMAGE_SIZE = '2K'
@@ -220,6 +236,110 @@ export async function getServerAIConfig(): Promise<{
     baseUrl: defaultBaseUrl,
     model: DEFAULT_LLM_MODEL,
     useSystemDefault: true,
+  }
+}
+
+// ==================== OpenAI 兼容配置 ====================
+
+/**
+ * 获取 LLM Provider 配置
+ * 支持从环境变量或用户设置获取配置
+ */
+export interface LLMProviderConfig {
+  provider: LLMProvider
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+}
+
+/**
+ * 获取 LLM Provider 配置
+ * 优先级：环境变量 > 用户设置 > 默认值
+ */
+async function getLLMProviderConfig(): Promise<LLMProviderConfig> {
+  // 从环境变量获取 Provider 类型
+  const envProvider = process.env.LLM_PROVIDER as LLMProvider | undefined
+  
+  // 如果明确指定使用 openai-compatible
+  if (envProvider === 'openai-compatible') {
+    const apiKey = process.env.LLM_API_KEY
+    const baseUrl = process.env.LLM_BASE_URL
+    const model = process.env.LLM_MODEL
+    
+    // 如果环境变量没有配置，尝试从用户设置获取
+    if (!apiKey || !baseUrl) {
+      try {
+        const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+        
+        if (isDatabaseConfigured()) {
+          const db = getSupabaseClient()
+          const { data, error } = await db
+            .from('user_settings')
+            .select('llm_api_key, llm_base_url, llm_model, llm_provider')
+            .maybeSingle()
+          
+          if (!error && data) {
+            return {
+              provider: data.llm_provider || 'openai-compatible',
+              apiKey: apiKey || data.llm_api_key,
+              baseUrl: baseUrl || data.llm_base_url,
+              model: model || data.llm_model,
+            }
+          }
+        }
+      } catch {
+        // 忽略错误
+      }
+      
+      // 尝试内存存储
+      try {
+        const { getSettingsFromMemory } = await import('@/lib/memory-store')
+        const settings = getSettingsFromMemory()
+        
+        if (settings?.llm_api_key) {
+          return {
+            provider: (settings.llm_provider as LLMProvider) || 'openai-compatible',
+            apiKey: apiKey || (settings.llm_api_key as string),
+            baseUrl: baseUrl || (settings.llm_base_url as string),
+            model: model || (settings.llm_model as string),
+          }
+        }
+      } catch {
+        // 忽略错误
+      }
+    }
+    
+    return {
+      provider: 'openai-compatible',
+      apiKey,
+      baseUrl,
+      model,
+    }
+  }
+  
+  // 默认使用 Coze
+  // 获取 Coze 配置
+  const cozeConfig = await getUserCozeConfig()
+  
+  return {
+    provider: 'coze',
+    apiKey: cozeConfig.apiKey,
+    baseUrl: cozeConfig.baseUrl,
+    model: DEFAULT_LLM_MODEL,
+  }
+}
+
+/**
+ * 获取可用的 LLM Provider 列表（用于前端展示）
+ */
+export function getAvailableProviders() {
+  return {
+    coze: {
+      name: 'Coze / 豆包',
+      description: '使用 Coze API，支持豆包系列模型',
+      models: AVAILABLE_LLM_MODELS,
+    },
+    ...OPENAI_COMPATIBLE_PROVIDERS,
   }
 }
 
@@ -867,7 +987,9 @@ export function createLLMClient(
 
 /**
  * 调用 LLM（非流式）
- * 支持用户配置回退到系统模型
+ * 支持多种 Provider：
+ * - coze: 使用 Coze SDK
+ * - openai-compatible: 使用 OpenAI 兼容 API
  */
 export async function invokeLLM(
   messages: LLMMessage[],
@@ -875,19 +997,66 @@ export async function invokeLLM(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<string> {
-  const model = options?.model || config?.model || DEFAULT_LLM_MODEL
-  const hasUserConfig = !!(config?.apiKey)
+  // 获取 Provider 配置
+  const providerConfig = await getLLMProviderConfig()
+  
+  // 检查是否强制使用 OpenAI 兼容模式（通过环境变量或配置）
+  const forceOpenAI = process.env.LLM_PROVIDER === 'openai-compatible' || 
+                      providerConfig.provider === 'openai-compatible'
+  
+  // 如果配置了 OpenAI 兼容模式且有必要的配置
+  if (forceOpenAI && providerConfig.apiKey && providerConfig.baseUrl) {
+    const model = options?.model || config?.model || providerConfig.model || 'gpt-3.5-turbo'
+    
+    logger.info('LLM invoke started (OpenAI Compatible)', { 
+      provider: providerConfig.provider,
+      model,
+      baseUrl: providerConfig.baseUrl,
+    })
+    
+    try {
+      const client = new OpenAICompatibleClient({
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        model,
+        timeout: config?.timeout || 300000,
+      })
+      
+      const response = await client.invoke(
+        messages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        { temperature: options?.temperature ?? 0.7 }
+      )
+      
+      logger.info('LLM invoke completed (OpenAI Compatible)', { responseLength: response.length })
+      return response
+    } catch (err) {
+      logger.error('LLM invoke failed (OpenAI Compatible)', err)
+      throw err
+    }
+  }
+  
+  // 使用 Coze SDK
+  const model = options?.model || config?.model || providerConfig.model || DEFAULT_LLM_MODEL
+  const hasUserConfig = !!(config?.apiKey || providerConfig.apiKey)
 
-  logger.info('LLM invoke started', { 
+  logger.info('LLM invoke started (Coze)', { 
     model, 
     hasUserConfig,
-    useSystemDefault: !config?.apiKey 
+    useSystemDefault: !config?.apiKey && !providerConfig.apiKey 
   })
 
   // 如果有用户配置，先尝试用户配置
   if (hasUserConfig) {
     try {
-      const client = createLLMClient(config, headers)
+      const clientConfig = {
+        ...config,
+        apiKey: config?.apiKey || providerConfig.apiKey,
+        baseUrl: config?.baseUrl || providerConfig.baseUrl,
+      }
+      const client = createLLMClient(clientConfig, headers)
       const response = await withRetry(
         () =>
           client.invoke(messages, {
@@ -899,10 +1068,10 @@ export async function invokeLLM(
         { maxRetries: 2, delay: 3000 }
       )
 
-      logger.info('LLM invoke completed with user config', { responseLength: response.content.length })
+      logger.info('LLM invoke completed with user config (Coze)', { responseLength: response.content.length })
       return response.content
     } catch (userError) {
-      logger.warn('LLM invoke failed with user config, falling back to system model', { 
+      logger.warn('LLM invoke failed with user config, falling back to system model (Coze)', { 
         error: userError instanceof Error ? userError.message : String(userError) 
       })
       
@@ -916,12 +1085,12 @@ export async function invokeLLM(
           caching: options?.caching ?? 'disabled',
         })
 
-        logger.info('LLM invoke completed with system fallback', { responseLength: response.content.length })
+        logger.info('LLM invoke completed with system fallback (Coze)', { responseLength: response.content.length })
         
         // 返回结果，同时标记使用了回退
         return response.content
       } catch (systemError) {
-        logger.error('LLM invoke failed with both user and system config', { userError, systemError })
+        logger.error('LLM invoke failed with both user and system config (Coze)', { userError, systemError })
         // 抛出特殊错误，让调用方知道回退也失败了
         const error = new Error('用户模型和系统模型均请求失败')
         ;(error as any).fallbackAttempted = true
@@ -946,7 +1115,7 @@ export async function invokeLLM(
       { maxRetries: 1, delay: 3000 } // 减少重试次数，避免长时间等待
     )
 
-    logger.info('LLM invoke completed', { responseLength: response.content.length })
+    logger.info('LLM invoke completed (Coze)', { responseLength: response.content.length })
     return response.content
   } catch (err) {
     logger.error('LLM invoke failed', err)
@@ -964,6 +1133,9 @@ export async function invokeLLM(
 
 /**
  * 流式调用 LLM
+ * 支持多种 Provider：
+ * - coze: 使用 Coze SDK
+ * - openai-compatible: 使用 OpenAI 兼容 API
  */
 export async function* streamLLM(
   messages: LLMMessage[],
@@ -971,10 +1143,56 @@ export async function* streamLLM(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): AsyncGenerator<string> {
+  // 获取 Provider 配置
+  const providerConfig = await getLLMProviderConfig()
+  
+  // 检查是否强制使用 OpenAI 兼容模式
+  const forceOpenAI = process.env.LLM_PROVIDER === 'openai-compatible' || 
+                      providerConfig.provider === 'openai-compatible'
+  
+  // 如果配置了 OpenAI 兼容模式且有必要的配置
+  if (forceOpenAI && providerConfig.apiKey && providerConfig.baseUrl) {
+    const model = options?.model || config?.model || providerConfig.model || 'gpt-3.5-turbo'
+    
+    logger.info('LLM stream started (OpenAI Compatible)', { 
+      provider: providerConfig.provider,
+      model,
+      baseUrl: providerConfig.baseUrl,
+    })
+    
+    try {
+      const client = new OpenAICompatibleClient({
+        apiKey: providerConfig.apiKey,
+        baseUrl: providerConfig.baseUrl,
+        model,
+        timeout: config?.timeout || 300000,
+      })
+      
+      const stream = client.stream(
+        messages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        { temperature: options?.temperature ?? 0.7 }
+      )
+      
+      for await (const chunk of stream) {
+        yield chunk
+      }
+      
+      logger.info('LLM stream completed (OpenAI Compatible)')
+      return
+    } catch (err) {
+      logger.error('LLM stream failed (OpenAI Compatible)', err)
+      throw err
+    }
+  }
+  
+  // 使用 Coze SDK
   const client = createLLMClient(config, headers)
   const model = options?.model || config?.model || DEFAULT_LLM_MODEL
 
-  logger.info('LLM stream started', { model })
+  logger.info('LLM stream started (Coze)', { model })
 
   try {
     const stream = client.stream(messages, {
@@ -990,9 +1208,9 @@ export async function* streamLLM(
       }
     }
 
-    logger.info('LLM stream completed')
+    logger.info('LLM stream completed (Coze)')
   } catch (err) {
-    logger.error('LLM stream failed', err)
+    logger.error('LLM stream failed (Coze)', err)
     throw Errors.AIRequestFailed('LLM', err instanceof Error ? err.message : undefined)
   }
 }
