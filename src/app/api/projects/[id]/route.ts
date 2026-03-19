@@ -96,7 +96,8 @@ export async function GET(
               sideViewKey: c.side_view_key,
               backViewKey: c.back_view_key,
               status: c.status,
-              imageUrl: c.image_url,
+              // imageUrl 优先使用 front_view_key（可能是完整URL或文件key）
+              imageUrl: c.front_view_key || c.image_url,
               createdAt: c.created_at,
             })),
             scenes: (scenes || []).map((s: any) => ({

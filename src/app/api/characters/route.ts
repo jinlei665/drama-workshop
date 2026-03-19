@@ -41,7 +41,9 @@ export async function GET(request: NextRequest) {
             gender: c.gender,
             age: c.age,
             style: c.style,
-            imageUrl: c.image_url,
+            // imageUrl 优先使用 front_view_key（可能是完整URL或文件key）
+            imageUrl: c.front_view_key || c.image_url,
+            frontViewKey: c.front_view_key,
             projectId: c.project_id,
             createdAt: c.created_at,
             updatedAt: c.updated_at,

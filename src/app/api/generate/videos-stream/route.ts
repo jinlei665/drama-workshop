@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server"
-import { VideoGenerationClient, Config, HeaderUtils, S3Storage, Content } from 'coze-coding-dev-sdk'
+import { S3Storage, HeaderUtils } from 'coze-coding-dev-sdk'
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client'
 import { memoryScenes, memoryProjects } from '@/lib/memory-storage'
 import { getCozeConfigFromMemory } from '@/lib/memory-store'
 import { getVideoStylePrompt } from '@/lib/styles'
+import { generateVideoFromImage } from '@/lib/ai'
 
 export const maxDuration = 300 // 5分钟超时
 
@@ -154,19 +155,7 @@ export async function POST(request: NextRequest) {
 
       // 获取用户配置
       const userConfig = getCozeConfigFromMemory()
-      
-      // 使用 SDK 默认配置（会自动从环境变量获取 API Key 和 baseUrl）
-      // 只有在用户明确配置了 apiKey 时才覆盖默认配置
-      const config = userConfig?.apiKey 
-        ? new Config({
-            apiKey: userConfig.apiKey,
-            baseUrl: userConfig.baseUrl || undefined,
-            timeout: 300000,
-          })
-        : new Config({ timeout: 300000 })  // 使用默认配置，自动从环境变量获取凭证
-      
       const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-      const client = new VideoGenerationClient(config, customHeaders)
 
       // 初始化对象存储（可选）
       let storage: S3Storage | null = null
@@ -184,7 +173,6 @@ export async function POST(request: NextRequest) {
 
       // 只在数据库真正有数据时使用数据库
       const supabase = actuallyUseDatabase ? getSupabaseClient() : null
-      const videoModel = 'doubao-seedance-1-5-pro-251215'
 
       // 延迟函数
       const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -235,31 +223,28 @@ export async function POST(request: NextRequest) {
           // 构建视频提示词，包含风格
           const videoPrompt = `${stylePrompt}，${buildVideoPrompt(scene)}`
 
-          const contentItems: Content[] = [
-            {
-              type: 'image_url',
-              image_url: { url: imageUrl },
-              role: 'first_frame',
-            },
-            {
-              type: 'text',
-              text: videoPrompt,
-            },
-          ]
-
           const duration = calculateDuration(scene)
 
           console.log(`Generating video for scene ${sceneId} with style ${style}:`, videoPrompt.substring(0, 100))
 
-          // 生成视频
-          const response = await client.videoGeneration(contentItems, {
-            model: videoModel,
-            duration: duration,
-            ratio: '16:9',
-            resolution: '720p',
-            returnLastFrame: mode === 'continuous',
-            generateAudio: true,
-          })
+          // 使用统一的视频生成接口（支持 Bot Skills 回退）
+          const userConfig = getCozeConfigFromMemory()
+          const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
+          
+          const response = await generateVideoFromImage(
+            videoPrompt,
+            imageUrl,
+            {
+              duration: duration,
+              ratio: '16:9',
+              resolution: '720p',
+            },
+            userConfig?.apiKey ? {
+              apiKey: userConfig.apiKey,
+              baseUrl: userConfig.baseUrl,
+            } : undefined,
+            customHeaders
+          )
 
           if (response.videoUrl) {
             // 更新数据库

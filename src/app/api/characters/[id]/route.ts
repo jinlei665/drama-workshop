@@ -40,7 +40,9 @@ export async function GET(
               gender: data.gender,
               age: data.age,
               style: data.style,
-              imageUrl: data.image_url,
+              // imageUrl 优先使用 front_view_key（可能是完整URL或文件key）
+              imageUrl: data.front_view_key || data.image_url,
+              frontViewKey: data.front_view_key,
               projectId: data.project_id,
               createdAt: data.created_at,
               updatedAt: data.updated_at,
@@ -154,7 +156,9 @@ export async function PATCH(
               gender: data.gender,
               age: data.age,
               style: data.style,
-              imageUrl: data.image_url,
+              // imageUrl 优先使用 front_view_key
+              imageUrl: data.front_view_key || data.image_url,
+              frontViewKey: data.front_view_key,
               projectId: data.project_id,
               createdAt: data.created_at,
               updatedAt: data.updated_at,

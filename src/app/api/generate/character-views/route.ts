@@ -124,15 +124,21 @@ export async function POST(request: NextRequest) {
     if (isDatabaseConfigured()) {
       try {
         const supabase = getSupabaseClient()
-        await supabase
+        // 直接将图片 URL 存储到 front_view_key（因为本地环境没有对象存储）
+        // front_view_key 可以存储文件 key 或直接存储 URL
+        const { error } = await supabase
           .from("characters")
           .update({
-            front_view_key: fileKey,
-            image_url: viewUrl,  // 同时更新 image_url 以便前端显示
+            front_view_key: fileKey || viewUrl,  // 如果没有上传到存储，直接存储 URL
             updated_at: new Date().toISOString(),
           })
           .eq("id", characterId)
-        console.log("Database updated with image_url:", viewUrl.substring(0, 50) + "...")
+        
+        if (error) {
+          console.warn("Database update error:", error.message)
+        } else {
+          console.log("Database updated with front_view_key:", (fileKey || viewUrl).substring(0, 50) + "...")
+        }
       } catch (dbError) {
         console.warn("Failed to update database:", dbError)
       }

@@ -476,7 +476,7 @@ async function invokeBotForVideoGeneration(
     throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
-  logger.info('Invoking Bot for video generation', { botId })
+  logger.info('Invoking Bot for video generation', { botId, baseUrl })
   
   // 调用 Bot API，通过特定 prompt 触发视频生成 Skill
   // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
@@ -501,8 +501,11 @@ async function invokeBotForVideoGeneration(
   
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText}`)
+    logger.error('Bot video API failed', { status: response.status, error: errorText.slice(0, 500) })
+    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
   }
+  
+  logger.info('Bot video API response ok, processing stream...')
   
   // 处理流式响应
   const reader = response.body?.getReader()
