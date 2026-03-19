@@ -5,8 +5,72 @@ import { memoryScenes, memoryProjects } from '@/lib/memory-storage'
 import { getCozeConfigFromMemory } from '@/lib/memory-store'
 import { getVideoStylePrompt } from '@/lib/styles'
 import { generateVideoFromImage } from '@/lib/ai'
+import * as fs from 'fs'
+import * as path from 'path'
 
 export const maxDuration = 300 // 5分钟超时
+
+/**
+ * 下载视频并重新上传到存储
+ * 解决 Bot 返回的临时 URL 过期问题
+ */
+async function rehostVideo(originalUrl: string, sceneId: string, storage: S3Storage | null): Promise<string> {
+  console.log(`[Video Stream] 正在下载并重新托管视频: ${originalUrl.substring(0, 50)}...`)
+  
+  try {
+    // 下载视频
+    const response = await fetch(originalUrl)
+    if (!response.ok) {
+      console.warn(`[Video Stream] 视频下载失败: HTTP ${response.status}`)
+      return originalUrl // 返回原始 URL
+    }
+    
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    console.log(`[Video Stream] 视频下载完成，大小: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`)
+    
+    // 尝试上传到对象存储
+    if (storage) {
+      try {
+        const key = `videos/${sceneId}/video_${Date.now()}.mp4`
+        await storage.putObject(key, buffer, 'video/mp4')
+        const publicUrl = await storage.getSignedUrl(key, 3600 * 24 * 7) // 7天有效期
+        console.log(`[Video Stream] 视频已上传到对象存储: ${key}`)
+        return publicUrl
+      } catch (uploadErr) {
+        console.warn(`[Video Stream] 对象存储上传失败，尝试本地存储:`, uploadErr)
+      }
+    }
+    
+    // 本地存储（仅开发环境）
+    const isDev = process.env.NODE_ENV === 'development' || !process.env.COZE_PROJECT_ENV
+    if (isDev) {
+      try {
+        const publicDir = path.join(process.cwd(), 'public', 'videos', sceneId)
+        if (!fs.existsSync(publicDir)) {
+          fs.mkdirSync(publicDir, { recursive: true })
+        }
+        
+        const filename = `video_${Date.now()}.mp4`
+        const filePath = path.join(publicDir, filename)
+        fs.writeFileSync(filePath, buffer)
+        
+        const localUrl = `/videos/${sceneId}/${filename}`
+        console.log(`[Video Stream] 视频已保存到本地: ${localUrl}`)
+        return localUrl
+      } catch (localErr) {
+        console.warn(`[Video Stream] 本地存储失败:`, localErr)
+      }
+    }
+    
+    // 无法重新托管，返回原始 URL
+    console.log(`[Video Stream] 无法重新托管视频，使用原始 URL`)
+    return originalUrl
+  } catch (err) {
+    console.error(`[Video Stream] 视频重新托管失败:`, err)
+    return originalUrl
+  }
+}
 
 // 禁用代理工具函数
 function disableProxy(): { http?: string; https?: string } | null {
@@ -247,13 +311,19 @@ export async function POST(request: NextRequest) {
           )
 
           if (response.videoUrl) {
+            // 重新托管视频（解决 Bot 返回的临时 URL 问题）
+            let finalVideoUrl = response.videoUrl
+            if (response.videoUrl && (response.videoUrl.includes('tos.coze.site') || response.videoUrl.includes('volces.com'))) {
+              finalVideoUrl = await rehostVideo(response.videoUrl, sceneId, storage)
+            }
+            
             // 更新数据库
             if (supabase) {
               // 先尝试完整更新
               const { error: updateError } = await supabase
                 .from('scenes')
                 .update({
-                  video_url: response.videoUrl,
+                  video_url: finalVideoUrl,
                   last_frame_url: response.lastFrameUrl,
                   video_status: 'completed',
                   updated_at: new Date().toISOString(),
@@ -265,7 +335,7 @@ export async function POST(request: NextRequest) {
                 await supabase
                   .from('scenes')
                   .update({
-                    video_url: response.videoUrl,
+                    video_url: finalVideoUrl,
                     video_status: 'completed',
                     updated_at: new Date().toISOString(),
                   })
@@ -275,14 +345,14 @@ export async function POST(request: NextRequest) {
 
             // 更新内存
             if (memIndex !== -1) {
-              memoryScenes[memIndex].videoUrl = response.videoUrl
+              memoryScenes[memIndex].videoUrl = finalVideoUrl
               memoryScenes[memIndex].videoStatus = 'completed'
             }
 
             sendEvent('completed', {
               sceneId,
               sceneNumber,
-              videoUrl: response.videoUrl,
+              videoUrl: finalVideoUrl,
               duration: duration,
             })
 

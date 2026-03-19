@@ -266,10 +266,18 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-48 overflow-y-auto">
                 {videoScenes.map((scene) => (
-                  <button
+                  <div
                     key={scene.id}
                     onClick={() => handleToggleScene(scene.id)}
-                    className={`flex items-center gap-2 p-2 rounded-lg border transition-all text-left ${
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleToggleScene(scene.id)
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className={`flex items-center gap-2 p-2 rounded-lg border transition-all text-left cursor-pointer ${
                       selectedScenes.has(scene.id)
                         ? 'border-primary bg-primary/10'
                         : 'border-border hover:border-primary/50'
@@ -290,7 +298,7 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
                         </p>
                       )}
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
 

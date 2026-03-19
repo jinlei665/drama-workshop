@@ -3,6 +3,70 @@ import { generateVideoFromImage, DEFAULT_VIDEO_MODEL } from '@/lib/ai';
 import { S3Storage } from 'coze-coding-dev-sdk';
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client';
 import { memoryScenes, memoryProjects } from '@/lib/memory-storage';
+import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * 下载视频并重新上传到存储
+ * 解决 Bot 返回的临时 URL 过期问题
+ */
+async function rehostVideo(originalUrl: string, sceneId: string, storage: S3Storage | null): Promise<string> {
+  console.log(`正在下载并重新托管视频: ${originalUrl.substring(0, 50)}...`);
+  
+  try {
+    // 下载视频
+    const response = await fetch(originalUrl);
+    if (!response.ok) {
+      console.warn(`视频下载失败: HTTP ${response.status}`);
+      return originalUrl; // 返回原始 URL
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    console.log(`视频下载完成，大小: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
+    
+    // 尝试上传到对象存储
+    if (storage) {
+      try {
+        const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
+        await storage.putObject(key, buffer, 'video/mp4');
+        const publicUrl = await storage.getSignedUrl(key, 3600 * 24 * 7); // 7天有效期
+        console.log(`视频已上传到对象存储: ${key}`);
+        return publicUrl;
+      } catch (uploadErr) {
+        console.warn(`对象存储上传失败，尝试本地存储:`, uploadErr);
+      }
+    }
+    
+    // 本地存储（仅开发环境）
+    const isDev = process.env.NODE_ENV === 'development' || !process.env.COZE_PROJECT_ENV;
+    if (isDev) {
+      try {
+        const publicDir = path.join(process.cwd(), 'public', 'videos', sceneId);
+        if (!fs.existsSync(publicDir)) {
+          fs.mkdirSync(publicDir, { recursive: true });
+        }
+        
+        const filename = `video_${Date.now()}.mp4`;
+        const filePath = path.join(publicDir, filename);
+        fs.writeFileSync(filePath, buffer);
+        
+        const localUrl = `/videos/${sceneId}/${filename}`;
+        console.log(`视频已保存到本地: ${localUrl}`);
+        return localUrl;
+      } catch (localErr) {
+        console.warn(`本地存储失败:`, localErr);
+      }
+    }
+    
+    // 无法重新托管，返回原始 URL
+    console.log(`无法重新托管视频，使用原始 URL`);
+    return originalUrl;
+  } catch (err) {
+    console.error(`视频重新托管失败:`, err);
+    return originalUrl;
+  }
+}
 
 /**
  * 批量生成视频片段
@@ -237,13 +301,19 @@ async function generateSequential(
         generateAudio: true,
       });
 
+      // 重新托管视频（解决 Bot 返回的临时 URL 问题）
+      let finalVideoUrl = result.videoUrl;
+      if (result.videoUrl && (result.videoUrl.includes('tos.coze.site') || result.videoUrl.includes('volces.com'))) {
+        finalVideoUrl = await rehostVideo(result.videoUrl, scene.id, storage);
+      }
+
       // 更新数据库或内存
       if (actuallyUseDatabase && supabase) {
         // 先尝试完整更新（包含 last_frame_url）
         const { error: updateError } = await supabase
           .from('scenes')
           .update({
-            video_url: result.videoUrl,
+            video_url: finalVideoUrl,
             last_frame_url: result.lastFrameUrl || null,
             video_status: 'completed',
             updated_at: new Date().toISOString(),
@@ -257,7 +327,7 @@ async function generateSequential(
             const { error: retryError } = await supabase
               .from('scenes')
               .update({
-                video_url: result.videoUrl,
+                video_url: finalVideoUrl,
                 video_status: 'completed',
                 updated_at: new Date().toISOString(),
               })
@@ -266,19 +336,19 @@ async function generateSequential(
             if (retryError) {
               console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, retryError.message);
             } else {
-              console.log(`分镜 ${scene.scene_number} 数据库更新成功（无 last_frame_url），video_url:`, result.videoUrl?.substring(0, 50) + '...');
+              console.log(`分镜 ${scene.scene_number} 数据库更新成功（无 last_frame_url），video_url:`, finalVideoUrl?.substring(0, 50) + '...');
             }
           } else {
             console.error(`分镜 ${scene.scene_number} 数据库更新失败:`, updateError.message);
           }
         } else {
-          console.log(`分镜 ${scene.scene_number} 数据库更新成功，video_url:`, result.videoUrl?.substring(0, 50) + '...');
+          console.log(`分镜 ${scene.scene_number} 数据库更新成功，video_url:`, finalVideoUrl?.substring(0, 50) + '...');
         }
       } else {
         // 更新内存存储
         const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
         if (sceneIndex !== -1) {
-          memoryScenes[sceneIndex].videoUrl = result.videoUrl;
+          memoryScenes[sceneIndex].videoUrl = finalVideoUrl;
           memoryScenes[sceneIndex].videoStatus = 'completed';
           console.log(`分镜 ${scene.scene_number} 内存更新成功`);
         } else {
@@ -289,7 +359,7 @@ async function generateSequential(
       results.push({
         sceneId: scene.id,
         sceneNumber: scene.scene_number,
-        videoUrl: result.videoUrl,
+        videoUrl: finalVideoUrl,
         duration,
         status: 'completed',
       });
