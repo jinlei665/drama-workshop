@@ -5,7 +5,7 @@
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON } from '@/lib/api/response'
-import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client'
+import { getSupabaseClient, isDatabaseConfigured, getDatabaseType } from '@/storage/database/supabase-client'
 import { memoryCharacterLibrary, generateId } from '@/lib/memory-storage'
 
 /**
@@ -32,15 +32,32 @@ export async function GET(request: NextRequest) {
         
         const { data, error } = await query
         
-        if (!error && data) {
-          return successResponse({ characters: data })
+        if (error) {
+          console.warn('[Character Library] Database query error:', error)
+        } else if (data) {
+          // 转换 snake_case 到 camelCase
+          const characters = data.map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            description: item.description,
+            appearance: item.appearance,
+            personality: item.personality,
+            tags: item.tags || [],
+            imageUrl: item.image_url,
+            frontViewKey: item.front_view_key,
+            style: item.style,
+            createdAt: item.created_at,
+          }))
+          console.log('[Character Library] Loaded from database, count:', characters.length)
+          return successResponse({ characters })
         }
       } catch (dbError) {
-        console.warn('Database query failed, using memory:', dbError)
+        console.warn('[Character Library] Database query failed:', dbError)
       }
     }
     
     // 使用内存存储
+    console.log('[Character Library] Using memory storage, count:', memoryCharacterLibrary.length)
     let filtered = memoryCharacterLibrary
     if (search) {
       filtered = memoryCharacterLibrary.filter(c => 
@@ -95,6 +112,9 @@ export async function POST(request: NextRequest) {
     
     // 尝试保存到数据库
     let savedToDatabase = false
+    const dbType = getDatabaseType()
+    console.log('[Character Library] Database type:', dbType)
+    
     if (isDatabaseConfigured()) {
       try {
         const db = getSupabaseClient()
@@ -114,17 +134,21 @@ export async function POST(request: NextRequest) {
           .select()
           .single()
         
-        if (!error && data) {
+        if (error) {
+          console.warn('[Character Library] Database insert error:', error)
+        } else if (data) {
           savedToDatabase = true
+          console.log('[Character Library] Saved to database:', data)
         }
       } catch (dbError) {
-        console.warn('Failed to save to database:', dbError)
+        console.warn('[Character Library] Failed to save to database:', dbError)
       }
     }
     
     // 如果数据库保存失败，保存到内存
     if (!savedToDatabase) {
       memoryCharacterLibrary.unshift(character)
+      console.log('[Character Library] Saved to memory, total count:', memoryCharacterLibrary.length)
     }
     
     return successResponse({ character }, 201)

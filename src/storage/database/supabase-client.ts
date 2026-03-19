@@ -8,7 +8,7 @@
  */
 
 // 导入全局内存存储，确保与 memory-storage.ts 同步
-import { memoryProjects, memoryCharacters, memoryScenes, memoryEpisodes } from '@/lib/memory-storage';
+import { memoryProjects, memoryCharacters, memoryScenes, memoryEpisodes, memoryCharacterLibrary } from '@/lib/memory-storage';
 
 // 类型定义
 export type DatabaseType = 'supabase' | 'memory';
@@ -110,6 +110,8 @@ function createMemoryClient() {
         return memoryScenes;
       case 'episodes':
         return memoryEpisodes;
+      case 'character_library':
+        return memoryCharacterLibrary;
       default:
         return [];
     }
