@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   Loader2
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { WorkflowNode, WorkflowEdge } from '@/lib/types'
 
 interface WorkflowEditorProps {
@@ -148,6 +149,9 @@ export function WorkflowEditor({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
   const [isExecuting, setIsExecuting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [hasChanges, setHasChanges] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
@@ -162,6 +166,94 @@ export function WorkflowEditor({
   
   const canvasRef = useRef<HTMLDivElement>(null)
   const lastMousePos = useRef({ x: 0, y: 0 })
+
+  // 加载项目工作流
+  useEffect(() => {
+    const loadWorkflow = async () => {
+      if (!projectId || projectId === 'default') {
+        setIsLoading(false)
+        return
+      }
+      
+      try {
+        const res = await fetch(`/api/projects/${projectId}/workflow`)
+        const data = await res.json()
+        
+        if (data.success && data.data?.workflow) {
+          setNodes(data.data.workflow.nodes || [])
+          setEdges(data.data.workflow.edges || [])
+        }
+      } catch (error) {
+        console.error('Failed to load workflow:', error)
+        toast.error('加载工作流失败')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    loadWorkflow()
+  }, [projectId])
+
+  // 保存工作流
+  const saveWorkflow = useCallback(async () => {
+    if (!projectId || projectId === 'default') {
+      toast.info('默认工作流无需保存')
+      return
+    }
+    
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/workflow`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nodes, edges }),
+      })
+      
+      const data = await res.json()
+      
+      if (data.success) {
+        setHasChanges(false)
+        toast.success('工作流已保存')
+      } else {
+        throw new Error(data.error || '保存失败')
+      }
+    } catch (error) {
+      console.error('Failed to save workflow:', error)
+      toast.error('保存工作流失败')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [projectId, nodes, edges])
+
+  // 重置为默认工作流
+  const resetWorkflow = useCallback(async () => {
+    if (!projectId || projectId === 'default') return
+    
+    try {
+      const res = await fetch(`/api/projects/${projectId}/workflow`, {
+        method: 'POST',
+      })
+      
+      const data = await res.json()
+      
+      if (data.success && data.data?.workflow) {
+        setNodes(data.data.workflow.nodes || [])
+        setEdges(data.data.workflow.edges || [])
+        setHasChanges(false)
+        toast.success('已重置为默认工作流')
+      }
+    } catch (error) {
+      console.error('Failed to reset workflow:', error)
+      toast.error('重置工作流失败')
+    }
+  }, [projectId])
+
+  // 标记有更改
+  useEffect(() => {
+    if (!isLoading && (nodes.length > 0 || edges.length > 0)) {
+      setHasChanges(true)
+    }
+  }, [nodes, edges, isLoading])
 
   // 添加节点
   const addNode = useCallback((type: string, x: number, y: number) => {
@@ -634,9 +726,42 @@ export function WorkflowEditor({
             >
               重置
             </Button>
+            {projectId && projectId !== 'default' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetWorkflow}
+                title="重置为默认工作流"
+              >
+                重置工作流
+              </Button>
+            )}
           </div>
           
           <div className="flex items-center gap-2">
+            {hasChanges && (
+              <span className="text-xs text-muted-foreground">有未保存的更改</span>
+            )}
+            {projectId && projectId !== 'default' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={saveWorkflow}
+                disabled={isSaving || !hasChanges}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-1" />
+                    保存
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               size="sm"
               onClick={executeWorkflow}
@@ -868,8 +993,18 @@ export function WorkflowEditor({
             })}
           </div>
 
+          {/* 加载状态 */}
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+                <p className="text-muted-foreground">加载工作流中...</p>
+              </div>
+            </div>
+          )}
+
           {/* 空状态提示 */}
-          {nodes.length === 0 && (
+          {!isLoading && nodes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center text-muted-foreground">
                 <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">

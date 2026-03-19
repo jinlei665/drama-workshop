@@ -14,6 +14,7 @@ export const memoryProjects: Array<{
   status: string
   createdAt: string
   updatedAt: string
+  metadata?: Record<string, unknown>
 }> = []
 
 // 人物存储
