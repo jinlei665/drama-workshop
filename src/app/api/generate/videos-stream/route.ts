@@ -39,6 +39,11 @@ async function rehostVideo(
       }
     }
     
+    // 如果是 Coze 存储 URL，也需要下载（可能有跨域问题）
+    if (originalUrl.includes('tos.coze.site')) {
+      console.log(`[Video Stream] 检测到 Coze 存储 URL，尝试下载到本地以避免跨域问题...`)
+    }
+    
     // 下载视频
     const response = await fetch(originalUrl, { headers })
     if (!response.ok) {
@@ -51,6 +56,7 @@ async function rehostVideo(
       }
       const arrayBuffer = await retryResponse.arrayBuffer()
       const buffer = Buffer.from(arrayBuffer)
+      console.log(`[Video Stream] 视频下载成功（重试），大小: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`)
       return await saveVideo(buffer, sceneId, storage, originalUrl)
     }
     
@@ -352,15 +358,11 @@ export async function POST(request: NextRequest) {
           )
 
           if (response.videoUrl) {
-            // 重新托管视频（仅处理火山引擎内部 URL，Coze 存储可直接访问）
+            // 重新托管所有外部视频 URL 到本地，避免跨域问题
             let finalVideoUrl = response.videoUrl
-            if (response.videoUrl && response.videoUrl.includes('volces.com')) {
-              // 只有火山引擎内部 URL 需要重新托管
-              console.log(`[Video Stream] 检测到火山引擎内部 URL，尝试重新托管...`);
+            if (response.videoUrl && (response.videoUrl.includes('volces.com') || response.videoUrl.includes('tos.coze.site') || response.videoUrl.startsWith('http'))) {
+              console.log(`[Video Stream] 检测到外部视频 URL，尝试下载到本地...`);
               finalVideoUrl = await rehostVideo(response.videoUrl, sceneId, storage, userConfig?.apiKey)
-            } else if (response.videoUrl && response.videoUrl.includes('tos.coze.site')) {
-              // Coze 存储的 URL 应该可以直接访问
-              console.log(`[Video Stream] 使用 Coze 存储 URL: ${response.videoUrl.substring(0, 60)}...`);
             }
             
             // 更新数据库
