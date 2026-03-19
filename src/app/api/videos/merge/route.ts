@@ -9,11 +9,22 @@ import { exec } from 'child_process'
 import { promisify } from 'util'
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { tmpdir } from 'os'
 
 const execAsync = promisify(exec)
 
 // 增加超时配置
 export const maxDuration = 300 // 5分钟
+
+// 跨平台临时目录
+function getTmpDir(): string {
+  const baseDir = tmpdir()
+  const videoMergeDir = join(baseDir, 'drama-video-merge')
+  if (!existsSync(videoMergeDir)) {
+    mkdirSync(videoMergeDir, { recursive: true })
+  }
+  return videoMergeDir
+}
 
 /**
  * 获取 FFmpeg 路径
@@ -42,7 +53,7 @@ async function getFfmpegPath(): Promise<{ ffmpeg: string; ffprobe: string } | nu
     // 忽略错误
   }
   
-  // 返回路径
+  // 返回路径（默认使用系统 PATH 中的 ffmpeg）
   return {
     ffmpeg: ffmpegPath || 'ffmpeg',
     ffprobe: ffprobePath || 'ffprobe'
@@ -53,26 +64,26 @@ async function getFfmpegPath(): Promise<{ ffmpeg: string; ffprobe: string } | nu
  * 下载视频到临时目录
  */
 async function downloadVideo(url: string, filename: string): Promise<string> {
-  const tmpDir = '/tmp/video-merge'
-  if (!existsSync(tmpDir)) {
-    mkdirSync(tmpDir, { recursive: true })
-  }
-  
+  const tmpDir = getTmpDir()
   const filePath = join(tmpDir, filename)
   
   // 如果已存在，直接返回
   if (existsSync(filePath)) {
+    console.log(`[VideoMerge] 文件已存在: ${filePath}`)
     return filePath
   }
+  
+  console.log(`[VideoMerge] 下载视频: ${url.substring(0, 60)}...`)
   
   // 下载视频
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`下载视频失败: ${response.statusText}`)
+    throw new Error(`下载视频失败: HTTP ${response.status} ${response.statusText}`)
   }
   
   const buffer = await response.arrayBuffer()
   writeFileSync(filePath, Buffer.from(buffer))
+  console.log(`[VideoMerge] 下载完成: ${filePath} (${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB)`)
   
   return filePath
 }
@@ -109,6 +120,8 @@ export async function POST(request: NextRequest) {
     
     const { projectId, sceneIds, outputName } = body
     
+    console.log('[VideoMerge] 收到请求:', { projectId, sceneIds, outputName })
+    
     if (!projectId || !sceneIds || sceneIds.length === 0) {
       return errorResponse({ message: '缺少必要参数' }, 400)
     }
@@ -123,10 +136,21 @@ export async function POST(request: NextRequest) {
       })
     }
     
+    console.log('[VideoMerge] FFmpeg 路径:', ffmpegPaths)
+    
     // 验证 FFmpeg 是否可用
     try {
-      await execAsync(`"${ffmpegPaths.ffmpeg}" -version`, { timeout: 5000 })
-    } catch {
+      const { stdout } = await execAsync(`"${ffmpegPaths.ffmpeg}" -version`, { timeout: 5000 })
+      console.log('[VideoMerge] FFmpeg 版本:', stdout.split('\n')[0])
+    } catch (ffmpegError) {
+      console.error('[VideoMerge] FFmpeg 检测失败:', ffmpegError)
+      return successResponse({
+        success: false,
+        error: 'FFmpeg 不可用，请检查配置或安装 FFmpeg',
+        needConfig: true,
+        details: ffmpegError instanceof Error ? ffmpegError.message : String(ffmpegError)
+      })
+    }
       return successResponse({
         success: false,
         error: 'FFmpeg 不可用，请检查配置或安装 FFmpeg',
@@ -142,29 +166,40 @@ export async function POST(request: NextRequest) {
     }
     
     let scenes: SceneData[] = []
+    let usedDatabase = false
     
+    // 先尝试数据库
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
       
       if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
         // 使用 snake_case 字段名查询数据库
-        const { data } = await db
+        const { data, error } = await db
           .from('scenes')
           .select('id, scene_number, video_url')
           .eq('project_id', projectId)
           .in('id', sceneIds)
           .order('scene_number', { ascending: true })
         
-        scenes = (data || []).map((s: { id: string; scene_number: number; video_url?: string }) => ({
-          id: s.id,
-          sceneNumber: s.scene_number,
-          videoUrl: s.video_url || null
-        }))
+        if (!error && data && data.length > 0) {
+          scenes = data.map((s: { id: string; scene_number: number; video_url?: string }) => ({
+            id: s.id,
+            sceneNumber: s.scene_number,
+            videoUrl: s.video_url || null
+          }))
+          usedDatabase = true
+          console.log(`[VideoMerge] 从数据库获取 ${scenes.length} 个场景`)
+        } else if (error) {
+          console.warn('[VideoMerge] 数据库查询失败:', error.message)
+        }
       }
     } catch (dbError) {
-      console.error('Database query error:', dbError)
-      // 尝试从内存获取
+      console.warn('[VideoMerge] 数据库查询异常:', dbError)
+    }
+    
+    // 如果数据库没有数据，尝试内存存储
+    if (scenes.length === 0) {
       try {
         const { memoryScenes } = await import('@/lib/memory-storage')
         scenes = memoryScenes
@@ -175,10 +210,13 @@ export async function POST(request: NextRequest) {
             sceneNumber: s.sceneNumber,
             videoUrl: s.videoUrl ?? null
           }))
+        console.log(`[VideoMerge] 从内存获取 ${scenes.length} 个场景`)
       } catch (memError) {
-        console.error('Memory storage error:', memError)
+        console.error('[VideoMerge] 内存存储获取失败:', memError)
       }
     }
+    
+    console.log('[VideoMerge] 场景数据:', scenes.map(s => ({ id: s.id, sceneNumber: s.sceneNumber, hasVideo: !!s.videoUrl })))
     
     if (scenes.length === 0) {
       return errorResponse({ message: '未找到视频数据' }, 404)
@@ -194,7 +232,7 @@ export async function POST(request: NextRequest) {
     
     // 下载视频到临时目录
     const videoPaths: string[] = []
-    const tmpDir = '/tmp/video-merge'
+    const tmpDir = getTmpDir()
     
     for (let i = 0; i < validScenes.length; i++) {
       const scene = validScenes[i]
@@ -253,8 +291,10 @@ export async function POST(request: NextRequest) {
     // 获取输出文件信息
     const duration = await getVideoDuration(outputPath, ffmpegPaths.ffprobe)
     
-    // 上传到对象存储
+    // 上传到对象存储或保存到本地
     let downloadUrl: string
+    
+    // 首先尝试对象存储
     try {
       const { S3Storage } = await import('coze-coding-dev-sdk')
       const storage = new S3Storage({
@@ -280,19 +320,36 @@ export async function POST(request: NextRequest) {
       
       console.log('[VideoMerge] 上传成功:', downloadUrl)
     } catch (uploadError) {
-      console.error('[VideoMerge] 上传失败:', uploadError)
-      // 如果上传失败，返回本地路径（用于开发测试）
-      downloadUrl = `/api/videos/download?path=${encodeURIComponent(outputPath)}`
+      console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
+      
+      // 保存到本地 public 目录
+      try {
+        const publicDir = join(process.cwd(), 'public', 'merged')
+        if (!existsSync(publicDir)) {
+          mkdirSync(publicDir, { recursive: true })
+        }
+        
+        const localPath = join(publicDir, outputFilename)
+        const fileBuffer = readFileSync(outputPath)
+        writeFileSync(localPath, fileBuffer)
+        
+        downloadUrl = `/merged/${outputFilename}`
+        console.log('[VideoMerge] 保存到本地成功:', downloadUrl)
+      } catch (localError) {
+        console.error('[VideoMerge] 本地保存失败:', localError)
+        return errorResponse({ message: '视频保存失败，请检查磁盘空间' }, 500)
+      }
     }
     
     // 清理临时文件
     try {
-      unlinkSync(listFilePath)
+      if (existsSync(listFilePath)) unlinkSync(listFilePath)
       for (const path of videoPaths) {
         if (existsSync(path)) unlinkSync(path)
       }
-    } catch {
-      // 忽略清理错误
+      // 不删除合并后的文件，用户可能需要下载
+    } catch (cleanupError) {
+      console.warn('[VideoMerge] 清理临时文件失败:', cleanupError)
     }
     
     return successResponse({
