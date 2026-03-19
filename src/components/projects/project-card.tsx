@@ -29,6 +29,7 @@ const statusColors: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
   analyzing: 'bg-blue-500/20 text-blue-400',
   generating: 'bg-amber-500/20 text-amber-400',
+  ready: 'bg-orange-500/20 text-orange-400',
   completed: 'bg-green-500/20 text-green-400',
   error: 'bg-red-500/20 text-red-400',
 }
@@ -37,6 +38,7 @@ const statusLabels: Record<string, string> = {
   draft: '草稿',
   analyzing: '分析中',
   generating: '生成中',
+  ready: '就绪',
   completed: '已完成',
   error: '失败',
 }
@@ -59,7 +61,7 @@ export function ProjectCard({ project, onDelete, className }: ProjectCardProps) 
       className
     )}>
       {/* 装饰性渐变 */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
       
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
@@ -107,7 +109,7 @@ export function ProjectCard({ project, onDelete, className }: ProjectCardProps) 
               查看
             </Button>
           </Link>
-          <Link href={`/projects/${project.id}/workflow`} className="flex-1">
+          <Link href={`/workflow?projectId=${project.id}`} className="flex-1">
             <Button size="sm" className="w-full">
               <Play className="h-3 w-3 mr-1" />
               工作流
