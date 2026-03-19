@@ -419,6 +419,9 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
                 controls
                 autoPlay
                 className="w-full h-full object-contain"
+                onError={(e) => {
+                  console.error('Merged video playback error:', result?.url?.substring(0, 50))
+                }}
               />
             )}
           </div>

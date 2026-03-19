@@ -789,6 +789,17 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
                 onEnded={handleVideoEnd}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
+                onError={(e) => {
+                  console.error('Video playback error:', currentScene?.videoUrl)
+                  // 尝试重新加载视频
+                  const video = e.currentTarget
+                  if (video && video.networkState === 3) { // NETWORK_NO_SOURCE
+                    console.log('No supported source, attempting reload...')
+                  }
+                }}
+                onCanPlay={() => {
+                  console.log('Video can play:', currentScene?.videoUrl?.substring(0, 50))
+                }}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -875,6 +886,9 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
                       src={scene.videoUrl}
                       className="w-full h-full object-cover"
                       muted
+                      onError={(e) => {
+                        console.error('Thumbnail video error:', scene.id)
+                      }}
                     />
                   ) : (
                     <div className="w-full h-full bg-secondary flex items-center justify-center">
@@ -1015,6 +1029,9 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                       src={scenes[selectedIndex].videoUrl}
                       controls
                       className="max-w-full max-h-full"
+                      onError={(e) => {
+                        console.error('Preview video error:', scenes[selectedIndex].id, scenes[selectedIndex].videoUrl?.substring(0, 50))
+                      }}
                     />
                   ) : imageUrls[scenes[selectedIndex].id] ? (
                     <img 

@@ -688,13 +688,14 @@ function SceneCard({
 
   const hasImage = scene.imageKey || scene.imageUrl
   const hasVideo = scene.videoUrl
+  const [videoError, setVideoError] = useState(false)
 
   return (
     <Card className="group hover:shadow-md transition-shadow">
       <div className="flex flex-col md:flex-row">
         {/* 图片/视频区域 */}
         <div className="md:w-1/4 aspect-video md:aspect-auto bg-secondary/50 relative overflow-hidden">
-          {hasVideo ? (
+          {hasVideo && !videoError ? (
             // 显示视频
             <video 
               src={scene.videoUrl!} 
@@ -706,7 +707,19 @@ function SceneCard({
                 e.currentTarget.pause()
                 e.currentTarget.currentTime = 0
               }}
+              onError={(e) => {
+                console.error('Scene card video error:', scene.id, scene.videoUrl?.substring(0, 50))
+                setVideoError(true)
+              }}
             />
+          ) : videoError && hasVideo ? (
+            // 视频加载失败，显示错误提示
+            <div className="absolute inset-0 flex items-center justify-center bg-secondary">
+              <div className="text-center">
+                <Video className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">视频加载失败</p>
+              </div>
+            </div>
           ) : imageUrl ? (
             // 显示图片
             <img 
