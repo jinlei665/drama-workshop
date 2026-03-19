@@ -236,6 +236,14 @@ export async function POST(request: NextRequest) {
     // 过滤出有图片的分镜（支持多种字段名：image_key, image_url, imageKey, imageUrl）
     const scenesWithImages = scenesList.filter((s: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }) => s.image_key || s.image_url || s.imageKey || s.imageUrl);
     
+    // 调试日志：显示完整分镜列表
+    console.log(`[视频生成] 完整分镜列表: ${scenesList.length} 个分镜`);
+    console.log(`[视频生成] 有图片的分镜: ${scenesWithImages.length} 个`);
+    scenesList.forEach((s: any) => {
+      const hasImage = !!(s.image_key || s.image_url || s.imageKey || s.imageUrl);
+      console.log(`  - 分镜 ${s.scene_number}: ${hasImage ? '有图片' : '无图片'}`);
+    });
+    
     if (scenesWithImages.length === 0) {
       return NextResponse.json(
         { error: '没有可用的分镜图片，请先生成分镜图片' },
@@ -335,13 +343,19 @@ async function generateSequential(
   // 获取用户配置（用于下载视频时的认证）
   const userConfig = getCozeConfigFromMemory();
   const apiKey = userConfig?.apiKey;
+  
+  console.log(`[连续模式] 完整分镜列表 allScenes 数量: ${allScenes.length}`);
+  console.log(`[连续模式] 有图片分镜 scenesWithImages 数量: ${scenesWithImages.length}`);
 
   for (let i = 0; i < scenesWithImages.length; i++) {
     const scene = scenesWithImages[i];
     
     // 从完整分镜列表中获取下一个分镜（按分镜序号查找，而不是数组索引）
     // 这样即使下一个分镜还没有图片，也能正确找到它
-    const nextScene = allScenes.find(s => s.scene_number === scene.scene_number + 1);
+    const nextSceneNumber = scene.scene_number + 1;
+    const nextScene = allScenes.find(s => s.scene_number === nextSceneNumber);
+    
+    console.log(`[连续模式] 分镜 ${scene.scene_number}: 查找分镜 ${nextSceneNumber}, 结果: ${nextScene ? '找到' : '未找到'}`);
     
     // 添加延迟避免限流（10秒间隔）
     if (i > 0) {
