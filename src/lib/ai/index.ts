@@ -674,26 +674,38 @@ ${prompt}
           }
           
           // 处理各种可能的内容字段
-          // 1. conversation.message.completed 事件
-          if (eventType === 'conversation.message.completed' || data.type === 'conversation.message.completed') {
-            if (data.content) {
+          // 1. conversation.message.completed 事件 - 只处理 answer 类型
+          if (eventType === 'conversation.message.completed') {
+            // data.type 是消息类型：answer, follow_up, verbose 等
+            // 只有 answer 类型包含实际的视频 URL
+            const messageType = data.type
+            if (data.content && messageType === 'answer') {
               content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
-              logger.info('Bot video got content from message.completed', { contentLength: content.length })
+              logger.info('Bot video got answer content', { 
+                messageType, 
+                contentLength: content.length,
+                preview: content.slice(0, 200)
+              })
+            } else if (data.content) {
+              logger.info('Bot video ignoring non-answer message', { 
+                messageType, 
+                contentLength: typeof data.content === 'string' ? data.content.length : JSON.stringify(data.content).length
+              })
             }
           }
           
-          // 2. answer 事件（带内容）
-          if (data.type === 'answer' && data.content) {
+          // 2. answer 事件（带内容）- 但不覆盖已有内容（优先保留 conversation.message.completed 的内容）
+          if (data.type === 'answer' && data.content && !content) {
             content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
           }
           
-          // 3. delta 事件
-          if (data.content && typeof data.content === 'string') {
+          // 3. delta 事件（流式输出）
+          if (data.content && typeof data.content === 'string' && !content) {
             content += data.content
           }
           
           // 4. data 数组格式
-          if (data.data) {
+          if (data.data && !content) {
             if (Array.isArray(data.data)) {
               for (const item of data.data) {
                 if (item.content) {
