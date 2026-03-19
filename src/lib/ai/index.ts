@@ -396,11 +396,13 @@ async function getBotId(): Promise<string | null> {
  * 
  * @param prompt 图像生成提示词
  * @param config API 配置（apiKey, baseUrl）
+ * @param referenceImages 参考图片URL列表（用于多人物图生图）
  * @returns 生成的图像 URL 列表
  */
 async function invokeBotForImageGeneration(
   prompt: string,
-  config?: { apiKey?: string; baseUrl?: string }
+  config?: { apiKey?: string; baseUrl?: string },
+  referenceImages?: string[]
 ): Promise<{ urls: string[] }> {
   const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
   const botId = await getBotId()
@@ -413,7 +415,58 @@ async function invokeBotForImageGeneration(
     throw new Error('通过 Bot 调用图像生成需要配置 Bot ID。请在 Coze 平台创建配置了图像生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
-  logger.info('Invoking Bot for image generation', { botId, promptLength: prompt.length })
+  logger.info('Invoking Bot for image generation', { 
+    botId, 
+    promptLength: prompt.length,
+    referenceImageCount: referenceImages?.length || 0
+  })
+  
+  // 构建消息内容
+  let userContent = `请使用图像生成工具生成以下图片：\n${prompt}`
+  
+  // 如果有参考图片，添加到消息中
+  // Bot 的图像生成 Skill 支持 reference_images 参数
+  const requestBody: any = {
+    bot_id: botId,
+    user_id: 'drama-workshop-image-gen',
+    stream: true,
+    auto_save_history: false,
+  }
+  
+  // 如果有参考图片，使用多模态消息格式
+  if (referenceImages && referenceImages.length > 0) {
+    logger.info('Using reference images for multi-character generation', { count: referenceImages.length })
+    
+    // 构建包含图片的消息
+    const messageContent: any[] = [
+      { type: 'text', text: userContent }
+    ]
+    
+    // 添加参考图片
+    for (const imgUrl of referenceImages) {
+      messageContent.push({
+        type: 'image_url',
+        image_url: { url: imgUrl }
+      })
+    }
+    
+    requestBody.additional_messages = [{
+      role: 'user',
+      content: messageContent,
+      content_type: 'object'
+    }]
+    
+    // 同时在自定义参数中传递 reference_images（供 Bot Skill 使用）
+    requestBody.custom_variables = {
+      reference_images: referenceImages
+    }
+  } else {
+    requestBody.additional_messages = [{
+      role: 'user',
+      content: userContent,
+      content_type: 'text'
+    }]
+  }
   
   // 调用 Bot API，通过特定 prompt 触发图像生成 Skill
   // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
@@ -423,17 +476,7 @@ async function invokeBotForImageGeneration(
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      bot_id: botId,
-      user_id: 'drama-workshop-image-gen',
-      stream: true,
-      auto_save_history: false,
-      additional_messages: [{
-        role: 'user',
-        content: `请使用图像生成工具生成以下图片：\n${prompt}`,
-        content_type: 'text'
-      }],
-    }),
+    body: JSON.stringify(requestBody),
   })
   
   // 处理流式响应
@@ -597,8 +640,9 @@ async function invokeBotForImageGeneration(
 async function invokeBotForVideoGeneration(
   prompt: string,
   config?: { apiKey?: string; baseUrl?: string },
-  imageUrl?: string
-): Promise<{ videoUrl: string }> {
+  imageUrl?: string,
+  lastFrameUrl?: string
+): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
   const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
   const botId = await getBotId()
   
@@ -610,13 +654,31 @@ async function invokeBotForVideoGeneration(
     throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
-  logger.info('Invoking Bot for video generation', { botId, baseUrl, hasImageUrl: !!imageUrl })
+  logger.info('Invoking Bot for video generation', { 
+    botId, 
+    baseUrl, 
+    hasImageUrl: !!imageUrl,
+    hasLastFrameUrl: !!lastFrameUrl
+  })
   
   // 构建视频生成提示词
   let videoPrompt = ''
   
-  if (imageUrl) {
-    // 图生视频模式 - 使用文本格式传递图片 URL
+  if (imageUrl && lastFrameUrl) {
+    // 首尾帧模式 - 同时提供首帧和尾帧
+    videoPrompt = `请使用图生视频功能，根据以下首帧和尾帧图片生成视频：
+
+首帧图片URL：${imageUrl}
+尾帧图片URL：${lastFrameUrl}
+
+视频要求：
+1. 以首帧图片作为视频的第一帧
+2. 以尾帧图片作为视频的最后一帧
+3. ${prompt}
+4. 保持画面风格一致，确保从首帧到尾帧的自然过渡
+5. 请直接返回生成的视频链接`
+  } else if (imageUrl) {
+    // 仅首帧模式 - 图生视频
     videoPrompt = `请使用图生视频功能，根据以下首帧图片生成视频：
 
 首帧图片URL：${imageUrl}
@@ -625,7 +687,7 @@ async function invokeBotForVideoGeneration(
 1. 以提供的图片作为视频的第一帧
 2. ${prompt}
 3. 保持画面风格一致
-4. 请直接返回生成的视频链接`
+4. 请直接返回生成的视频链接，并返回尾帧图片链接`
   } else {
     // 纯文本生成视频模式
     videoPrompt = `请生成以下视频：
@@ -854,9 +916,9 @@ ${prompt}
 }
 
 /**
- * 从 Bot 响应内容中提取视频 URL
+ * 从 Bot 响应内容中提取视频 URL 和尾帧 URL
  */
-function extractVideoUrlFromContent(content: string): { videoUrl: string } {
+function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFrameUrl?: string } {
   logger.info('Extracting video URL from content', { contentLength: content.length, preview: content.slice(0, 300) })
   
   // 打印完整内容以便调试（如果内容不太长）
@@ -865,6 +927,7 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string } {
   }
   
   let videoUrl = ''
+  let lastFrameUrl: string | undefined
   
   // 1. 匹配 Markdown 格式的视频链接: ![video](url)
   const markdownRegex = /!\[video\]\((https?:\/\/[^)]+)\)/i
@@ -925,13 +988,46 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string } {
     }
   }
   
+  // 提取尾帧图片 URL
+  // 匹配 Markdown 格式: ![last_frame](url) 或 ![尾帧](url)
+  const lastFrameMarkdownRegex = /!\[(?:last_frame|尾帧)\]\((https?:\/\/[^)]+)\)/i
+  const lastFrameMarkdownMatch = lastFrameMarkdownRegex.exec(content)
+  if (lastFrameMarkdownMatch) {
+    lastFrameUrl = lastFrameMarkdownMatch[1]
+    logger.info('Found last frame URL in Markdown format', { lastFrameUrl })
+  }
+  
+  // 匹配 JSON 格式的尾帧: "last_frame_url": "..." 或 "lastFrameUrl": "..."
+  if (!lastFrameUrl) {
+    const lastFrameJsonRegex = /"(?:last_frame_url|lastFrameUrl)"\s*:\s*"(https?:\/\/[^"]+)"/i
+    const lastFrameJsonMatch = lastFrameJsonRegex.exec(content)
+    if (lastFrameJsonMatch) {
+      lastFrameUrl = lastFrameJsonMatch[1]
+      logger.info('Found last frame URL in JSON format', { lastFrameUrl })
+    }
+  }
+  
+  // 匹配尾帧图片 URL（png, jpg 等格式，排除已经是视频 URL 的部分）
+  if (!lastFrameUrl && videoUrl) {
+    const imageRegex = /(https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|webp)(?:\?[^\s"'<>]*)?)/gi
+    const imageMatches = content.match(imageRegex)
+    if (imageMatches && imageMatches.length > 0) {
+      // 过滤掉可能与视频URL重复的URL，取最后一个作为尾帧
+      const potentialLastFrame = imageMatches.find(url => url !== videoUrl) || imageMatches[imageMatches.length - 1]
+      if (potentialLastFrame && potentialLastFrame !== videoUrl) {
+        lastFrameUrl = potentialLastFrame
+        logger.info('Found last frame URL as image', { lastFrameUrl })
+      }
+    }
+  }
+  
   if (!videoUrl) {
     logger.warn('Bot returned no video URL', { content: content.slice(0, 500) })
     throw new Error('Bot 未返回有效的视频链接。请确保 Bot 已正确配置视频生成 Skill。')
   }
   
-  logger.info('Bot video generation completed', { videoUrl })
-  return { videoUrl }
+  logger.info('Bot video generation completed', { videoUrl, lastFrameUrl })
+  return { videoUrl, lastFrameUrl }
 }
 
 // ==================== LLM 服务 ====================
@@ -1315,10 +1411,19 @@ export async function generateImage(
     if (apiKey && botId) {
       logger.info('Trying image generation via Bot Skills (has Bot ID)')
       try {
-        const botResult = await invokeBotForImageGeneration(prompt, {
-          apiKey,
-          baseUrl: config?.baseUrl || userConfig?.baseUrl,
-        })
+        // 传入参考图片数组（用于多人物图生图）
+        const referenceImages = options?.image 
+          ? (Array.isArray(options.image) ? options.image : [options.image])
+          : undefined
+        
+        const botResult = await invokeBotForImageGeneration(
+          prompt, 
+          {
+            apiKey,
+            baseUrl: config?.baseUrl || userConfig?.baseUrl,
+          },
+          referenceImages
+        )
         
         if (botResult.urls.length > 0) {
           logger.info('Image generation completed via Bot Skills', { count: botResult.urls.length })
@@ -1702,7 +1807,10 @@ export async function generateVideoFromImage(
       
       if (botResult.videoUrl) {
         logger.info('Image-to-video generation completed via Bot Skills')
-        return { videoUrl: botResult.videoUrl }
+        return { 
+          videoUrl: botResult.videoUrl,
+          lastFrameUrl: botResult.lastFrameUrl 
+        }
       }
     } catch (botErr) {
       const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
@@ -1732,7 +1840,7 @@ export async function generateVideoFromFrames(
   options?: VideoGenerationOptions,
   config?: AIServiceConfig,
   headers?: Record<string, string>
-): Promise<{ videoUrl: string }> {
+): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
   // 注意：不再禁用代理，因为用户可能需要代理访问 API
   
   try {
@@ -1779,12 +1887,13 @@ export async function generateVideoFromFrames(
     try {
       const userConfig = await getUserCozeConfig()
       const botResult = await invokeBotForVideoGeneration(
-        `${prompt}\n\n尾帧要求：视频结尾需要过渡到以下图片效果：${lastFrameUrl}`,
+        prompt,
         {
           apiKey: config?.apiKey || userConfig?.apiKey || undefined,
           baseUrl: config?.baseUrl || userConfig?.baseUrl,
         },
-        firstFrameUrl  // 传递首帧图片 URL
+        firstFrameUrl,  // 传递首帧图片 URL
+        lastFrameUrl    // 传递尾帧图片 URL
       )
       
       if (botResult.videoUrl) {
