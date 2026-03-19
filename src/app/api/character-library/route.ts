@@ -6,10 +6,7 @@
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON } from '@/lib/api/response'
 import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client'
-import { memoryCharacters, generateId } from '@/lib/memory-storage'
-
-// 内存存储的人物库
-const characterLibrary: any[] = []
+import { memoryCharacterLibrary, generateId } from '@/lib/memory-storage'
 
 /**
  * GET /api/character-library
@@ -44,9 +41,9 @@ export async function GET(request: NextRequest) {
     }
     
     // 使用内存存储
-    let filtered = characterLibrary
+    let filtered = memoryCharacterLibrary
     if (search) {
-      filtered = characterLibrary.filter(c => 
+      filtered = memoryCharacterLibrary.filter(c => 
         c.name.includes(search) || 
         (c.description && c.description.includes(search))
       )
@@ -90,8 +87,8 @@ export async function POST(request: NextRequest) {
       appearance: body.appearance,
       personality: body.personality || '',
       tags: body.tags || [],
-      imageUrl: body.imageUrl || null,
-      frontViewKey: body.frontViewKey || null,
+      imageUrl: body.imageUrl || undefined,
+      frontViewKey: body.frontViewKey || undefined,
       style: body.style || 'realistic',
       createdAt: new Date().toISOString(),
     }
@@ -127,7 +124,7 @@ export async function POST(request: NextRequest) {
     
     // 如果数据库保存失败，保存到内存
     if (!savedToDatabase) {
-      characterLibrary.unshift(character)
+      memoryCharacterLibrary.unshift(character)
     }
     
     return successResponse({ character }, 201)
@@ -167,9 +164,9 @@ export async function DELETE(request: NextRequest) {
     }
     
     // 从内存删除
-    const index = characterLibrary.findIndex(c => c.id === id)
+    const index = memoryCharacterLibrary.findIndex(c => c.id === id)
     if (index !== -1) {
-      characterLibrary.splice(index, 1)
+      memoryCharacterLibrary.splice(index, 1)
       return successResponse({ success: true })
     }
     

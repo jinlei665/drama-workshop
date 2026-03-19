@@ -67,6 +67,20 @@ export const memoryEpisodes: Array<{
   createdAt: string
 }> = []
 
+// 人物库存储（通用人物模板）
+export const memoryCharacterLibrary: Array<{
+  id: string
+  name: string
+  description?: string
+  appearance?: string
+  personality?: string
+  tags: string[]
+  imageUrl?: string
+  frontViewKey?: string
+  style?: string
+  createdAt: string
+}> = []
+
 // ID 计数器
 let idCounter = 1
 

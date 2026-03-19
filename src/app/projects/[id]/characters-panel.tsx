@@ -135,7 +135,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
   }
 
   // 添加人物到人物库
-  const handleAddToLibrary = async (character: Character) => {
+  const handleAddToLibrary = async (character: Character, actualImageUrl: string | null) => {
     setAddingToLibrary(character.id)
     try {
       const res = await fetch("/api/character-library", {
@@ -147,7 +147,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
           appearance: character.appearance,
           personality: character.personality,
           tags: character.tags,
-          imageUrl: character.imageUrl,
+          // 优先使用实际获取到的图片URL，否则使用character对象中的
+          imageUrl: actualImageUrl || character.imageUrl,
           frontViewKey: character.frontViewKey,
         })
       })
@@ -459,7 +460,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
               onEdit={() => openEditDialog(character)}
               onDelete={() => handleDelete(character.id)}
               onGenerateViews={() => handleGenerateViews(character)}
-              onAddToLibrary={() => handleAddToLibrary(character)}
+              onAddToLibrary={(imageUrl) => handleAddToLibrary(character, imageUrl)}
             />
           ))}
         </div>
@@ -563,7 +564,7 @@ function CharacterCard({
   onEdit: () => void
   onDelete: () => void
   onGenerateViews: () => void
-  onAddToLibrary: () => void
+  onAddToLibrary: (imageUrl: string | null) => void
 }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
@@ -579,7 +580,11 @@ function CharacterCard({
     if (character.frontViewKey) {
       fetch(`/api/images?key=${character.frontViewKey}`)
         .then(res => res.json())
-        .then(data => setImageUrl(data.url))
+        .then(data => {
+          if (data.url) {
+            setImageUrl(data.url)
+          }
+        })
         .catch(console.error)
     }
   }, [character.frontViewKey, character.imageUrl])
@@ -610,7 +615,7 @@ function CharacterCard({
                 生成角色造型图
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={onAddToLibrary} disabled={addingToLibrary}>
+              <DropdownMenuItem onClick={() => onAddToLibrary(imageUrl)} disabled={addingToLibrary}>
                 <BookmarkPlus className="w-4 h-4 mr-2" />
                 {addingToLibrary ? '添加中...' : '添加到人物库'}
               </DropdownMenuItem>
