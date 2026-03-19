@@ -1,8 +1,6 @@
 /**
  * 人物库 API
  * 用于保存和获取通用人物模板
- * 
- * 数据库策略：优先使用沙箱环境的 Supabase（因为用户配置的 Supabase 可能没有 character_library 表）
  */
 
 import { NextRequest } from 'next/server'
@@ -11,13 +9,27 @@ import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supa
 import { memoryCharacterLibrary, generateId } from '@/lib/memory-storage'
 
 // 获取人物库专用的数据库客户端
-// 优先使用沙箱环境的 Supabase
+// 优先使用用户配置的 Supabase（有 service_role_key 可绕过 RLS）
 function getCharacterLibraryClient() {
+  const userUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (userUrl && serviceKey) {
+    // 使用用户配置的 Supabase（带 service_role 权限）
+    console.log('[Character Library] Using user Supabase with service_role:', userUrl)
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    return createClient(userUrl, serviceKey, {
+      db: { timeout: 60000 },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  }
+  
+  // 回退到沙箱环境或默认客户端
   const cozeUrl = process.env.COZE_SUPABASE_URL
   const cozeKey = process.env.COZE_SUPABASE_ANON_KEY
   
   if (cozeUrl && cozeKey) {
-    // 使用沙箱环境的 Supabase
     console.log('[Character Library] Using sandbox Supabase:', cozeUrl)
     // eslint-disable-next-line no-eval
     const createClient = eval("require('@supabase/supabase-js')").createClient
