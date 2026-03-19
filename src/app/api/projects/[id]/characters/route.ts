@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import { insertCharacterSchema } from "@/storage/database/shared/schema"
+import { generateId } from "@/lib/memory-storage"
 
 // GET /api/projects/[id]/characters - 获取项目人物列表
 export async function GET(
@@ -44,14 +45,17 @@ export async function POST(
     )
   }
 
-  // 转换字段名为数据库格式（snake_case）
+  // 转换字段名为数据库格式（snake_case），并添加 id
   const dbData = {
+    id: generateId('char'),
     project_id: parsed.data.projectId,
     name: parsed.data.name,
     description: parsed.data.description,
     appearance: parsed.data.appearance,
     personality: parsed.data.personality,
     tags: parsed.data.tags || [],
+    // 如果有图片URL，也保存
+    front_view_key: body.frontViewKey || body.imageUrl || null,
   }
 
   const { data, error } = await client
@@ -61,6 +65,7 @@ export async function POST(
     .single()
 
   if (error) {
+    console.error('[Characters API] Insert error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
