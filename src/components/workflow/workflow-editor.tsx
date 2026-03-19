@@ -448,13 +448,13 @@ export function WorkflowEditor({
       // 输入端口在头部下方，左侧
       return {
         x: node.position.x + PORT_PADDING_X + PORT_DOT_RADIUS,
-        y: node.position.y + HEADER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + 7
+        y: node.position.y + HEADER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + 5
       }
     } else {
       // 输出端口在输入端口下方，有分隔线，右侧
       return {
         x: node.position.x + NODE_WIDTH - PORT_PADDING_X - PORT_DOT_RADIUS,
-        y: node.position.y + HEADER_HEIGHT + inputSectionHeight + DIVIDER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + 9
+        y: node.position.y + HEADER_HEIGHT + inputSectionHeight + DIVIDER_HEIGHT + PORT_PADDING_Y + index * PORT_ROW_HEIGHT + 8
       }
     }
   }, [])
