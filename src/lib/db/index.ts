@@ -5,6 +5,7 @@
 
 import { getSupabaseClient } from '@/storage/database/supabase-client'
 import { Errors, logger } from '@/lib/errors'
+import { generateId } from '@/lib/memory-storage'
 import type { Project, Character, Scene, Episode, UserSettings } from '@/lib/types'
 
 // ============================================
@@ -44,6 +45,7 @@ export const ProjectService = {
     const { data, error } = await db
       .from('projects')
       .insert({
+        id: generateId('proj'),  // 添加 id 字段
         name: input.name,
         source_content: input.sourceContent,
         source_type: input.sourceType || 'novel',
@@ -131,6 +133,7 @@ export const CharacterService = {
     const { data, error } = await db
       .from('characters')
       .insert({
+        id: generateId('char'),  // 添加 id 字段
         project_id: projectId,
         name: input.name,
         description: input.description,
@@ -158,6 +161,7 @@ export const CharacterService = {
     const { data, error } = await db
       .from('characters')
       .insert(characters.map(c => ({
+        id: generateId('char'),  // 添加 id 字段
         project_id: projectId,
         name: c.name,
         description: c.description,
@@ -236,6 +240,7 @@ export const SceneService = {
     const { data, error } = await db
       .from('scenes')
       .insert({
+        id: generateId('scene'),  // 添加 id 字段
         project_id: projectId,
         scene_number: input.sceneNumber,
         title: input.title,
@@ -271,6 +276,7 @@ export const SceneService = {
     const { data, error } = await db
       .from('scenes')
       .insert(scenes.map(s => ({
+        id: generateId('scene'),  // 添加 id 字段
         project_id: projectId,
         scene_number: s.sceneNumber,
         title: s.title,

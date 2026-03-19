@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await db
           .from('projects')
           .insert({
+            id: project.id,  // 添加 id 字段
             name: project.name,
             source_content: project.sourceContent,
             source_type: project.sourceType,

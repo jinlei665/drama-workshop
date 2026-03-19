@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await db
           .from('characters')
           .insert({
+            id: character.id,  // 添加 id 字段
             name: character.name,
             description: character.description,
             appearance: character.appearance,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import { insertEpisodeSchema, updateEpisodeSchema } from "@/storage/database/shared/schema"
+import { generateId } from "@/lib/memory-storage"
 
 // GET /api/episodes - 获取项目的剧集列表
 export async function GET(request: NextRequest) {
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
   const { data: episode, error } = await client
     .from("episodes")
     .insert({
+      id: generateId('ep'),  // 添加 id 字段
       project_id: parsed.data.projectId,
       season_number: parsed.data.seasonNumber || 1,
       episode_number: parsed.data.episodeNumber,
