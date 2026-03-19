@@ -82,10 +82,17 @@ async function saveVideo(
   if (storage) {
     try {
       const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
-      await storage.putObject(key, buffer, 'video/mp4');
-      const publicUrl = await storage.getSignedUrl(key, 3600 * 24 * 7); // 7天有效期
+      await storage.uploadFile({
+        fileContent: buffer,
+        fileName: key,
+        contentType: 'video/mp4'
+      });
+      const publicUrl = await storage.generatePresignedUrl({
+        key,
+        expireTime: 3600 * 24 * 7 // 7天有效期
+      });
       console.log(`视频已上传到对象存储: ${key}`);
-      return publicUrl;
+      return typeof publicUrl === 'string' ? publicUrl : (publicUrl as any).url;
     } catch (uploadErr) {
       console.warn(`对象存储上传失败，尝试本地存储:`, uploadErr);
     }

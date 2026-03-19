@@ -469,11 +469,13 @@ async function invokeBotForImageGeneration(
  * 
  * @param prompt 视频生成提示词
  * @param config API 配置（apiKey, baseUrl）
+ * @param imageUrl 可选的首帧图片 URL（用于图生视频）
  * @returns 生成的视频 URL
  */
 async function invokeBotForVideoGeneration(
   prompt: string,
-  config?: { apiKey?: string; baseUrl?: string }
+  config?: { apiKey?: string; baseUrl?: string },
+  imageUrl?: string
 ): Promise<{ videoUrl: string }> {
   const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
   const botId = await getBotId()
@@ -486,35 +488,55 @@ async function invokeBotForVideoGeneration(
     throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
-  logger.info('Invoking Bot for video generation', { botId, baseUrl })
+  logger.info('Invoking Bot for video generation', { botId, baseUrl, hasImageUrl: !!imageUrl })
   
-  // 构建更清晰的视频生成提示词
-  // 提取图片 URL 和视频描述
-  let imageUrl = ''
+  // 构建消息内容
+  // 如果有图片，使用多模态格式传递图片
+  let messageContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
   let videoDescription = prompt
   
-  // 从 prompt 中提取图片 URL（如果有的话）
-  const urlMatch = prompt.match(/(https?:\/\/[^\s\)]+\.(?:png|jpg|jpeg|gif|webp))/i)
-  if (urlMatch) {
-    imageUrl = urlMatch[1]
-    // 移除图片 URL 部分，保留视频描述
-    videoDescription = prompt.replace(urlMatch[0], '').replace(/参考图片：?\s*/i, '').replace(/提示词：?\s*/i, '').trim()
+  // 从 prompt 中提取图片 URL（如果有的话，作为备用）
+  let extractedImageUrl = imageUrl
+  if (!extractedImageUrl) {
+    const urlMatch = prompt.match(/(https?:\/\/[^\s\)]+\.(?:png|jpg|jpeg|gif|webp))/i)
+    if (urlMatch) {
+      extractedImageUrl = urlMatch[1]
+      // 移除图片 URL 部分，保留视频描述
+      videoDescription = prompt.replace(urlMatch[0], '').replace(/参考图片：?\s*/i, '').replace(/提示词：?\s*/i, '').replace(/\[图生视频\]\s*/i, '').trim()
+    }
+  } else {
+    // 清理提示词中的图片 URL 标记
+    videoDescription = prompt.replace(/\[图生视频\]\s*/i, '').replace(/参考图片：[^\n]+\n?/i, '').replace(/提示词：\s*/i, '').trim()
   }
   
-  // 构建提示词
-  let videoPrompt = ''
-  if (imageUrl) {
-    // 图生视频模式
-    videoPrompt = `请根据首帧图片生成视频：
-
-首帧图片：![首帧](${imageUrl})
+  if (extractedImageUrl) {
+    // 图生视频模式 - 使用多模态消息格式
+    // 注意：Coze API 支持在消息中传递图片
+    logger.info('Using image-to-video mode with multimodal message', { imageUrl: extractedImageUrl.substring(0, 60) })
+    
+    // 构建多模态消息内容
+    // 格式：先传图片，再传文本描述
+    messageContent = [
+      {
+        type: 'image_url',
+        image_url: { url: extractedImageUrl }
+      },
+      {
+        type: 'text',
+        text: `请根据这张图片作为首帧生成视频。
 
 视频描述：${videoDescription}
 
-请直接返回生成的视频链接。`
+要求：
+1. 保持图片中的人物和场景风格一致
+2. 视频需要自然流畅
+3. 请直接返回生成的视频链接`
+      }
+    ]
   } else {
     // 纯文本生成视频模式
-    videoPrompt = `请生成以下视频：
+    logger.info('Using text-to-video mode')
+    messageContent = `请生成以下视频：
 
 ${prompt}
 
@@ -522,12 +544,12 @@ ${prompt}
   }
   
   logger.info('Bot video generation prompt', { 
-    hasImageUrl: !!imageUrl, 
+    hasImageUrl: !!extractedImageUrl, 
     videoDescriptionLength: videoDescription.length,
-    promptLength: videoPrompt.length
+    contentType: Array.isArray(messageContent) ? 'multimodal' : 'text'
   })
   
-  // 调用 Bot API，通过特定 prompt 触发视频生成 Skill
+  // 调用 Bot API
   // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
   const response = await fetch(`${baseUrl}/v3/chat`, {
     method: 'POST',
@@ -542,8 +564,8 @@ ${prompt}
       auto_save_history: false,
       additional_messages: [{
         role: 'user',
-        content: videoPrompt,
-        content_type: 'text'
+        content: messageContent,
+        content_type: Array.isArray(messageContent) ? 'object' : 'text'
       }],
     }),
   })
@@ -1481,11 +1503,12 @@ export async function generateVideoFromImage(
       })
       
       const botResult = await invokeBotForVideoGeneration(
-        `[图生视频] 参考图片：${firstFrameUrl}\n\n提示词：${prompt}`,
+        prompt,
         {
           apiKey: config?.apiKey || userConfig?.apiKey || undefined,
           baseUrl: config?.baseUrl || userConfig?.baseUrl,
-        }
+        },
+        firstFrameUrl  // 传递图片 URL 作为第三个参数
       )
       
       if (botResult.videoUrl) {
@@ -1571,11 +1594,12 @@ export async function generateVideoFromFrames(
     try {
       const userConfig = await getUserCozeConfig()
       const botResult = await invokeBotForVideoGeneration(
-        `[首尾帧生成视频] 首帧图片：${firstFrameUrl}\n尾帧图片：${lastFrameUrl}\n\n提示词：${prompt}`,
+        `${prompt}\n\n尾帧要求：视频结尾需要过渡到以下图片效果：${lastFrameUrl}`,
         {
           apiKey: config?.apiKey || userConfig?.apiKey || undefined,
           baseUrl: config?.baseUrl || userConfig?.baseUrl,
-        }
+        },
+        firstFrameUrl  // 传递首帧图片 URL
       )
       
       if (botResult.videoUrl) {
