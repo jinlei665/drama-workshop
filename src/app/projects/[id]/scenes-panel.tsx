@@ -219,7 +219,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
           sceneId: scene.id,
           description: scene.description,
           emotion: scene.emotion,
-          characterDescriptions: charDescriptions
+          characterDescriptions: charDescriptions,
+          characterIds: scene.characterIds  // 传递人物ID以获取参考图
         })
       })
 
@@ -827,7 +828,7 @@ function SceneCard({
           </div>
 
           {/* 快捷操作按钮 */}
-          <div className="flex gap-2 mt-3 items-center">
+          <div className="flex gap-2 mt-3 items-center flex-wrap">
             {!hasImage && (
               <Button 
                 size="sm" 
@@ -843,24 +844,41 @@ function SceneCard({
                 生成图片
               </Button>
             )}
-            {hasImage && !hasVideo && (
+            {hasImage && (
               <>
                 <Button 
                   size="sm" 
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  onClick={onGenerateVideo}
-                  disabled={generatingVideo}
+                  variant="outline"
+                  onClick={onGenerateImage}
+                  disabled={generatingImage}
                 >
-                  {generatingVideo ? (
+                  {generatingImage ? (
                     <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                   ) : (
-                    <Film className="w-4 h-4 mr-1" />
+                    <Sparkles className="w-4 h-4 mr-1" />
                   )}
-                  生成视频
+                  重新生成图片
                 </Button>
-                <span className="text-xs text-muted-foreground">
-                  预估 {estimatedDuration} 秒
-                </span>
+                {!hasVideo && (
+                  <>
+                    <Button 
+                      size="sm" 
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      onClick={onGenerateVideo}
+                      disabled={generatingVideo}
+                    >
+                      {generatingVideo ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <Film className="w-4 h-4 mr-1" />
+                      )}
+                      生成视频
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      预估 {estimatedDuration} 秒
+                    </span>
+                  </>
+                )}
               </>
             )}
           </div>
