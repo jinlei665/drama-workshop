@@ -490,53 +490,23 @@ async function invokeBotForVideoGeneration(
   
   logger.info('Invoking Bot for video generation', { botId, baseUrl, hasImageUrl: !!imageUrl })
   
-  // 构建消息内容
-  // 如果有图片，使用多模态格式传递图片
-  let messageContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }>
-  let videoDescription = prompt
+  // 构建视频生成提示词
+  let videoPrompt = ''
   
-  // 从 prompt 中提取图片 URL（如果有的话，作为备用）
-  let extractedImageUrl = imageUrl
-  if (!extractedImageUrl) {
-    const urlMatch = prompt.match(/(https?:\/\/[^\s\)]+\.(?:png|jpg|jpeg|gif|webp))/i)
-    if (urlMatch) {
-      extractedImageUrl = urlMatch[1]
-      // 移除图片 URL 部分，保留视频描述
-      videoDescription = prompt.replace(urlMatch[0], '').replace(/参考图片：?\s*/i, '').replace(/提示词：?\s*/i, '').replace(/\[图生视频\]\s*/i, '').trim()
-    }
-  } else {
-    // 清理提示词中的图片 URL 标记
-    videoDescription = prompt.replace(/\[图生视频\]\s*/i, '').replace(/参考图片：[^\n]+\n?/i, '').replace(/提示词：\s*/i, '').trim()
-  }
-  
-  if (extractedImageUrl) {
-    // 图生视频模式 - 使用多模态消息格式
-    // 注意：Coze API 支持在消息中传递图片
-    logger.info('Using image-to-video mode with multimodal message', { imageUrl: extractedImageUrl.substring(0, 60) })
-    
-    // 构建多模态消息内容
-    // 格式：先传图片，再传文本描述
-    messageContent = [
-      {
-        type: 'image_url',
-        image_url: { url: extractedImageUrl }
-      },
-      {
-        type: 'text',
-        text: `请根据这张图片作为首帧生成视频。
+  if (imageUrl) {
+    // 图生视频模式 - 使用文本格式传递图片 URL
+    videoPrompt = `请使用图生视频功能，根据以下首帧图片生成视频：
 
-视频描述：${videoDescription}
+首帧图片URL：${imageUrl}
 
-要求：
-1. 保持图片中的人物和场景风格一致
-2. 视频需要自然流畅
-3. 请直接返回生成的视频链接`
-      }
-    ]
+视频要求：
+1. 以提供的图片作为视频的第一帧
+2. ${prompt}
+3. 保持画面风格一致
+4. 请直接返回生成的视频链接`
   } else {
     // 纯文本生成视频模式
-    logger.info('Using text-to-video mode')
-    messageContent = `请生成以下视频：
+    videoPrompt = `请生成以下视频：
 
 ${prompt}
 
@@ -544,9 +514,8 @@ ${prompt}
   }
   
   logger.info('Bot video generation prompt', { 
-    hasImageUrl: !!extractedImageUrl, 
-    videoDescriptionLength: videoDescription.length,
-    contentType: Array.isArray(messageContent) ? 'multimodal' : 'text'
+    hasImageUrl: !!imageUrl, 
+    promptLength: videoPrompt.length
   })
   
   // 调用 Bot API
@@ -564,8 +533,8 @@ ${prompt}
       auto_save_history: false,
       additional_messages: [{
         role: 'user',
-        content: messageContent,
-        content_type: Array.isArray(messageContent) ? 'object' : 'text'
+        content: videoPrompt,
+        content_type: 'text'
       }],
     }),
   })
@@ -1374,8 +1343,7 @@ export async function generateVideo(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  // 禁用代理，避免本地代理干扰
-  const savedProxy = disableProxy()
+  // 注意：不再禁用代理，因为用户可能需要代理访问 API
   
   try {
     logger.info('Video generation started', { prompt: prompt.slice(0, 100) })
@@ -1435,9 +1403,6 @@ export async function generateVideo(
       throw Errors.AIRequestFailed('Video', `${err.message} (status: ${err.statusCode})`)
     }
     throw err
-  } finally {
-    // 恢复代理设置
-    restoreProxy(savedProxy)
   }
 }
 
@@ -1452,8 +1417,8 @@ export async function generateVideoFromImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  // 禁用代理，避免本地代理干扰
-  const savedProxy = disableProxy()
+  // 注意：不再禁用代理，因为用户可能需要代理访问 API
+  // 如果遇到代理问题，可以在调用时传入特定配置
   
   try {
     logger.info('Image-to-video generation started')
@@ -1531,9 +1496,6 @@ export async function generateVideoFromImage(
       throw err
     }
     throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
-  } finally {
-    // 恢复代理设置
-    restoreProxy(savedProxy)
   }
 }
 
@@ -1549,8 +1511,7 @@ export async function generateVideoFromFrames(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string }> {
-  // 禁用代理，避免本地代理干扰
-  const savedProxy = disableProxy()
+  // 注意：不再禁用代理，因为用户可能需要代理访问 API
   
   try {
     logger.info('Frame-to-video generation started')
@@ -1622,9 +1583,6 @@ export async function generateVideoFromFrames(
       throw err
     }
     throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
-  } finally {
-    // 恢复代理设置
-    restoreProxy(savedProxy)
   }
 }
 
