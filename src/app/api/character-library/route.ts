@@ -1,12 +1,35 @@
 /**
  * 人物库 API
  * 用于保存和获取通用人物模板
+ * 
+ * 数据库策略：优先使用沙箱环境的 Supabase（因为用户配置的 Supabase 可能没有 character_library 表）
  */
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON } from '@/lib/api/response'
-import { getSupabaseClient, isDatabaseConfigured, getDatabaseType } from '@/storage/database/supabase-client'
+import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client'
 import { memoryCharacterLibrary, generateId } from '@/lib/memory-storage'
+
+// 获取人物库专用的数据库客户端
+// 优先使用沙箱环境的 Supabase
+function getCharacterLibraryClient() {
+  const cozeUrl = process.env.COZE_SUPABASE_URL
+  const cozeKey = process.env.COZE_SUPABASE_ANON_KEY
+  
+  if (cozeUrl && cozeKey) {
+    // 使用沙箱环境的 Supabase
+    console.log('[Character Library] Using sandbox Supabase:', cozeUrl)
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    return createClient(cozeUrl, cozeKey, {
+      db: { timeout: 60000 },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  }
+  
+  // 回退到默认客户端
+  return getSupabaseClient()
+}
 
 /**
  * GET /api/character-library
@@ -20,7 +43,8 @@ export async function GET(request: NextRequest) {
     // 尝试从数据库获取
     if (isDatabaseConfigured()) {
       try {
-        const db = getSupabaseClient()
+        const db = getCharacterLibraryClient()
+        console.log('[Character Library] Querying database...')
         let query = db
           .from('character_library')
           .select('*')
@@ -30,7 +54,10 @@ export async function GET(request: NextRequest) {
           query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`)
         }
         
-        const { data, error } = await query
+        const result = await query
+        const { data, error } = result
+        
+        console.log('[Character Library] Query result:', { dataLength: data?.length, error })
         
         if (error) {
           console.warn('[Character Library] Database query error:', error)
@@ -112,37 +139,34 @@ export async function POST(request: NextRequest) {
     
     // 尝试保存到数据库
     let savedToDatabase = false
-    const dbType = getDatabaseType()
-    console.log('[Character Library] Database type:', dbType)
+    console.log('[Character Library] Trying to save to database...')
     
-    if (isDatabaseConfigured()) {
-      try {
-        const db = getSupabaseClient()
-        const { data, error } = await db
-          .from('character_library')
-          .insert({
-            id: character.id,
-            name: character.name,
-            description: character.description,
-            appearance: character.appearance,
-            personality: character.personality,
-            tags: character.tags,
-            image_url: character.imageUrl,
-            front_view_key: character.frontViewKey,
-            style: character.style,
-          })
-          .select()
-          .single()
-        
-        if (error) {
-          console.warn('[Character Library] Database insert error:', error)
-        } else if (data) {
-          savedToDatabase = true
-          console.log('[Character Library] Saved to database:', data)
-        }
-      } catch (dbError) {
-        console.warn('[Character Library] Failed to save to database:', dbError)
+    try {
+      const db = getCharacterLibraryClient()
+      const { data, error } = await db
+        .from('character_library')
+        .insert({
+          id: character.id,
+          name: character.name,
+          description: character.description,
+          appearance: character.appearance,
+          personality: character.personality,
+          tags: character.tags,
+          image_url: character.imageUrl,
+          front_view_key: character.frontViewKey,
+          style: character.style,
+        })
+        .select()
+        .single()
+      
+      if (error) {
+        console.warn('[Character Library] Database insert error:', error)
+      } else if (data) {
+        savedToDatabase = true
+        console.log('[Character Library] Saved to database:', data)
       }
+    } catch (dbError) {
+      console.warn('[Character Library] Failed to save to database:', dbError)
     }
     
     // 如果数据库保存失败，保存到内存
@@ -171,20 +195,18 @@ export async function DELETE(request: NextRequest) {
     }
     
     // 尝试从数据库删除
-    if (isDatabaseConfigured()) {
-      try {
-        const db = getSupabaseClient()
-        const { error } = await db
-          .from('character_library')
-          .delete()
-          .eq('id', id)
-        
-        if (!error) {
-          return successResponse({ success: true })
-        }
-      } catch (dbError) {
-        console.warn('Failed to delete from database:', dbError)
+    try {
+      const db = getCharacterLibraryClient()
+      const { error } = await db
+        .from('character_library')
+        .delete()
+        .eq('id', id)
+      
+      if (!error) {
+        return successResponse({ success: true })
       }
+    } catch (dbError) {
+      console.warn('Failed to delete from database:', dbError)
     }
     
     // 从内存删除

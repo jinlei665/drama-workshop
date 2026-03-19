@@ -319,6 +319,7 @@ function createMemoryClient() {
 
 /**
  * 检查数据库是否配置
+ * 只有当完整的凭证配置时才认为数据库已配置
  */
 export function isDatabaseConfigured(): boolean {
   const dbType = getDatabaseType();
@@ -330,6 +331,13 @@ export function isDatabaseConfigured(): boolean {
  */
 export function isSupabaseConfigured(): boolean {
   return isDatabaseConfigured();
+}
+
+/**
+ * 获取当前使用的 Supabase URL
+ */
+export function getCurrentSupabaseUrl(): string | undefined {
+  return process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.COZE_SUPABASE_URL;
 }
 
 /**
