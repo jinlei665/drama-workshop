@@ -348,10 +348,15 @@ async function generateSequential(
         generateAudio: true,
       });
 
-      // 重新托管视频（解决 Bot 返回的临时 URL 问题）
+      // 重新托管视频（仅处理火山引擎内部 URL，Coze 存储可直接访问）
       let finalVideoUrl = result.videoUrl;
-      if (result.videoUrl && (result.videoUrl.includes('tos.coze.site') || result.videoUrl.includes('volces.com'))) {
+      if (result.videoUrl && result.videoUrl.includes('volces.com')) {
+        // 只有火山引擎内部 URL 需要重新托管
+        console.log(`检测到火山引擎内部 URL，尝试重新托管...`);
         finalVideoUrl = await rehostVideo(result.videoUrl, scene.id, storage, apiKey);
+      } else if (result.videoUrl && result.videoUrl.includes('tos.coze.site')) {
+        // Coze 存储的 URL 应该可以直接访问
+        console.log(`使用 Coze 存储 URL: ${result.videoUrl.substring(0, 60)}...`);
       }
 
       // 更新数据库或内存
