@@ -424,64 +424,38 @@ async function invokeBotForImageGeneration(
   // 构建消息内容
   let userContent = `请使用图像生成工具生成以下图片：\n${prompt}`
   
-  // 如果有参考图片，添加到消息中
-  // Bot 的图像生成 Skill 支持 reference_images 参数
-  const requestBody: any = {
-    bot_id: botId,
-    user_id: 'drama-workshop-image-gen',
-    stream: true,
-    auto_save_history: false,
-  }
-  
-  // 如果有参考图片，使用多模态消息格式
+  // 如果有参考图片，在提示词中添加参考图片信息
+  // 注意：Coze Bot 的多模态消息格式可能不兼容，这里用文本方式传递
   if (referenceImages && referenceImages.length > 0) {
-    logger.info('Using reference images for multi-character generation', { count: referenceImages.length })
-    
-    // 构建包含图片的消息
-    // Coze v3/chat API 要求 content_type 为 'object_string'，content 为 JSON 字符串
-    const messageContent: any[] = [
-      { type: 'text', text: userContent }
-    ]
-    
-    // 添加参考图片
-    for (const imgUrl of referenceImages) {
-      messageContent.push({
-        type: 'image_url',
-        image_url: { url: imgUrl }
-      })
+    userContent += `\n\n参考图片（请保持人物外观一致）：`
+    for (let i = 0; i < referenceImages.length; i++) {
+      userContent += `\n${i + 1}. ${referenceImages[i]}`
     }
-    
-    requestBody.additional_messages = [{
-      role: 'user',
-      content: JSON.stringify(messageContent),
-      content_type: 'object_string'
-    }]
-    
-    // 同时在自定义参数中传递 reference_images（供 Bot Skill 使用）
-    requestBody.custom_variables = {
-      reference_images: referenceImages
-    }
-  } else {
-    requestBody.additional_messages = [{
-      role: 'user',
-      content: userContent,
-      content_type: 'text'
-    }]
   }
   
   // 调用 Bot API，通过特定 prompt 触发图像生成 Skill
   // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
-  logger.debug('[Bot Image] Request body prepared', { 
-    requestBody: JSON.stringify(requestBody).slice(0, 500) 
-  })
-  
   const response = await fetch(`${baseUrl}/v3/chat`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify({
+      bot_id: botId,
+      user_id: 'drama-workshop-image-gen',
+      stream: true,
+      auto_save_history: false,
+      additional_messages: [{
+        role: 'user',
+        content: userContent,
+        content_type: 'text'
+      }],
+      // 同时在自定义参数中传递 reference_images（供 Bot Skill 使用）
+      custom_variables: referenceImages && referenceImages.length > 0 ? {
+        reference_images: referenceImages
+      } : undefined,
+    }),
   })
   
   // 处理流式响应
@@ -1453,42 +1427,24 @@ export async function generateImage(
         })
         const client = new ImageGenerationClient(userConfigObj, headers)
 
-        let response
-        try {
-          response = await client.generate({
-            prompt,
-            size: options?.size || DEFAULT_IMAGE_SIZE,
-            watermark: options?.watermark ?? false,
-            responseFormat: options?.responseFormat || 'url',
-            image: options?.image,  // 参考图片，用于保持人物一致性
-          })
-        } catch (sdkErr) {
-          // SDK 内部错误
-          const errMsg = sdkErr instanceof Error ? sdkErr.message : String(sdkErr)
-          console.log('[User PAT] SDK internal error:', errMsg)
-          
-          // 检查是否是权限错误
-          if (errMsg.includes('permission') || errMsg.includes('权限') || errMsg.includes('token')) {
-            throw new Error('PAT 权限不足：请确保您的 Coze PAT 有「图像生成」权限')
-          }
-          // 检查是否是 API 错误
-          if (errMsg.includes('401') || errMsg.includes('403')) {
-            throw new Error('PAT 认证失败：请检查您的 Coze API Key 是否正确')
-          }
-          // 其他 SDK 错误
-          throw new Error(`SDK 错误: ${errMsg}`)
-        }
+        const response = await client.generate({
+          prompt,
+          size: options?.size || DEFAULT_IMAGE_SIZE,
+          watermark: options?.watermark ?? false,
+          responseFormat: options?.responseFormat || 'url',
+          image: options?.image,  // 参考图片，用于保持人物一致性
+        })
 
         // 检查响应结构
         console.log('[User PAT] Response structure:', {
-          hasData: !!response?.data,
-          dataType: Array.isArray(response?.data) ? 'array' : typeof response?.data,
-          hasError: !!response?.error,
-          error: response?.error,
+          hasData: !!response.data,
+          dataType: Array.isArray(response.data) ? 'array' : typeof response.data,
+          hasError: !!response.error,
+          error: response.error,
         })
         
         // 处理错误响应
-        if (response?.error) {
+        if (response.error) {
           const errorMsg = response.error.message || JSON.stringify(response.error)
           // 检查是否是权限错误
           if (errorMsg.includes('token') || errorMsg.includes('权限') || errorMsg.includes('permission')) {
@@ -1498,7 +1454,7 @@ export async function generateImage(
         }
         
         // 检查数据是否有效
-        if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+        if (response.data && Array.isArray(response.data) && response.data.length > 0) {
           try {
             const helper = client.getResponseHelper(response)
             if (helper.success && helper.imageUrls.length > 0) {
