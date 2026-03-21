@@ -41,6 +41,7 @@ export const memoryCharacters: Array<{
 export const memoryScenes: Array<{
   id: string
   projectId: string
+  episodeId?: string
   sceneNumber: number
   title?: string
   description: string
@@ -61,10 +62,12 @@ export const memoryScenes: Array<{
 export const memoryEpisodes: Array<{
   id: string
   projectId: string
+  seasonNumber: number
   episodeNumber: number
   title: string
   description?: string
   status: string
+  mergedVideoUrl?: string
   createdAt: string
 }> = []
 

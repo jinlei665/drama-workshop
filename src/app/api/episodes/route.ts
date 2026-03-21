@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
 import { insertEpisodeSchema, updateEpisodeSchema } from "@/storage/database/shared/schema"
-import { generateId } from "@/lib/memory-storage"
+import { memoryEpisodes, memoryScenes, generateId } from "@/lib/memory-storage"
 
 // GET /api/episodes - 获取项目的剧集列表
 export async function GET(request: NextRequest) {
@@ -12,46 +12,74 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "缺少项目ID" }, { status: 400 })
   }
 
-  const client = getSupabaseClient()
+  // 尝试从数据库获取
+  try {
+    const client = getSupabaseClient()
 
-  // 获取剧集列表，按季数和集数排序
-  const { data: episodes, error } = await client
-    .from("episodes")
-    .select("*")
-    .eq("project_id", projectId)
-    .order("season_number", { ascending: true })
-    .order("episode_number", { ascending: true })
+    // 获取剧集列表，按季数和集数排序
+    const { data: episodes, error } = await client
+      .from("episodes")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("season_number", { ascending: true })
+      .order("episode_number", { ascending: true })
 
-  if (error) {
-    console.error("获取剧集失败:", error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // 获取所有分镜，按 episode_id 分组计数
-  const { data: scenes, error: scenesError } = await client
-    .from("scenes")
-    .select("episode_id")
-    .eq("project_id", projectId)
-
-  if (scenesError) {
-    console.error("获取分镜失败:", scenesError)
-  }
-
-  // 计算每个剧集的分镜数量
-  const sceneCounts: Record<string, number> = {}
-  ;(scenes || []).forEach((scene: any) => {
-    if (scene.episode_id) {
-      sceneCounts[scene.episode_id] = (sceneCounts[scene.episode_id] || 0) + 1
+    if (error) {
+      console.warn("数据库查询剧集失败，回退到内存存储:", error.message)
+      // 回退到内存存储
+      const episodes = memoryEpisodes
+        .filter(e => e.projectId === projectId)
+        .sort((a, b) => {
+          if (a.seasonNumber !== b.seasonNumber) return a.seasonNumber - b.seasonNumber
+          return a.episodeNumber - b.episodeNumber
+        })
+        .map(ep => ({
+          ...ep,
+          sceneCount: memoryScenes.filter(s => s.episodeId === ep.id).length
+        }))
+      return NextResponse.json({ episodes })
     }
-  })
 
-  // 转换数据格式
-  const formattedEpisodes = (episodes || []).map((ep: any) => ({
-    ...ep,
-    sceneCount: sceneCounts[ep.id] || 0,
-  }))
+    // 获取所有分镜，按 episode_id 分组计数
+    const { data: scenes, error: scenesError } = await client
+      .from("scenes")
+      .select("episode_id")
+      .eq("project_id", projectId)
 
-  return NextResponse.json({ episodes: formattedEpisodes })
+    if (scenesError) {
+      console.warn("获取分镜失败:", scenesError.message)
+    }
+
+    // 计算每个剧集的分镜数量
+    const sceneCounts: Record<string, number> = {}
+    ;(scenes || []).forEach((scene: any) => {
+      if (scene.episode_id) {
+        sceneCounts[scene.episode_id] = (sceneCounts[scene.episode_id] || 0) + 1
+      }
+    })
+
+    // 转换数据格式
+    const formattedEpisodes = (episodes || []).map((ep: any) => ({
+      ...ep,
+      sceneCount: sceneCounts[ep.id] || 0,
+    }))
+
+    return NextResponse.json({ episodes: formattedEpisodes })
+  } catch (err) {
+    console.warn("数据库连接失败，回退到内存存储:", err)
+    // 回退到内存存储
+    const episodes = memoryEpisodes
+      .filter(e => e.projectId === projectId)
+      .sort((a, b) => {
+        if (a.seasonNumber !== b.seasonNumber) return a.seasonNumber - b.seasonNumber
+        return a.episodeNumber - b.episodeNumber
+      })
+      .map(ep => ({
+        ...ep,
+        sceneCount: memoryScenes.filter(s => s.episodeId === ep.id).length
+      }))
+    return NextResponse.json({ episodes })
+  }
 }
 
 // POST /api/episodes - 创建新剧集
