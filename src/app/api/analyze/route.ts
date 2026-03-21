@@ -161,6 +161,11 @@ export async function POST(request: NextRequest) {
           characterNames: string[]
         }>
       }>(responseContent)
+      
+      console.log(`[Analyze] Parsed result: characters=${result.characters?.length || 0}, scenes=${result.scenes?.length || 0}`)
+      if (result.characters && result.characters.length > 0) {
+        console.log(`[Analyze] Character names:`, result.characters.map(c => c.name).join(', '))
+      }
     } catch (parseError) {
       console.error("Failed to parse LLM response:", responseContent)
       return NextResponse.json(
@@ -171,6 +176,10 @@ export async function POST(request: NextRequest) {
 
     // 如果有 projectId，保存数据
     if (projectId) {
+      console.log(`[Analyze] Saving data for project: ${projectId}`)
+      console.log(`[Analyze] Characters to save: ${result.characters?.length || 0}`)
+      console.log(`[Analyze] Scenes to save: ${result.scenes?.length || 0}`)
+      
       const savedCharacters: string[] = []
       
       // 保存人物
@@ -181,32 +190,48 @@ export async function POST(request: NextRequest) {
           // 尝试保存到数据库
           let savedToDb = false
           try {
-            const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+            const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+            
+            console.log(`[Analyze] Checking database config for character "${char.name}": isConfigured=${isDatabaseConfigured()}`)
             
             if (isDatabaseConfigured()) {
-              const supabase = getSupabaseClient()
+              // 优先使用 service_role 客户端（绕过 RLS）
+              let supabase = getAdminClient()
+              let usingServiceRole = !!process.env.SUPABASE_SERVICE_ROLE_KEY
+              console.log(`[Analyze] Using ${usingServiceRole ? 'service_role' : 'anon'} client for character "${char.name}"`)
+              
+              const insertData = {
+                id: characterId,
+                project_id: projectId,
+                name: char.name,
+                description: char.description,
+                appearance: char.appearance,
+                personality: char.personality,
+                tags: char.tags || [],
+                status: 'pending',
+              }
+              
+              console.log(`[Analyze] Inserting character "${char.name}" with data:`, JSON.stringify(insertData))
+              
               const { data, error } = await supabase
                 .from("characters")
-                .insert({
-                  id: characterId,
-                  project_id: projectId,
-                  name: char.name,
-                  description: char.description,
-                  appearance: char.appearance,
-                  personality: char.personality,
-                  tags: char.tags || [],
-                  status: 'pending',
-                })
+                .insert(insertData)
                 .select()
                 .single()
               
-              if (!error && data) {
+              if (error) {
+                console.error(`[Analyze] Failed to save character "${char.name}" to database:`, JSON.stringify(error))
+                console.error(`[Analyze] Error details: code=${error.code}, message=${error.message}, details=${error.details}, hint=${error.hint}`)
+              } else if (data) {
+                console.log(`[Analyze] Saved character "${char.name}" to database: ${data.id}`)
                 savedToDb = true
                 savedCharacters.push(data.id)
               }
+            } else {
+              console.log(`[Analyze] Database not configured, using memory storage`)
             }
           } catch (dbError) {
-            console.warn("Failed to save character to database:", dbError)
+            console.error(`[Analyze] Exception saving character "${char.name}" to database:`, dbError)
           }
           
           // 如果数据库保存失败，保存到内存
@@ -222,9 +247,11 @@ export async function POST(request: NextRequest) {
               status: 'pending',
               createdAt: new Date().toISOString(),
             })
+            console.log(`[Analyze] Saved character "${char.name}" to memory: ${characterId}`)
             savedCharacters.push(characterId)
           }
         }
+        console.log(`[Analyze] Total characters saved: ${savedCharacters.length}`)
       }
 
       // 保存分镜
@@ -269,30 +296,35 @@ export async function POST(request: NextRequest) {
           // 尝试保存到数据库
           let savedToDb = false
           try {
-            const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+            const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
             
             if (isDatabaseConfigured()) {
-              const supabase = getSupabaseClient()
+              // 优先使用 service_role 客户端
+              const supabase = getAdminClient()
+              const insertData = {
+                id: sceneId,
+                project_id: projectId,
+                scene_number: scene.sceneNumber,
+                title: scene.title,
+                description: scene.description,
+                dialogue: scene.dialogue,
+                action: scene.action,
+                emotion: scene.emotion,
+                character_ids: characterIds,
+                metadata: {
+                  shotType: scene.shotType,
+                  cameraMovement: scene.cameraMovement,
+                },
+                status: 'pending',
+              }
+              
               const { error } = await supabase
                 .from("scenes")
-                .insert({
-                  id: sceneId,
-                  project_id: projectId,
-                  scene_number: scene.sceneNumber,
-                  title: scene.title,
-                  description: scene.description,
-                  dialogue: scene.dialogue,
-                  action: scene.action,
-                  emotion: scene.emotion,
-                  character_ids: characterIds,
-                  metadata: {
-                    shotType: scene.shotType,
-                    cameraMovement: scene.cameraMovement,
-                  },
-                  status: 'pending',
-                })
+                .insert(insertData)
               
-              if (!error) {
+              if (error) {
+                console.error(`[Analyze] Failed to save scene ${scene.sceneNumber} to database:`, error.message)
+              } else {
                 savedToDb = true
               }
             }

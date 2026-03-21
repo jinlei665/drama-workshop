@@ -69,12 +69,14 @@ CREATE TABLE IF NOT EXISTS characters (
   voice_url TEXT,
   voice_style VARCHAR(50),
   tags JSONB DEFAULT '[]',
+  status VARCHAR(20) DEFAULT 'pending',
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS characters_project_id_idx ON characters(project_id);
 CREATE INDEX IF NOT EXISTS characters_name_idx ON characters(name);
+CREATE INDEX IF NOT EXISTS characters_status_idx ON characters(status);
 
 -- ============================================
 -- 4. 分镜表
@@ -176,3 +178,72 @@ CREATE POLICY "Service role full access" ON user_settings FOR ALL TO service_rol
 -- 完成
 -- ============================================
 SELECT 'Database initialization completed!' as status;
+
+-- ============================================
+-- 7. 增量更新（用于已有数据库）
+-- 如果表已存在，执行这些语句添加缺失的列
+-- ============================================
+
+-- 为 characters 表添加 status 列（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'characters' AND column_name = 'status'
+  ) THEN
+    ALTER TABLE characters ADD COLUMN status VARCHAR(20) DEFAULT 'pending';
+    CREATE INDEX IF NOT EXISTS characters_status_idx ON characters(status);
+    RAISE NOTICE 'Added status column to characters table';
+  END IF;
+END $$;
+
+-- 为 characters 表添加 personality 列（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'characters' AND column_name = 'personality'
+  ) THEN
+    ALTER TABLE characters ADD COLUMN personality TEXT;
+    RAISE NOTICE 'Added personality column to characters table';
+  END IF;
+END $$;
+
+-- 为 scenes 表添加 episode_id 列（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'scenes' AND column_name = 'episode_id'
+  ) THEN
+    ALTER TABLE scenes ADD COLUMN episode_id VARCHAR(36);
+    CREATE INDEX IF NOT EXISTS scenes_episode_id_idx ON scenes(episode_id);
+    RAISE NOTICE 'Added episode_id column to scenes table';
+  END IF;
+END $$;
+
+-- 为 scenes 表添加 last_frame_url 列（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'scenes' AND column_name = 'last_frame_url'
+  ) THEN
+    ALTER TABLE scenes ADD COLUMN last_frame_url TEXT;
+    RAISE NOTICE 'Added last_frame_url column to scenes table';
+  END IF;
+END $$;
+
+-- 为 episodes 表添加缺失的列（如果不存在）
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'episodes' AND column_name = 'season_number'
+  ) THEN
+    ALTER TABLE episodes ADD COLUMN season_number INTEGER DEFAULT 1 NOT NULL;
+    RAISE NOTICE 'Added season_number column to episodes table';
+  END IF;
+END $$;
+
+SELECT 'Database update completed!' as status;

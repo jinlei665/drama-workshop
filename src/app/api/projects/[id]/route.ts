@@ -32,10 +32,11 @@ export async function GET(
     // 尝试从数据库获取
     let useDatabase = false
     try {
-      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
       
       if (isDatabaseConfigured()) {
-        const db = getSupabaseClient()
+        // 优先使用 admin 客户端（绕过 RLS）
+        const db = getAdminClient()
         
         // 获取项目
         const { data: project, error: projectError } = await db

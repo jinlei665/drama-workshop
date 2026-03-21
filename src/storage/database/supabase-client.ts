@@ -16,6 +16,7 @@ export type DatabaseType = 'supabase' | 'memory';
 // 缓存的客户端
 let cachedClient: any = null;
 let cachedDbType: DatabaseType | null = null;
+let cachedServiceClient: any = null;
 
 /**
  * 获取数据库类型
@@ -50,8 +51,34 @@ export function getDatabaseType(): DatabaseType {
 /**
  * 获取数据库客户端
  * 优先级：用户配置的 Supabase > 沙箱环境的 Supabase > 内存存储
+ * 
+ * @param useServiceRole - 是否使用 service_role key 绕过 RLS（默认 false）
  */
-export function getSupabaseClient(token?: string): any {
+export function getSupabaseClient(useServiceRole: boolean = false): any {
+  // 如果请求 service_role 客户端
+  if (useServiceRole) {
+    if (cachedServiceClient) {
+      return cachedServiceClient;
+    }
+    
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.COZE_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (url && serviceKey) {
+      console.log(`[Database] Creating service_role client for: ${url}`);
+      // eslint-disable-next-line no-eval
+      const createClient = eval("require('@supabase/supabase-js')").createClient;
+      cachedServiceClient = createClient(url, serviceKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      return cachedServiceClient;
+    }
+    
+    // 没有 service_role key，回退到普通客户端
+    console.warn('[Database] No service_role key available, falling back to anon client');
+    return getSupabaseClient(false);
+  }
+  
   if (cachedClient) {
     return cachedClient;
   }
@@ -84,12 +111,19 @@ export function getSupabaseClient(token?: string): any {
   const createClient = eval("require('@supabase/supabase-js')").createClient;
   
   cachedClient = createClient(url, anonKey, {
-    global: token ? { headers: { Authorization: `Bearer ${token}` } } : undefined,
     db: { timeout: 60000 },
     auth: { autoRefreshToken: false, persistSession: false },
   });
   
   return cachedClient;
+}
+
+/**
+ * 获取管理员客户端（使用 service_role key）
+ * 用于绕过 RLS 进行数据操作
+ */
+export function getAdminClient(): any {
+  return getSupabaseClient(true);
 }
 
 /**
