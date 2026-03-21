@@ -9,6 +9,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev --port 5000",
+    "dev:lan": "WATCHPACK_POLLING=true next dev --port 5000 --hostname 0.0.0.0",
     "start": "next start --port 5000",
     "lint": "eslint",
     "ts-check": "tsc -p tsconfig.json",

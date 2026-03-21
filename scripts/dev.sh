@@ -30,4 +30,6 @@ echo "Clearing port ${PORT} before start."
 kill_port_if_listening
 echo "Starting HTTP service on port ${PORT} for dev..."
 
-npx next dev --webpack --port $PORT --hostname 0.0.0.0
+# 使用 webpack 模式（更稳定），启用轮询避免 WebSocket 问题
+# 设置 WATCHPACK_POLLING=true 使用轮询检测文件变化
+WATCHPACK_POLLING=true npx next dev --webpack --port $PORT --hostname 0.0.0.0
