@@ -2,6 +2,15 @@
 -- 在 Supabase SQL Editor 中执行此脚本
 
 -- ============================================
+-- 0. 删除旧表（如果存在）
+-- ============================================
+DROP TABLE IF EXISTS scenes CASCADE;
+DROP TABLE IF EXISTS characters CASCADE;
+DROP TABLE IF EXISTS episodes CASCADE;
+DROP TABLE IF EXISTS projects CASCADE;
+DROP TABLE IF EXISTS user_settings CASCADE;
+
+-- ============================================
 -- 1. 项目表
 -- ============================================
 CREATE TABLE IF NOT EXISTS projects (
