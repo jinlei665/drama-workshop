@@ -18,55 +18,61 @@ async function rehostVideo(
   storage: S3Storage | null,
   apiKey?: string
 ): Promise<string> {
-  console.log(`正在下载并重新托管视频: ${originalUrl.substring(0, 50)}...`);
+  console.log(`正在下载并重新托管视频: ${originalUrl.substring(0, 80)}...`);
   
-  try {
-    // 构建请求头
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Accept': '*/*',
-      'Accept-Encoding': 'identity', // 避免压缩问题
-    };
-    
-    // 如果是火山引擎 URL，添加特定头
-    if (originalUrl.includes('volces.com') || originalUrl.includes('tos-cn-')) {
-      headers['Referer'] = 'https://www.coze.cn/';
-      headers['Origin'] = 'https://www.coze.cn';
-      if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-    }
-    
-    // 如果是 Coze 存储 URL，也需要下载（可能有跨域问题）
-    if (originalUrl.includes('tos.coze.site')) {
-      console.log(`检测到 Coze 存储 URL，尝试下载到本地以避免跨域问题...`);
-    }
-    
-    // 下载视频
-    const response = await fetch(originalUrl, { headers });
-    if (!response.ok) {
-      console.warn(`视频下载失败: HTTP ${response.status} ${response.statusText}`);
-      // 尝试不带头的请求
-      const retryResponse = await fetch(originalUrl);
-      if (!retryResponse.ok) {
-        console.warn(`重试下载也失败: HTTP ${retryResponse.status}`);
-        return originalUrl; // 返回原始 URL
-      }
-      const arrayBuffer = await retryResponse.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      console.log(`视频下载成功（重试），大小: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
-      return await saveVideo(buffer, sceneId, storage, originalUrl);
-    }
-    
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    console.log(`视频下载完成，大小: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
-    
-    return await saveVideo(buffer, sceneId, storage, originalUrl);
-  } catch (err) {
-    console.error(`视频重新托管失败:`, err);
-    return originalUrl;
+  // 多种请求头策略
+  const headerStrategies: Record<string, string>[] = [
+    // 策略1: 模拟浏览器 + Coze来源
+    {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'video/webm,video/ogg,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Referer': 'https://www.coze.cn/',
+      'Origin': 'https://www.coze.cn',
+    },
+    // 策略2: 简单请求
+    {
+      'User-Agent': 'Mozilla/5.0 (compatible; VideoBot/1.0)',
+    },
+    // 策略3: 无任何头
+    {},
+  ];
+  
+  // 如果有 apiKey，添加到第一个策略
+  if (apiKey) {
+    headerStrategies[0]['Authorization'] = `Bearer ${apiKey}`;
   }
+  
+  // 依次尝试不同的请求头策略
+  for (let i = 0; i < headerStrategies.length; i++) {
+    try {
+      console.log(`尝试下载策略 ${i + 1}/${headerStrategies.length}...`);
+      const response = await fetch(originalUrl, { 
+        headers: headerStrategies[i],
+        redirect: 'follow',
+      });
+      
+      if (response.ok) {
+        const contentLength = response.headers.get('content-length');
+        console.log(`下载成功! Content-Length: ${contentLength}`);
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        console.log(`视频下载完成，大小: ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
+        
+        return await saveVideo(buffer, sceneId, storage, originalUrl);
+      } else {
+        console.warn(`策略 ${i + 1} 失败: HTTP ${response.status} ${response.statusText}`);
+      }
+    } catch (err) {
+      console.warn(`策略 ${i + 1} 异常:`, err instanceof Error ? err.message : String(err));
+    }
+  }
+  
+  // 所有下载策略都失败
+  console.warn(`所有下载策略都失败，返回原始 URL`);
+  console.log(`提示: 视频可能需要在浏览器中直接播放，请确保前端能处理跨域视频`);
+  return originalUrl;
 }
 
 /**
