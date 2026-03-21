@@ -2,6 +2,23 @@ import path from 'path';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// 开发环境允许的来源列表
+// Next.js 不支持通配符，需要列出具体的 IP 或域名
+const devOrigins = [
+  'localhost',
+  '127.0.0.1',
+  // 常见的局域网 IP 段
+  ...Array.from({ length: 256 }, (_, i) => `192.168.${i}`),
+  ...Array.from({ length: 16 }, (_, i) => `172.${16 + i}`),
+  ...Array.from({ length: 256 }, (_, i) => `10.0.${i}`),
+  ...Array.from({ length: 256 }, (_, i) => `10.1.${i}`),
+  ...Array.from({ length: 256 }, (_, i) => `10.2.${i}`),
+  ...Array.from({ length: 256 }, (_, i) => `10.3.${i}`),
+  ...Array.from({ length: 256 }, (_, i) => `10.4.${i}`),
+  // 常见的公网 IP
+  '117.50.81.127',
+];
+
 const nextConfig = {
   output: 'standalone',
   
@@ -27,24 +44,8 @@ const nextConfig = {
     ],
   },
   
-  // 允许的开发源 - 包括局域网 IP
-  allowedDevOrigins: [
-    '*.dev.coze.site', 
-    'localhost', 
-    '*.local',
-    // 允许所有 IP（用于本地部署）
-    '*',
-  ],
-  
-  // 开发环境 WebSocket 配置
-  ...(isProd ? {} : {
-    // 使用轮询方式检测文件变化，避免 WebSocket 问题
-    experimental: {
-      // 禁用 Turbopack 以获得更稳定的 HMR
-    },
-    // 配置 assetPrefix 为空，避免资源加载问题
-    assetPrefix: '',
-  }),
+  // 允许的开发源
+  allowedDevOrigins: devOrigins,
   
   images: {
     remotePatterns: [
