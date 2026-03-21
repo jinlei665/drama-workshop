@@ -30,4 +30,4 @@ echo "Clearing port ${PORT} before start."
 kill_port_if_listening
 echo "Starting HTTP service on port ${PORT} for dev..."
 
-npx next dev --webpack --port $PORT
+npx next dev --webpack --port $PORT --hostname 0.0.0.0

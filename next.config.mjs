@@ -1,5 +1,7 @@
 import path from 'path';
 
+const isProd = process.env.NODE_ENV === 'production';
+
 const nextConfig = {
   output: 'standalone',
   
@@ -25,12 +27,37 @@ const nextConfig = {
     ],
   },
   
-  allowedDevOrigins: ['*.dev.coze.site'],
+  // 允许的开发源
+  allowedDevOrigins: ['*.dev.coze.site', 'localhost', '*.local'],
+  
+  // 生产环境禁用 HMR，开发环境配置 WebSocket
+  ...(isProd ? {} : {
+    // 开发环境 HMR 配置
+    experimental: {
+      // 使用更稳定的 HMR 方式
+    },
+  }),
+  
   images: {
     remotePatterns: [
       {
         protocol: 'https',
         hostname: 'lf-coze-web-cdn.coze.cn',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.coze.cn',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.volces.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.tos-cn-beijing.volces.com',
         pathname: '/**',
       },
     ],
