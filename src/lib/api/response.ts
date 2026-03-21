@@ -44,6 +44,36 @@ export function errorResponse(error: unknown, status?: number): NextResponse<API
     )
   }
 
+  // 字符串错误
+  if (typeof error === 'string') {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          type: 'internal' as ErrorType,
+          code: 'UNKNOWN_ERROR' as ErrorCode,
+          message: error,
+        },
+      },
+      { status: status || 500 }
+    )
+  }
+
+  // Error 对象
+  if (error instanceof Error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          type: 'internal' as ErrorType,
+          code: 'UNKNOWN_ERROR' as ErrorCode,
+          message: error.message,
+        },
+      },
+      { status: status || 500 }
+    )
+  }
+
   // 未知错误
   logger.error('Unhandled API error', error)
   

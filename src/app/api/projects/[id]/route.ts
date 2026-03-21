@@ -27,6 +27,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    console.log(`[Project API] Fetching project: ${id}`)
     
     // 尝试从数据库获取
     let useDatabase = false
@@ -43,9 +44,14 @@ export async function GET(
           .eq('id', id)
           .maybeSingle()
         
+        console.log(`[Project API] Database query result:`, {
+          hasProject: !!project,
+          projectError: projectError?.message
+        })
+        
         // 如果表不存在或其他数据库错误，回退到内存存储
         if (projectError) {
-          console.warn('Database query error, falling back to memory:', projectError.message)
+          console.warn('[Project API] Database query error, falling back to memory:', projectError.message)
         } else if (project) {
           useDatabase = true
           // 获取人物
@@ -54,7 +60,12 @@ export async function GET(
             .select('*')
             .eq('project_id', id)
           
-          if (charError) console.warn('Failed to fetch characters:', charError.message)
+          console.log(`[Project API] Characters query:`, {
+            count: characters?.length,
+            error: charError?.message
+          })
+          
+          if (charError) console.warn('[Project API] Failed to fetch characters:', charError.message)
           
           // 获取分镜
           const { data: scenes, error: sceneError } = await db
@@ -63,7 +74,10 @@ export async function GET(
             .eq('project_id', id)
             .order('scene_number', { ascending: true })
           
-          if (sceneError) console.warn('Failed to fetch scenes:', sceneError.message)
+          console.log(`[Project API] Scenes query:`, {
+            count: scenes?.length,
+            error: sceneError?.message
+          })
           
           // 获取剧集
           const { data: episodes, error: epError } = await db
@@ -126,15 +140,21 @@ export async function GET(
     }
     
     // 使用内存存储（数据库未配置或查询失败时）
+    console.log(`[Project API] Using memory storage for project: ${id}`)
+    console.log(`[Project API] Memory projects: ${memoryProjects.length}, characters: ${memoryCharacters.length}, scenes: ${memoryScenes.length}`)
+    
     const project = memoryProjects.find(p => p.id === id)
     
     if (!project) {
+      console.warn(`[Project API] Project not found in memory: ${id}`)
       return errorResponse('项目不存在', 404)
     }
     
     const characters = memoryCharacters.filter(c => c.projectId === id)
     const scenes = memoryScenes.filter(s => s.projectId === id)
     const episodes = memoryEpisodes.filter(e => e.projectId === id)
+    
+    console.log(`[Project API] Found in memory: project=${project.name}, characters=${characters.length}, scenes=${scenes.length}`)
     
     return successResponse({
       project,

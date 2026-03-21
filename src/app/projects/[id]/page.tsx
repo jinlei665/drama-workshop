@@ -133,7 +133,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || "获取项目失败")
+        // 正确处理错误对象
+        const errorMsg = typeof data.error === 'string' 
+          ? data.error 
+          : (data.error?.message || "获取项目失败")
+        throw new Error(errorMsg)
       }
 
       // API 返回 { success: true, data: { project, characters, scenes } }
@@ -143,7 +147,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setScenes(responseData.scenes || [])
     } catch (error) {
       console.error("获取项目失败:", error)
-      toast.error("获取项目失败")
+      toast.error(error instanceof Error ? error.message : "获取项目失败")
       router.push("/")
     } finally {
       setLoading(false)
