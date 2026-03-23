@@ -159,7 +159,25 @@ async function saveVideo(
   // 本地存储（无对象存储配置时始终使用）
   if (shouldUseLocalStorage()) {
     try {
-      const publicDir = path.join(process.cwd(), 'public', 'videos', sceneId);
+      // 检测 standalone 模式：Next.js standalone 运行时需要保存到 .next/standalone/public
+      const isStandalone = fs.existsSync(path.join(process.cwd(), '.next', 'standalone', 'server.js')) ||
+                          process.cwd().includes('.next/standalone');
+      
+      let publicDir: string;
+      if (isStandalone && !process.cwd().includes('.next/standalone')) {
+        // standalone 模式，但工作目录是项目根目录
+        publicDir = path.join(process.cwd(), '.next', 'standalone', 'public', 'videos', sceneId);
+        console.log(`[Standalone 模式] 视频保存路径: ${publicDir}`);
+      } else if (process.cwd().includes('.next/standalone')) {
+        // 已经在 standalone 目录中运行
+        publicDir = path.join(process.cwd(), 'public', 'videos', sceneId);
+        console.log(`[Standalone 运行时] 视频保存路径: ${publicDir}`);
+      } else {
+        // 开发模式
+        publicDir = path.join(process.cwd(), 'public', 'videos', sceneId);
+        console.log(`[开发模式] 视频保存路径: ${publicDir}`);
+      }
+      
       if (!fs.existsSync(publicDir)) {
         fs.mkdirSync(publicDir, { recursive: true });
       }
@@ -168,8 +186,11 @@ async function saveVideo(
       const filePath = path.join(publicDir, filename);
       fs.writeFileSync(filePath, buffer);
       
+      // 验证文件是否成功写入
+      const stats = fs.statSync(filePath);
+      console.log(`视频已保存: ${filePath} (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+      
       const localUrl = `/videos/${sceneId}/${filename}`;
-      console.log(`视频已保存到本地: ${filePath}`);
       return localUrl;
     } catch (localErr) {
       console.warn(`本地存储失败:`, localErr);
