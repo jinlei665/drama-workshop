@@ -11,6 +11,7 @@
     "dev": "next dev --port 5000",
     "dev:lan": "WATCHPACK_POLLING=true next dev --webpack --port 5000 --hostname 0.0.0.0",
     "start": "next start --port 5000",
+    "deploy": "bash scripts/deploy-remote.sh",
     "lint": "eslint",
     "ts-check": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",

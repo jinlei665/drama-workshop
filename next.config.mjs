@@ -15,8 +15,6 @@ const devOrigins = [
   ...Array.from({ length: 256 }, (_, i) => `10.2.${i}`),
   ...Array.from({ length: 256 }, (_, i) => `10.3.${i}`),
   ...Array.from({ length: 256 }, (_, i) => `10.4.${i}`),
-  // 常见的公网 IP
-  '117.50.81.127',
 ];
 
 const nextConfig = {
@@ -46,6 +44,13 @@ const nextConfig = {
   
   // 允许的开发源
   allowedDevOrigins: devOrigins,
+  
+  // 生产环境或禁用 HMR 时的配置
+  ...(isProd || process.env.DISABLE_HMR === 'true' ? {
+    // 生产模式或禁用 HMR 时不做特殊配置
+  } : {
+    // 开发环境配置
+  }),
   
   images: {
     remotePatterns: [
