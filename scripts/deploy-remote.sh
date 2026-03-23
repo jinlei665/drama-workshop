@@ -30,9 +30,21 @@ if [ ! -d ".next/standalone" ]; then
     echo ""
 fi
 
+# 关键：standalone 模式需要手动复制 public 目录
+if [ -d "public" ] && [ ! -d ".next/standalone/public" ]; then
+    echo "复制 public 目录到 standalone..."
+    cp -r public .next/standalone/
+fi
+
+# 确保视频目录存在
+mkdir -p .next/standalone/public/videos
+echo "视频存储目录: $(pwd)/.next/standalone/public/videos"
+
+echo ""
 echo "启动生产服务在端口 ${PORT}..."
 echo "访问地址: http://0.0.0.0:${PORT}"
 echo ""
 
 # 启动生产服务
-pnpm start
+cd .next/standalone
+PORT=${PORT} node server.js

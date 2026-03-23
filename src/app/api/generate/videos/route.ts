@@ -9,6 +9,47 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 /**
+ * 检查是否应该使用本地存储
+ * 在没有对象存储配置时，无论开发还是生产环境都应该使用本地存储
+ */
+function shouldUseLocalStorage(): boolean {
+  // 如果有对象存储配置，优先使用对象存储
+  const hasS3Config = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL;
+  if (hasS3Config) {
+    return false;
+  }
+  // 没有对象存储配置时，始终使用本地存储
+  return true;
+}
+
+/**
+ * 验证视频文件是否有效
+ */
+function isValidVideoBuffer(buffer: Buffer): { valid: boolean; reason?: string } {
+  // 检查文件大小（视频至少应该有 10KB）
+  if (buffer.length < 10 * 1024) {
+    return { valid: false, reason: `文件太小 (${buffer.length} bytes)，可能不是有效的视频` };
+  }
+  
+  // 检查视频文件魔数（MP4: ftyp, WebM: webm）
+  const header = buffer.slice(0, 12).toString('ascii').toLowerCase();
+  const isMP4 = header.includes('ftyp');
+  const isWebM = header.includes('webm');
+  const isMOV = buffer.slice(4, 8).toString('ascii') === 'ftyp';
+  
+  if (!isMP4 && !isWebM && !isMOV) {
+    // 可能是 HTML 错误页面
+    if (buffer.toString('utf-8').slice(0, 100).toLowerCase().includes('<!doctype') ||
+        buffer.toString('utf-8').slice(0, 100).toLowerCase().includes('<html')) {
+      return { valid: false, reason: '下载的是 HTML 页面，不是视频文件' };
+    }
+    return { valid: false, reason: `未知视频格式，头部: ${buffer.slice(0, 20).toString('hex')}` };
+  }
+  
+  return { valid: true };
+}
+
+/**
  * 下载视频并重新上传到存储
  * 解决 Bot 返回的临时 URL 过期问题
  */
@@ -84,6 +125,17 @@ async function saveVideo(
   storage: S3Storage | null,
   originalUrl: string
 ): Promise<string> {
+  // 验证视频文件
+  const validation = isValidVideoBuffer(buffer);
+  if (!validation.valid) {
+    console.error(`视频验证失败: ${validation.reason}`);
+    console.log(`视频 URL: ${originalUrl.substring(0, 100)}...`);
+    // 返回原始 URL，让前端尝试直接播放
+    return originalUrl;
+  }
+  
+  console.log(`视频验证通过，大小: ${(buffer.length / 1024).toFixed(2)} KB`);
+  
   // 尝试上传到对象存储
   if (storage) {
     try {
@@ -104,9 +156,8 @@ async function saveVideo(
     }
   }
   
-  // 本地存储（仅开发环境）
-  const isDev = process.env.NODE_ENV === 'development' || !process.env.COZE_PROJECT_ENV;
-  if (isDev) {
+  // 本地存储（无对象存储配置时始终使用）
+  if (shouldUseLocalStorage()) {
     try {
       const publicDir = path.join(process.cwd(), 'public', 'videos', sceneId);
       if (!fs.existsSync(publicDir)) {
@@ -118,7 +169,7 @@ async function saveVideo(
       fs.writeFileSync(filePath, buffer);
       
       const localUrl = `/videos/${sceneId}/${filename}`;
-      console.log(`视频已保存到本地: ${localUrl}`);
+      console.log(`视频已保存到本地: ${filePath}`);
       return localUrl;
     } catch (localErr) {
       console.warn(`本地存储失败:`, localErr);
