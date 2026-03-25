@@ -386,6 +386,262 @@ async function getBotId(): Promise<string | null> {
 }
 
 /**
+ * Bot 配置类型
+ */
+interface BotConfig {
+  botId: string | null
+  botType: 'v3_chat' | 'stream_run'
+  botEndpoint?: string
+  botProjectId?: string
+  botSessionId?: string
+}
+
+/**
+ * 获取用户配置的 Bot 配置
+ * 包括 Bot ID、API 类型和相关配置
+ */
+async function getBotConfig(): Promise<BotConfig> {
+  try {
+    // 先尝试从数据库获取
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      try {
+        const db = getSupabaseClient()
+        const { data, error } = await db
+          .from('user_settings')
+          .select('coze_bot_id, coze_bot_type, coze_bot_endpoint, coze_bot_project_id, coze_bot_session_id')
+          .maybeSingle()
+        
+        if (!error && data?.coze_bot_id) {
+          console.log('[AI Config] Got bot config from database')
+          return {
+            botId: data.coze_bot_id,
+            botType: data.coze_bot_type || 'v3_chat',
+            botEndpoint: data.coze_bot_endpoint || undefined,
+            botProjectId: data.coze_bot_project_id || undefined,
+            botSessionId: data.coze_bot_session_id || undefined,
+          }
+        }
+      } catch {
+        // 数据库不可用，继续尝试内存存储
+      }
+    }
+    
+    // 尝试从内存存储获取
+    const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
+    const config = getCozeConfigFromMemory()
+    if (config?.botId) {
+      console.log('[AI Config] Got bot config from memory store')
+      return {
+        botId: config.botId,
+        botType: config.botType || 'v3_chat',
+        botEndpoint: config.botEndpoint,
+        botProjectId: config.botProjectId,
+        botSessionId: config.botSessionId,
+      }
+    }
+  } catch {
+    // 忽略错误
+  }
+  
+  return { botId: null, botType: 'v3_chat' }
+}
+
+/**
+ * 调用 Stream Run API
+ * 新的 Bot API 端点，支持更灵活的调用方式
+ */
+async function invokeStreamRunAPI(
+  prompt: string,
+  config: {
+    apiKey: string
+    endpoint: string
+    projectId: string
+    sessionId?: string
+  }
+): Promise<{ content: string }> {
+  const { apiKey, endpoint, projectId, sessionId } = config
+  
+  logger.info('Invoking Stream Run API', { 
+    endpoint, 
+    projectId,
+    hasSessionId: !!sessionId,
+    promptLength: prompt.length
+  })
+  
+  const requestBody = {
+    content: {
+      query: {
+        prompt: [
+          {
+            type: 'text',
+            content: {
+              text: prompt
+            }
+          }
+        ]
+      }
+    },
+    type: 'query',
+    session_id: sessionId || `session_${Date.now()}`,
+    project_id: projectId
+  }
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    logger.error('Stream Run API failed', { 
+      status: response.status, 
+      error: errorText.slice(0, 500) 
+    })
+    throw new Error(`Stream Run API 调用失败: ${response.status} ${response.statusText}`)
+  }
+  
+  // 处理流式响应
+  const contentType = response.headers.get('content-type') || ''
+  let content = ''
+  
+  if (contentType.includes('text/event-stream') || contentType.includes('application/stream+json')) {
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('无法获取响应流')
+    }
+    
+    const decoder = new TextDecoder()
+    let buffer = ''
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      buffer += decoder.decode(value, { stream: true })
+      
+      // 按双换行分割事件
+      const events = buffer.split('\n\n')
+      buffer = events.pop() || ''
+      
+      for (const eventBlock of events) {
+        if (!eventBlock.trim()) continue
+        
+        const lines = eventBlock.split('\n')
+        let eventData = ''
+        
+        for (const line of lines) {
+          if (line.startsWith('data:')) {
+            eventData = line.slice(5).trim()
+          }
+        }
+        
+        if (!eventData || eventData === '[DONE]') continue
+        
+        try {
+          const data = JSON.parse(eventData)
+          
+          // 处理各种响应格式
+          if (data.type === 'answer' && data.content) {
+            content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+          }
+          
+          if (data.content && typeof data.content === 'string') {
+            content += data.content
+          }
+          
+          // 检查错误
+          if (data.code && data.code !== 0) {
+            throw new Error(`Stream Run API 错误 (code: ${data.code}): ${data.msg}`)
+          }
+        } catch (parseError) {
+          if (parseError instanceof SyntaxError) {
+            continue
+          }
+          throw parseError
+        }
+      }
+    }
+  } else {
+    // 非 SSE 响应
+    const responseText = await response.text()
+    logger.info('Stream Run non-stream response', { length: responseText.length })
+    
+    try {
+      const data = JSON.parse(responseText)
+      if (data.code && data.code !== 0) {
+        throw new Error(`Stream Run API 错误 (code: ${data.code}): ${data.msg}`)
+      }
+      if (data.data?.content) {
+        content = data.data.content
+      } else if (data.content) {
+        content = data.content
+      }
+    } catch {
+      content = responseText
+    }
+  }
+  
+  logger.info('Stream Run API completed', { contentLength: content.length })
+  return { content }
+}
+
+/**
+ * 通过 Stream Run API 调用图像生成
+ */
+async function invokeStreamRunForImageGeneration(
+  prompt: string,
+  config: {
+    apiKey: string
+    endpoint: string
+    projectId: string
+    sessionId?: string
+  },
+  referenceImages?: string[]
+): Promise<{ urls: string[] }> {
+  // 构建图像生成提示词
+  let fullPrompt = `请使用图像生成工具生成以下图片：\n${prompt}`
+  
+  if (referenceImages && referenceImages.length > 0) {
+    fullPrompt += `\n\n参考图片（请保持人物外观一致）：`
+    for (let i = 0; i < referenceImages.length; i++) {
+      fullPrompt += `\n${i + 1}. ${referenceImages[i]}`
+    }
+  }
+  
+  const { content } = await invokeStreamRunAPI(fullPrompt, config)
+  
+  // 从内容中提取图片 URL
+  const urls: string[] = []
+  
+  // 匹配 Markdown 图片语法
+  const markdownRegex = /!\[.*?\]\((https?:\/\/[^\s\)]+)\)/g
+  let match
+  while ((match = markdownRegex.exec(content)) !== null) {
+    urls.push(match[1])
+  }
+  
+  // 匹配直接的图片 URL
+  if (urls.length === 0) {
+    const urlRegex = /(https?:\/\/[^\s"'<>]+\.(?:png|jpg|jpeg|gif|webp|image))/gi
+    while ((match = urlRegex.exec(content)) !== null) {
+      urls.push(match[1])
+    }
+  }
+  
+  if (urls.length === 0) {
+    throw new Error('Bot 未返回有效的图片链接。请确保 Bot 已正确配置图像生成 Skill。')
+  }
+  
+  return { urls }
+}
+
+/**
  * 通过 Bot 调用图像生成 Skill
  * 当 PAT 没有 ImageGenerationClient 权限时，可以通过配置了图像生成 Skill 的 Bot 来调用
  * 
@@ -405,7 +661,8 @@ async function invokeBotForImageGeneration(
   referenceImages?: string[]
 ): Promise<{ urls: string[] }> {
   const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
-  const botId = await getBotId()
+  const botConfig = await getBotConfig()
+  const { botId, botType, botEndpoint, botProjectId, botSessionId } = botConfig
   
   if (!apiKey) {
     throw new Error('通过 Bot 调用图像生成需要配置 Coze API Key')
@@ -415,7 +672,22 @@ async function invokeBotForImageGeneration(
     throw new Error('通过 Bot 调用图像生成需要配置 Bot ID。请在 Coze 平台创建配置了图像生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
-  logger.info('Invoking Bot for image generation', { 
+  // 如果是 stream_run 类型，使用新的 API
+  if (botType === 'stream_run') {
+    if (!botEndpoint || !botProjectId) {
+      throw new Error('Stream Run 模式需要配置端点 URL 和 Project ID')
+    }
+    
+    return invokeStreamRunForImageGeneration(prompt, {
+      apiKey,
+      endpoint: botEndpoint,
+      projectId: botProjectId,
+      sessionId: botSessionId,
+    }, referenceImages)
+  }
+  
+  // 默认使用 v3/chat API
+  logger.info('Invoking Bot for image generation via v3/chat', { 
     botId, 
     promptLength: prompt.length,
     referenceImageCount: referenceImages?.length || 0
@@ -608,6 +880,59 @@ async function invokeBotForImageGeneration(
 }
 
 /**
+ * 通过 Stream Run API 调用视频生成
+ */
+async function invokeStreamRunForVideoGeneration(
+  prompt: string,
+  config: {
+    apiKey: string
+    endpoint: string
+    projectId: string
+    sessionId?: string
+  },
+  imageUrl?: string,
+  lastFrameUrl?: string
+): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
+  // 构建视频生成提示词
+  let videoPrompt = ''
+  
+  if (imageUrl && lastFrameUrl) {
+    videoPrompt = `请使用图生视频功能，根据以下首帧和尾帧图片生成视频：
+
+首帧图片URL：${imageUrl}
+尾帧图片URL：${lastFrameUrl}
+
+视频要求：
+1. 以首帧图片作为视频的第一帧
+2. 以尾帧图片作为视频的最后一帧
+3. ${prompt}
+4. 保持画面风格一致，确保从首帧到尾帧的自然过渡
+5. 请直接返回生成的视频链接`
+  } else if (imageUrl) {
+    videoPrompt = `请使用图生视频功能，根据以下首帧图片生成视频：
+
+首帧图片URL：${imageUrl}
+
+视频要求：
+1. 以提供的图片作为视频的第一帧
+2. ${prompt}
+3. 保持画面风格一致
+4. 请直接返回生成的视频链接，并返回尾帧图片链接`
+  } else {
+    videoPrompt = `请生成以下视频：
+
+${prompt}
+
+请直接返回生成的视频链接。`
+  }
+  
+  const { content } = await invokeStreamRunAPI(videoPrompt, config)
+  
+  // 从内容中提取视频 URL
+  return extractVideoUrlFromContent(content)
+}
+
+/**
  * 通过 Bot 调用视频生成 Skill
  * 当 PAT 没有 VideoGenerationClient 权限时，可以通过配置了视频生成 Skill 的 Bot 来调用
  * 
@@ -623,7 +948,8 @@ async function invokeBotForVideoGeneration(
   lastFrameUrl?: string
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
   const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
-  const botId = await getBotId()
+  const botConfig = await getBotConfig()
+  const { botId, botType, botEndpoint, botProjectId, botSessionId } = botConfig
   
   if (!apiKey) {
     throw new Error('通过 Bot 调用视频生成需要配置 Coze API Key')
@@ -633,7 +959,22 @@ async function invokeBotForVideoGeneration(
     throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
-  logger.info('Invoking Bot for video generation', { 
+  // 如果是 stream_run 类型，使用新的 API
+  if (botType === 'stream_run') {
+    if (!botEndpoint || !botProjectId) {
+      throw new Error('Stream Run 模式需要配置端点 URL 和 Project ID')
+    }
+    
+    return invokeStreamRunForVideoGeneration(prompt, {
+      apiKey,
+      endpoint: botEndpoint,
+      projectId: botProjectId,
+      sessionId: botSessionId,
+    }, imageUrl, lastFrameUrl)
+  }
+  
+  // 默认使用 v3/chat API
+  logger.info('Invoking Bot for video generation via v3/chat', { 
     botId, 
     baseUrl, 
     hasImageUrl: !!imageUrl,

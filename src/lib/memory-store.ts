@@ -46,7 +46,15 @@ export function getSettingsFromMemory(): Record<string, unknown> | null {
 /**
  * 获取 Coze 配置
  */
-export function getCozeConfigFromMemory(): { apiKey?: string; baseUrl?: string; botId?: string } | null {
+export function getCozeConfigFromMemory(): { 
+  apiKey?: string; 
+  baseUrl?: string; 
+  botId?: string;
+  botType?: 'v3_chat' | 'stream_run';
+  botEndpoint?: string;
+  botProjectId?: string;
+  botSessionId?: string;
+} | null {
   const settings = globalForStore.memoryStore.settings
   if (!settings?.coze_api_key) {
     return null
@@ -56,5 +64,9 @@ export function getCozeConfigFromMemory(): { apiKey?: string; baseUrl?: string; 
     apiKey: settings.coze_api_key as string,
     baseUrl: settings.coze_base_url as string | undefined,
     botId: settings.coze_bot_id as string | undefined,
+    botType: (settings.coze_bot_type as 'v3_chat' | 'stream_run') || 'v3_chat',
+    botEndpoint: settings.coze_bot_endpoint as string | undefined,
+    botProjectId: settings.coze_bot_project_id as string | undefined,
+    botSessionId: settings.coze_bot_session_id as string | undefined,
   }
 }

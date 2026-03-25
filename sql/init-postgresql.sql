@@ -168,6 +168,11 @@ CREATE TABLE IF NOT EXISTS user_settings (
     coze_api_key VARCHAR(500),
     coze_base_url VARCHAR(200) DEFAULT 'https://api.coze.com',
     coze_bot_id VARCHAR(100),
+    -- Bot API 类型配置
+    coze_bot_type VARCHAR(20) DEFAULT 'v3_chat', -- 'v3_chat' 或 'stream_run'
+    coze_bot_endpoint VARCHAR(500), -- stream_run 端点 URL
+    coze_bot_project_id VARCHAR(100), -- stream_run project_id
+    coze_bot_session_id VARCHAR(100), -- stream_run session_id
     -- LLM 配置
     llm_provider VARCHAR(50) DEFAULT 'doubao',
     llm_model VARCHAR(100) DEFAULT 'doubao-seed-1-8-251228',

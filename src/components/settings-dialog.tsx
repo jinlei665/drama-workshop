@@ -40,6 +40,11 @@ const DEFAULT_SETTINGS: Settings = {
   coze_api_key: null,
   coze_base_url: 'https://api.coze.cn',
   coze_bot_id: null,
+  // Bot API 类型配置
+  coze_bot_type: 'v3_chat',
+  coze_bot_endpoint: null,
+  coze_bot_project_id: null,
+  coze_bot_session_id: null,
   llm_provider: 'doubao',
   llm_model: 'doubao-seed-1-8-251228',
   llm_api_key: null,
@@ -71,6 +76,11 @@ interface Settings {
   coze_api_key: string | null
   coze_base_url: string | null
   coze_bot_id: string | null
+  // Bot API 类型配置
+  coze_bot_type: 'v3_chat' | 'stream_run'
+  coze_bot_endpoint: string | null
+  coze_bot_project_id: string | null
+  coze_bot_session_id: string | null
   // LLM 配置
   llm_provider: string
   llm_model: string
@@ -413,6 +423,10 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           cozeApiKey: settings.coze_api_key,
           cozeBaseUrl: settings.coze_base_url,
           cozeBotId: settings.coze_bot_id,
+          cozeBotType: settings.coze_bot_type,
+          cozeBotEndpoint: settings.coze_bot_endpoint,
+          cozeBotProjectId: settings.coze_bot_project_id,
+          cozeBotSessionId: settings.coze_bot_session_id,
           llmProvider: settings.llm_provider,
           llmModel: settings.llm_model,
           llmApiKey: settings.llm_api_key,
@@ -574,6 +588,80 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       在 Coze 创建智能体后，URL 中的数字即为 Bot ID
                     </p>
                   </div>
+
+                  {/* Bot API 类型配置 */}
+                  <div className="space-y-2">
+                    <Label className="flex items-center gap-2">
+                      <Server className="w-4 h-4" />
+                      Bot API 类型
+                    </Label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="bot_type"
+                          value="v3_chat"
+                          checked={settings.coze_bot_type === 'v3_chat'}
+                          onChange={() => updateSetting("coze_bot_type", 'v3_chat')}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm">V3 Chat（默认）</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="bot_type"
+                          value="stream_run"
+                          checked={settings.coze_bot_type === 'stream_run'}
+                          onChange={() => updateSetting("coze_bot_type", 'stream_run')}
+                          className="w-4 h-4"
+                        />
+                        <span className="text-sm">Stream Run</span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      选择 Bot 调用方式。V3 Chat 使用标准 API，Stream Run 使用自定义端点
+                    </p>
+                  </div>
+
+                  {/* Stream Run 配置 */}
+                  {settings.coze_bot_type === 'stream_run' && (
+                    <div className="space-y-4 p-4 bg-muted/30 rounded-lg border border-border/50">
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <Server className="w-4 h-4" />
+                          Stream Run 端点
+                        </Label>
+                        <Input
+                          placeholder="https://xxx.coze.site/stream_run"
+                          value={settings.coze_bot_endpoint || ""}
+                          onChange={(e) => updateSetting("coze_bot_endpoint", e.target.value || null)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Stream Run API 的完整 URL
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Project ID</Label>
+                          <Input
+                            placeholder="7618544559110307859"
+                            value={settings.coze_bot_project_id || ""}
+                            onChange={(e) => updateSetting("coze_bot_project_id", e.target.value || null)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Session ID（可选）</Label>
+                          <Input
+                            placeholder="jPKT12Yr8547Iw16_5sbH"
+                            value={settings.coze_bot_session_id || ""}
+                            onChange={(e) => updateSetting("coze_bot_session_id", e.target.value || null)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
