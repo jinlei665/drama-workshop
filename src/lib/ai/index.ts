@@ -529,10 +529,13 @@ async function invokeStreamRunAPI(
     project_id: projectId
   }
   
+  // 处理 apiKey，确保不会有重复的 Bearer 前缀
+  const authHeader = apiKey.startsWith('Bearer ') ? apiKey : `Bearer ${apiKey}`
+  
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': authHeader,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(requestBody),
