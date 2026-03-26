@@ -832,11 +832,11 @@ ${prompt}
           }
           
           // 处理各种可能的内容字段
-          // 1. conversation.message.completed 事件 - 只处理 answer 类型
+          // 1. conversation.message.completed 事件
           if (eventType === 'conversation.message.completed') {
-            // data.type 是消息类型：answer, follow_up, verbose 等
-            // 只有 answer 类型包含实际的视频 URL
             const messageType = data.type
+            
+            // 处理 answer 类型 - 包含最终回复
             if (data.content && messageType === 'answer') {
               content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
               logger.info('Bot video got answer content', { 
@@ -844,15 +844,46 @@ ${prompt}
                 contentLength: content.length,
                 preview: content.slice(0, 200)
               })
-            } else if (data.content) {
-              logger.info('Bot video ignoring non-answer message', { 
+            }
+            // 处理 function_call 类型 - 包含插件调用参数，可能有视频 URL
+            else if (data.content && messageType === 'function_call') {
+              const fcContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+              logger.info('Bot video got function_call content', { 
+                messageType, 
+                contentLength: fcContent.length 
+              })
+              // 解析 function_call 内容，提取可能的视频信息
+              try {
+                const fcData = JSON.parse(fcContent)
+                // 如果有结果（视频生成完成）
+                if (fcData.output || fcData.result || fcData.video_url) {
+                  content = fcContent
+                  logger.info('Bot video function_call has result')
+                }
+              } catch {
+                // 解析失败，保存原始内容
+                if (!content) content = fcContent
+              }
+            }
+            // 处理 tool_response 类型 - 包含工具执行结果
+            else if (data.content && messageType === 'tool_response') {
+              const trContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+              logger.info('Bot video got tool_response content', { 
+                messageType, 
+                contentLength: trContent.length 
+              })
+              // tool_response 通常包含最终结果
+              content = trContent
+            }
+            else if (data.content) {
+              logger.info('Bot video ignoring other message type', { 
                 messageType, 
                 contentLength: typeof data.content === 'string' ? data.content.length : JSON.stringify(data.content).length
               })
             }
           }
           
-          // 2. answer 事件（带内容）- 但不覆盖已有内容（优先保留 conversation.message.completed 的内容）
+          // 2. answer 事件（带内容）- 但不覆盖已有内容
           if (data.type === 'answer' && data.content && !content) {
             content = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
           }
