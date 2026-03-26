@@ -27,12 +27,6 @@ function getDefaultSettings() {
     // Coze API 配置（自部署时需要配置）
     coze_api_key: null,
     coze_base_url: 'https://api.coze.com',
-    coze_bot_id: null,
-    // Bot API 类型配置
-    coze_bot_type: 'v3_chat',
-    coze_bot_endpoint: null,
-    coze_bot_project_id: null,
-    coze_bot_session_id: null,
     // LLM 配置
     llm_provider: 'doubao',
     llm_model: DEFAULT_LLM_MODEL,
@@ -110,11 +104,6 @@ export async function PUT(request: NextRequest) {
       cozeApiKey?: string
       cozeBaseUrl?: string
       cozeBotId?: string
-      // Bot API 类型配置
-      cozeBotType?: 'v3_chat' | 'stream_run'
-      cozeBotEndpoint?: string
-      cozeBotProjectId?: string
-      cozeBotSessionId?: string
       // LLM 配置
       llmProvider?: string
       llmModel?: string
@@ -158,10 +147,6 @@ export async function PUT(request: NextRequest) {
           coze_api_key: body.cozeApiKey,
           coze_base_url: body.cozeBaseUrl,
           coze_bot_id: body.cozeBotId,
-          coze_bot_type: body.cozeBotType,
-          coze_bot_endpoint: body.cozeBotEndpoint,
-          coze_bot_project_id: body.cozeBotProjectId,
-          coze_bot_session_id: body.cozeBotSessionId,
           llm_provider: body.llmProvider,
           llm_model: body.llmModel,
           llm_api_key: body.llmApiKey,
@@ -213,10 +198,6 @@ export async function PUT(request: NextRequest) {
       coze_api_key: body.cozeApiKey,
       coze_base_url: body.cozeBaseUrl,
       coze_bot_id: body.cozeBotId,
-      coze_bot_type: body.cozeBotType,
-      coze_bot_endpoint: body.cozeBotEndpoint,
-      coze_bot_project_id: body.cozeBotProjectId,
-      coze_bot_session_id: body.cozeBotSessionId,
       llm_provider: body.llmProvider,
       llm_model: body.llmModel,
       llm_api_key: body.llmApiKey,
