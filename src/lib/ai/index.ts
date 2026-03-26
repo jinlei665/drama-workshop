@@ -762,10 +762,10 @@ ${prompt}
   let chunkCount = 0
   let firstChunk = true
   
-  // 设置超时（3分钟）
+  // 设置超时（10分钟，视频生成需要较长时间）
   const timeout = setTimeout(() => {
-    logger.warn('Bot video stream timeout after 3 minutes', { contentLength: content.length, chunkCount })
-  }, 180000)
+    logger.warn('Bot video stream timeout after 10 minutes', { contentLength: content.length, chunkCount })
+  }, 600000)
   
   try {
     while (true) {
@@ -858,26 +858,19 @@ ${prompt}
                 preview: content.slice(0, 200)
               })
             }
-            // 处理 function_call 类型 - 包含插件调用参数，可能有视频 URL
+            // 处理 function_call 类型 - 包含插件调用参数，不包含视频结果
+            // 注意：function_call 只是工具调用的参数，真正的结果在 tool_response 中
             else if (data.content && messageType === 'function_call') {
               const fcContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
-              logger.info('Bot video got function_call content', { 
+              logger.info('Bot video got function_call content (tool invocation params)', { 
                 messageType, 
                 contentLength: fcContent.length,
                 fullContent: fcContent.slice(0, 2000)  // 打印完整内容用于调试
               })
-              // 解析 function_call 内容，提取可能的视频信息
-              try {
-                const fcData = JSON.parse(fcContent)
-                // 如果有结果（视频生成完成）
-                if (fcData.output || fcData.result || fcData.video_url) {
-                  content = fcContent
-                  logger.info('Bot video function_call has result')
-                }
-              } catch {
-                // 解析失败，保存原始内容
-                if (!content) content = fcContent
-              }
+              // 不保存 function_call 内容，因为它只是工具调用的参数，不是结果
+              // 真正的视频结果会在 tool_response 中返回
+              // 如果 content 已经有值，不要覆盖
+              logger.info('Bot video waiting for tool_response...')
             }
             // 处理 tool_response 类型 - 包含工具执行结果
             else if (data.content && messageType === 'tool_response') {
@@ -968,6 +961,23 @@ ${prompt}
 }
 
 /**
+ * 检查 URL 是否是有效的视频 URL（排除图标等无关 URL）
+ */
+function isValidVideoUrl(url: string): boolean {
+  // 排除 plugin_icon 和 BIZ_BOT_ICON（Bot 图标）
+  if (url.includes('plugin_icon') || url.includes('BIZ_BOT_ICON')) {
+    logger.warn('Skipping invalid video URL (plugin icon)', { url: url.slice(0, 100) })
+    return false
+  }
+  // 排除头像相关的 URL
+  if (url.includes('avatar') || url.includes('/icon/')) {
+    logger.warn('Skipping invalid video URL (avatar/icon)', { url: url.slice(0, 100) })
+    return false
+  }
+  return true
+}
+
+/**
  * 从 Bot 响应内容中提取视频 URL 和尾帧 URL
  */
 function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFrameUrl?: string } {
@@ -984,7 +994,7 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFr
   // 1. 匹配 Markdown 格式的视频链接: ![video](url)
   const markdownRegex = /!\[video\]\((https?:\/\/[^)]+)\)/i
   const markdownMatch = markdownRegex.exec(content)
-  if (markdownMatch) {
+  if (markdownMatch && isValidVideoUrl(markdownMatch[1])) {
     videoUrl = markdownMatch[1]
     logger.info('Found video URL in Markdown format', { videoUrl })
   }
@@ -993,7 +1003,7 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFr
   if (!videoUrl) {
     const videoRegex = /(https?:\/\/[^\s"'<>]+\.(?:mp4|webm|mov)(?:\?[^\s"'<>]*)?)/i
     const match = videoRegex.exec(content)
-    if (match) {
+    if (match && isValidVideoUrl(match[1])) {
       videoUrl = match[1]
       logger.info('Found direct video URL', { videoUrl })
     }
@@ -1004,7 +1014,7 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFr
     // 匹配 coze.cn/file/ 或 coze.com/file/ 格式
     const cozeFileRegex = /(https?:\/\/[^\s"'<>]*\.?coze\.(?:cn|com)\/file\/[^\s"'<>]+)/i
     const cozeFileMatch = cozeFileRegex.exec(content)
-    if (cozeFileMatch) {
+    if (cozeFileMatch && isValidVideoUrl(cozeFileMatch[1])) {
       videoUrl = cozeFileMatch[1]
       logger.info('Found Coze file URL', { videoUrl })
     }
@@ -1014,7 +1024,7 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFr
   if (!videoUrl) {
     const tosRegex = /(https?:\/\/[^\s"'<>]*\.?tos-cn-[^\s"'<>]+\.volces\.com[^\s"'<>]*)/i
     const tosMatch = tosRegex.exec(content)
-    if (tosMatch) {
+    if (tosMatch && isValidVideoUrl(tosMatch[1])) {
       videoUrl = tosMatch[1]
       logger.info('Found Volcengine TOS URL', { videoUrl })
     }
@@ -1024,7 +1034,7 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFr
   if (!videoUrl) {
     const cozeStorageRegex = /(https?:\/\/[^\s"'<>]*tos\.coze\.site[^\s"'<>]*)/i
     const cozeStorageMatch = cozeStorageRegex.exec(content)
-    if (cozeStorageMatch) {
+    if (cozeStorageMatch && isValidVideoUrl(cozeStorageMatch[1])) {
       videoUrl = cozeStorageMatch[1]
       logger.info('Found Coze storage URL', { videoUrl })
     }
@@ -1034,7 +1044,7 @@ function extractVideoUrlFromContent(content: string): { videoUrl: string; lastFr
   if (!videoUrl) {
     const anyUrlRegex = /(https?:\/\/[^\s"'<>]*(?:video|file|download|output)[^\s"'<>]*)/i
     const anyMatch = anyUrlRegex.exec(content)
-    if (anyMatch) {
+    if (anyMatch && isValidVideoUrl(anyMatch[1])) {
       videoUrl = anyMatch[1]
       logger.info('Found generic video-related URL', { videoUrl })
     }
