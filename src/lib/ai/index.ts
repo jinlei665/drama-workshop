@@ -21,6 +21,7 @@ import {
   APIError,
 } from 'coze-coding-dev-sdk'
 import { Errors, withRetry, logger } from '@/lib/errors'
+import { withRateLimitAndRetry, VIDEO_RATE_LIMIT_CONFIG } from '@/lib/rate-limiter'
 import { 
   OpenAICompatibleClient, 
   OPENAI_COMPATIBLE_PROVIDERS,
@@ -680,35 +681,38 @@ ${prompt}
     hasImageUrl: !!imageUrl, 
     promptLength: videoPrompt.length
   })
-  
-  // 调用 Bot API
-  // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
-  const response = await fetch(`${baseUrl}/v3/chat`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      bot_id: botId,
-      user_id: 'drama-workshop-video-gen',
-      stream: true,
-      auto_save_history: false,
-      additional_messages: [{
-        role: 'user',
-        content: videoPrompt,
-        content_type: 'text'
-      }],
-    }),
-  })
-  
-  if (!response.ok) {
-    const errorText = await response.text()
-    logger.error('Bot video API failed', { status: response.status, error: errorText.slice(0, 500) })
-    throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
-  }
-  
-  logger.info('Bot video API response ok, processing stream...')
+
+  // 使用限流器包装 API 调用
+  return withRateLimitAndRetry(
+    async () => {
+      // 调用 Bot API
+      // 注意：Coze API 要求 auto_save_history=false 时必须使用 stream=true
+      const response = await fetch(`${baseUrl}/v3/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          bot_id: botId,
+          user_id: 'drama-workshop-video-gen',
+          stream: true,
+          auto_save_history: false,
+          additional_messages: [{
+            role: 'user',
+            content: videoPrompt,
+            content_type: 'text'
+          }],
+        }),
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        logger.error('Bot video API failed', { status: response.status, error: errorText.slice(0, 500) })
+        throw new Error(`Bot API 调用失败: ${response.status} ${response.statusText} - ${errorText.slice(0, 200)}`)
+      }
+      
+      logger.info('Bot video API response ok, processing stream...')
   
   // 检查响应类型
   const responseContentType = response.headers.get('content-type') || ''
@@ -892,6 +896,13 @@ ${prompt}
   
   // 从内容中提取视频 URL
   return extractVideoUrlFromContent(content)
+    },
+    {
+      config: VIDEO_RATE_LIMIT_CONFIG,
+      maxRetries: 3,
+      baseDelay: 5000,
+    }
+  )
 }
 
 /**
