@@ -819,8 +819,8 @@ ${prompt}
         try {
           const data = JSON.parse(eventData)
           
-          // 打印所有事件类型和关键字段
-          if (chunkCount <= 5 || eventType.includes('completed') || data.status === 'completed') {
+          // 打印所有事件类型和关键字段（前20个事件或完成事件）
+          if (chunkCount <= 20 || eventType.includes('completed') || data.status === 'completed') {
             logger.info('Bot video event detail', { 
               eventType, 
               dataType: data.type, 
@@ -829,6 +829,19 @@ ${prompt}
               hasDataContent: !!(data.data?.content || data.data?.[0]?.content),
               dataKeys: Object.keys(data).slice(0, 10)
             })
+          }
+          
+          // 处理 conversation.chat.completed 事件 - 对话完成
+          if (eventType === 'conversation.chat.completed') {
+            logger.info('Bot video chat completed', { 
+              status: data.status,
+              usage: data.usage,
+              lastError: data.last_error
+            })
+            // 检查是否有错误
+            if (data.last_error?.code && data.last_error.code !== 0) {
+              logger.error('Bot video chat error', { code: data.last_error.code, msg: data.last_error.msg })
+            }
           }
           
           // 处理各种可能的内容字段
@@ -850,7 +863,8 @@ ${prompt}
               const fcContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
               logger.info('Bot video got function_call content', { 
                 messageType, 
-                contentLength: fcContent.length 
+                contentLength: fcContent.length,
+                fullContent: fcContent.slice(0, 2000)  // 打印完整内容用于调试
               })
               // 解析 function_call 内容，提取可能的视频信息
               try {
@@ -870,16 +884,33 @@ ${prompt}
               const trContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
               logger.info('Bot video got tool_response content', { 
                 messageType, 
-                contentLength: trContent.length 
+                contentLength: trContent.length,
+                fullContent: trContent.slice(0, 2000)  // 打印完整内容用于调试
               })
               // tool_response 通常包含最终结果
               content = trContent
             }
             else if (data.content) {
-              logger.info('Bot video ignoring other message type', { 
-                messageType, 
-                contentLength: typeof data.content === 'string' ? data.content.length : JSON.stringify(data.content).length
-              })
+              const otherContent = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+              // verbose 类型可能包含工具执行状态
+              if (messageType === 'verbose') {
+                logger.info('Bot video got verbose message', { 
+                  contentLength: otherContent.length,
+                  contentPreview: otherContent.slice(0, 1000)
+                })
+                // 检查是否包含视频相关信息
+                if (otherContent.includes('video') || otherContent.includes('mp4') || otherContent.includes('url')) {
+                  logger.info('Bot video verbose contains video-related info')
+                  // 不覆盖已有内容，但记录下来
+                  if (!content) content = otherContent
+                }
+              } else {
+                logger.info('Bot video ignoring other message type', { 
+                  messageType, 
+                  contentLength: otherContent.length,
+                  contentPreview: otherContent.slice(0, 500)
+                })
+              }
             }
           }
           
