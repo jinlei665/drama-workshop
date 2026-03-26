@@ -163,14 +163,25 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
     // 先尝试从数据库获取
     const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
     
+    console.log('[AI Config] isDatabaseConfigured:', isDatabaseConfigured())
+    
     if (isDatabaseConfigured()) {
       try {
         // 使用 service_role 客户端绕过 RLS
         const db = getSupabaseClient(true)
+        console.log('[AI Config] Using service_role client')
+        
         const { data, error } = await db
           .from('user_settings')
           .select('coze_api_key, coze_base_url')
           .maybeSingle()
+        
+        console.log('[AI Config] Query result:', { 
+          hasData: !!data, 
+          hasError: !!error,
+          error: error?.message,
+          hasApiKey: !!data?.coze_api_key
+        })
         
         if (error) {
           console.log('[AI Config] Database query error:', error.message)
@@ -410,22 +421,31 @@ async function getBotConfig(): Promise<BotConfig> {
     // 先尝试从数据库获取
     const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
     
+    console.log('[Bot Config] isDatabaseConfigured:', isDatabaseConfigured())
+    
     if (isDatabaseConfigured()) {
       try {
         // 使用 service_role 客户端绕过 RLS
         const db = getSupabaseClient(true)
+        console.log('[Bot Config] Using service_role client')
+        
         const { data, error } = await db
           .from('user_settings')
           .select('coze_bot_id, coze_bot_type, coze_bot_endpoint, coze_bot_project_id, coze_bot_session_id')
           .maybeSingle()
         
+        console.log('[Bot Config] Query result:', { 
+          hasData: !!data, 
+          hasError: !!error,
+          error: error?.message,
+          botId: data?.coze_bot_id,
+          botType: data?.coze_bot_type,
+          hasEndpoint: !!data?.coze_bot_endpoint
+        })
+        
         // 只要有任何 Bot 相关配置就返回
         if (!error && data && (data.coze_bot_id || data.coze_bot_type === 'stream_run')) {
-          console.log('[AI Config] Got bot config from database', { 
-            hasBotId: !!data.coze_bot_id,
-            botType: data.coze_bot_type,
-            hasEndpoint: !!data.coze_bot_endpoint 
-          })
+          console.log('[Bot Config] Got config from database')
           return {
             botId: data.coze_bot_id || null,
             botType: data.coze_bot_type || 'v3_chat',
@@ -434,24 +454,25 @@ async function getBotConfig(): Promise<BotConfig> {
             botSessionId: data.coze_bot_session_id || undefined,
           }
         } else if (!error) {
-          console.log('[AI Config] Database query returned no bot config')
+          console.log('[Bot Config] Database query returned no bot config')
         } else {
-          console.log('[AI Config] Database query error:', error?.message)
+          console.log('[Bot Config] Database query error:', error?.message)
         }
       } catch (dbError) {
-        console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
+        console.log('[Bot Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
       }
     }
     
     // 尝试从内存存储获取
     const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
     const config = getCozeConfigFromMemory()
+    console.log('[Bot Config] Memory config:', { 
+      hasBotId: !!config?.botId,
+      botType: config?.botType,
+      hasEndpoint: !!config?.botEndpoint 
+    })
     if (config?.botId || config?.botType === 'stream_run') {
-      console.log('[AI Config] Got bot config from memory store', {
-        hasBotId: !!config?.botId,
-        botType: config?.botType,
-        hasEndpoint: !!config?.botEndpoint
-      })
+      console.log('[Bot Config] Got bot config from memory store')
       return {
         botId: config?.botId || null,
         botType: config?.botType || 'v3_chat',
@@ -460,10 +481,11 @@ async function getBotConfig(): Promise<BotConfig> {
         botSessionId: config?.botSessionId,
       }
     }
-  } catch {
-    // 忽略错误
+  } catch (err) {
+    console.log('[Bot Config] Error:', err instanceof Error ? err.message : String(err))
   }
   
+  console.log('[Bot Config] No config found, returning default')
   return { botId: null, botType: 'v3_chat' }
 }
 
