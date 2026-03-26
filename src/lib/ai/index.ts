@@ -1820,7 +1820,8 @@ export async function generateVideoFromFrames(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  // 注意：不再禁用代理，因为用户可能需要代理访问 API
+  // 禁用代理，避免本地代理（如 Clash）连接失败
+  const savedProxy = disableProxy()
   
   try {
     logger.info('Frame-to-video generation started')
@@ -1893,6 +1894,9 @@ export async function generateVideoFromFrames(
       throw err
     }
     throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
+  } finally {
+    // 恢复代理设置
+    restoreProxy(savedProxy)
   }
 }
 
