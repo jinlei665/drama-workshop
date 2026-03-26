@@ -187,6 +187,35 @@ export async function PUT(request: NextRequest) {
           if (error) throw error
         }
 
+        // 同时更新内存存储，确保立即生效
+        saveSettingsToMemory({
+          coze_api_key: body.cozeApiKey,
+          coze_base_url: body.cozeBaseUrl,
+          coze_bot_id: body.cozeBotId,
+          llm_provider: body.llmProvider,
+          llm_model: body.llmModel,
+          llm_api_key: body.llmApiKey,
+          llm_base_url: body.llmBaseUrl,
+          image_provider: body.imageProvider,
+          image_model: body.imageModel,
+          image_api_key: body.imageApiKey,
+          image_base_url: body.imageBaseUrl,
+          image_size: body.imageSize,
+          video_provider: body.videoProvider,
+          video_model: body.videoModel,
+          video_api_key: body.videoApiKey,
+          video_base_url: body.videoBaseUrl,
+          video_resolution: body.videoResolution,
+          video_ratio: body.videoRatio,
+          voice_provider: body.voiceProvider,
+          voice_model: body.voiceModel,
+          voice_api_key: body.voiceApiKey,
+          voice_base_url: body.voiceBaseUrl,
+          voice_default_style: body.voiceDefaultStyle,
+          ffmpeg_path: body.ffmpegPath,
+          ffprobe_path: body.ffprobePath,
+        })
+
         return successResponse({ saved: true })
       } catch (dbError) {
         console.warn('Database not available, saving to memory:', dbError)

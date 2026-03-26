@@ -157,11 +157,19 @@ export const AVAILABLE_LLM_MODELS = [
 
 /**
  * 获取用户配置的 Coze API Key
- * 优先级：传入参数 > 用户设置（数据库或内存） > 环境变量
+ * 优先级：内存（最新设置） → 数据库 → 环境变量
  */
 async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string }> {
   try {
-    // 先尝试从数据库获取
+    // 优先从内存获取（最新的设置）
+    const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
+    const memoryConfig = getCozeConfigFromMemory()
+    if (memoryConfig?.apiKey) {
+      console.log('[AI Config] Got config from memory store, botId:', memoryConfig.botId)
+      return memoryConfig
+    }
+    
+    // 再尝试从数据库获取
     const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
     
     if (isDatabaseConfigured()) {
@@ -169,7 +177,7 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
         const db = getSupabaseClient()
         const { data, error } = await db
           .from('user_settings')
-          .select('coze_api_key, coze_base_url')
+          .select('coze_api_key, coze_base_url, coze_bot_id')
           .maybeSingle()
         
         if (error) {
@@ -177,7 +185,7 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
         }
         
         if (!error && data?.coze_api_key) {
-          console.log('[AI Config] Got config from database')
+          console.log('[AI Config] Got config from database, botId:', data.coze_bot_id)
           return {
             apiKey: data.coze_api_key,
             baseUrl: data.coze_base_url || undefined,
@@ -186,19 +194,6 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
       } catch (dbError) {
         console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
       }
-    }
-    
-    // 尝试从内存存储获取
-    const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
-    const memoryConfig = getCozeConfigFromMemory()
-    console.log('[AI Config] Memory config check:', { 
-      hasConfig: !!memoryConfig, 
-      hasApiKey: !!memoryConfig?.apiKey,
-      baseUrl: memoryConfig?.baseUrl 
-    })
-    if (memoryConfig?.apiKey) {
-      console.log('[AI Config] Got config from memory store')
-      return memoryConfig
     }
   } catch (err) {
     console.log('[AI Config] Error getting config:', err instanceof Error ? err.message : String(err))
@@ -349,10 +344,19 @@ export function getAvailableProviders() {
 /**
  * 获取用户配置的 Bot ID
  * 用于通过 Bot 调用 Skills（如图像生成、视频生成）
+ * 优先级：内存 → 数据库
  */
 async function getBotId(): Promise<string | null> {
   try {
-    // 先尝试从数据库获取
+    // 优先从内存获取（最新的设置）
+    const { getSettingsFromMemory } = await import('@/lib/memory-store')
+    const memorySettings = getSettingsFromMemory()
+    if (memorySettings?.coze_bot_id) {
+      console.log('[AI Config] Got bot_id from memory store:', memorySettings.coze_bot_id)
+      return memorySettings.coze_bot_id as string
+    }
+    
+    // 再尝试从数据库获取
     const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
     
     if (isDatabaseConfigured()) {
@@ -364,20 +368,12 @@ async function getBotId(): Promise<string | null> {
           .maybeSingle()
         
         if (!error && data?.coze_bot_id) {
-          console.log('[AI Config] Got bot_id from database')
+          console.log('[AI Config] Got bot_id from database:', data.coze_bot_id)
           return data.coze_bot_id
         }
       } catch {
-        // 数据库不可用，继续尝试内存存储
+        // 数据库不可用
       }
-    }
-    
-    // 尝试从内存存储获取
-    const { getSettingsFromMemory } = await import('@/lib/memory-store')
-    const settings = getSettingsFromMemory()
-    if (settings?.coze_bot_id) {
-      console.log('[AI Config] Got bot_id from memory store')
-      return settings.coze_bot_id as string
     }
   } catch {
     // 忽略错误

@@ -33,6 +33,7 @@ export function saveSettingsToMemory(settings: Record<string, unknown>): void {
   console.log('[MemoryStore] Settings saved:', {
     hasCozeApiKey: !!settings.coze_api_key,
     cozeBaseUrl: settings.coze_base_url,
+    botId: settings.coze_bot_id,
   })
 }
 
