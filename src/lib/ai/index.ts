@@ -1725,6 +1725,7 @@ export function createVideoClient(
 /**
  * 文生视频
  * 支持用户配置的 Coze API Key
+ * 策略顺序：沙箱凭证 → 用户 PAT → Bot Skills
  */
 export async function generateVideo(
   prompt: string,
@@ -1737,50 +1738,93 @@ export async function generateVideo(
   try {
     logger.info('Video generation started', { prompt: prompt.slice(0, 100) })
 
-    // 策略1: 尝试直接调用视频生成 API
+    // 策略1: 优先尝试沙箱内置凭证（仅在有沙箱环境时）
+    const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
+    if (hasSandboxCredentials) {
+      try {
+        const sdkConfig = new Config()
+        const client = new VideoGenerationClient(sdkConfig, headers)
+
+        const content = [{ type: 'text' as const, text: prompt }]
+
+        const response = await client.videoGeneration(content, {
+          model: options?.model || DEFAULT_VIDEO_MODEL,
+          duration: options?.duration ?? 5,
+          ratio: options?.ratio ?? '16:9',
+          resolution: options?.resolution ?? '720p',
+          generateAudio: options?.generateAudio ?? true,
+          watermark: options?.watermark ?? false,
+        })
+
+        if (response.videoUrl) {
+          logger.info('Video generation completed with sandbox credentials')
+          return {
+            videoUrl: response.videoUrl,
+            lastFrameUrl: response.lastFrameUrl || undefined,
+          }
+        }
+      } catch (sandboxErr) {
+        const errMsg = sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr)
+        logger.warn('Sandbox credentials failed for video generation:', { error: errMsg })
+      }
+    }
+
+    // 策略2: 尝试用户 PAT 直接调用 API
     try {
-      const client = await createVideoClientAsync(config, headers)
+      const userConfig = await getUserCozeConfig()
+      const apiKey = config?.apiKey || userConfig?.apiKey
+      
+      if (apiKey) {
+        const clientConfig = new Config({
+          apiKey,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl || 'https://api.coze.cn',
+          timeout: 600000,
+        })
+        const client = new VideoGenerationClient(clientConfig, headers)
 
-      const content = [{ type: 'text' as const, text: prompt }]
+        const content = [{ type: 'text' as const, text: prompt }]
 
-      const response = await client.videoGeneration(content, {
-        model: options?.model || DEFAULT_VIDEO_MODEL,
-        duration: options?.duration ?? 5,
-        ratio: options?.ratio ?? '16:9',
-        resolution: options?.resolution ?? '720p',
-        generateAudio: options?.generateAudio ?? true,
-        watermark: options?.watermark ?? false,
-      })
+        const response = await client.videoGeneration(content, {
+          model: options?.model || DEFAULT_VIDEO_MODEL,
+          duration: options?.duration ?? 5,
+          ratio: options?.ratio ?? '16:9',
+          resolution: options?.resolution ?? '720p',
+          generateAudio: options?.generateAudio ?? true,
+          watermark: options?.watermark ?? false,
+        })
 
-      if (response.videoUrl) {
-        logger.info('Video generation completed via direct API')
-        return {
-          videoUrl: response.videoUrl,
-          lastFrameUrl: response.lastFrameUrl || undefined,
+        if (response.videoUrl) {
+          logger.info('Video generation completed via user PAT')
+          return {
+            videoUrl: response.videoUrl,
+            lastFrameUrl: response.lastFrameUrl || undefined,
+          }
         }
       }
     } catch (directErr) {
       const errMsg = directErr instanceof Error ? directErr.message : String(directErr)
       logger.warn('Direct video generation API failed:', { error: errMsg })
-      // 直接调用失败，尝试 Bot Skills
     }
 
-    // 策略2: 通过 Bot 调用 Skills
-    logger.info('Trying video generation via Bot Skills')
-    try {
-      const userConfig = await getUserCozeConfig()
-      const botResult = await invokeBotForVideoGeneration(prompt, {
-        apiKey: config?.apiKey || userConfig?.apiKey || undefined,
-        baseUrl: config?.baseUrl || userConfig?.baseUrl,
-      })
-      
-      if (botResult.videoUrl) {
-        logger.info('Video generation completed via Bot Skills')
-        return { videoUrl: botResult.videoUrl }
+    // 策略3: 通过 Bot 调用 Skills（仅在配置了 Bot ID 时）
+    const botId = await getBotId()
+    if (botId) {
+      logger.info('Trying video generation via Bot Skills')
+      try {
+        const userConfig = await getUserCozeConfig()
+        const botResult = await invokeBotForVideoGeneration(prompt, {
+          apiKey: config?.apiKey || userConfig?.apiKey || undefined,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl,
+        })
+        
+        if (botResult.videoUrl) {
+          logger.info('Video generation completed via Bot Skills')
+          return { videoUrl: botResult.videoUrl }
+        }
+      } catch (botErr) {
+        const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+        logger.warn('Bot Skills failed for video generation:', { error: errMsg })
       }
-    } catch (botErr) {
-      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
-      logger.warn('Bot Skills failed for video generation:', { error: errMsg })
     }
 
     // 所有策略都失败
@@ -1798,6 +1842,7 @@ export async function generateVideo(
 /**
  * 图生视频（首帧）
  * 支持用户配置的 Coze API Key
+ * 策略顺序：沙箱凭证 → 用户 PAT → Bot Skills
  */
 export async function generateVideoFromImage(
   prompt: string,
@@ -1807,76 +1852,118 @@ export async function generateVideoFromImage(
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
   // 注意：不再禁用代理，因为用户可能需要代理访问 API
-  // 如果遇到代理问题，可以在调用时传入特定配置
   
   try {
     logger.info('Image-to-video generation started')
 
-    // 策略1: 尝试直接调用视频生成 API
+    // 策略1: 优先尝试沙箱内置凭证（仅在有沙箱环境时）
+    const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
+    if (hasSandboxCredentials) {
+      try {
+        const sdkConfig = new Config()
+        const client = new VideoGenerationClient(sdkConfig, headers)
+
+        const content = [
+          {
+            type: 'image_url' as const,
+            image_url: { url: firstFrameUrl },
+            role: 'first_frame' as const,
+          },
+          { type: 'text' as const, text: prompt },
+        ]
+
+        const response = await client.videoGeneration(content, {
+          model: options?.model || DEFAULT_VIDEO_MODEL,
+          duration: options?.duration ?? 5,
+          ratio: options?.ratio ?? '16:9',
+          resolution: options?.resolution ?? '720p',
+          generateAudio: options?.generateAudio ?? true,
+          returnLastFrame: true,
+        })
+
+        if (response.videoUrl) {
+          logger.info('Image-to-video generation completed with sandbox credentials')
+          return {
+            videoUrl: response.videoUrl,
+            lastFrameUrl: response.lastFrameUrl || undefined,
+          }
+        }
+      } catch (sandboxErr) {
+        const errMsg = sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr)
+        logger.warn('Sandbox credentials failed for image-to-video:', { error: errMsg })
+      }
+    }
+
+    // 策略2: 尝试用户 PAT 直接调用 API
     try {
-      const client = await createVideoClientAsync(config, headers)
+      const userConfig = await getUserCozeConfig()
+      const apiKey = config?.apiKey || userConfig?.apiKey
+      
+      if (apiKey) {
+        const clientConfig = new Config({
+          apiKey,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl || 'https://api.coze.cn',
+          timeout: 600000,
+        })
+        const client = new VideoGenerationClient(clientConfig, headers)
 
-      const content = [
-        {
-          type: 'image_url' as const,
-          image_url: { url: firstFrameUrl },
-          role: 'first_frame' as const,
-        },
-        { type: 'text' as const, text: prompt },
-      ]
+        const content = [
+          {
+            type: 'image_url' as const,
+            image_url: { url: firstFrameUrl },
+            role: 'first_frame' as const,
+          },
+          { type: 'text' as const, text: prompt },
+        ]
 
-      const response = await client.videoGeneration(content, {
-        model: options?.model || DEFAULT_VIDEO_MODEL,
-        duration: options?.duration ?? 5,
-        ratio: options?.ratio ?? '16:9',
-        resolution: options?.resolution ?? '720p',
-        generateAudio: options?.generateAudio ?? true,
-        returnLastFrame: true,
-      })
+        const response = await client.videoGeneration(content, {
+          model: options?.model || DEFAULT_VIDEO_MODEL,
+          duration: options?.duration ?? 5,
+          ratio: options?.ratio ?? '16:9',
+          resolution: options?.resolution ?? '720p',
+          generateAudio: options?.generateAudio ?? true,
+          returnLastFrame: true,
+        })
 
-      if (response.videoUrl) {
-        logger.info('Image-to-video generation completed via direct API')
-        return {
-          videoUrl: response.videoUrl,
-          lastFrameUrl: response.lastFrameUrl || undefined,
+        if (response.videoUrl) {
+          logger.info('Image-to-video generation completed via user PAT')
+          return {
+            videoUrl: response.videoUrl,
+            lastFrameUrl: response.lastFrameUrl || undefined,
+          }
         }
       }
     } catch (directErr) {
       const errMsg = directErr instanceof Error ? directErr.message : String(directErr)
       logger.warn('Direct image-to-video API failed:', { error: errMsg })
-      // 直接调用失败，尝试 Bot Skills
     }
 
-    // 策略2: 通过 Bot 调用 Skills
-    logger.info('Trying image-to-video via Bot Skills')
-    try {
-      const userConfig = await getUserCozeConfig()
-      logger.info('Bot Skills config check', { 
-        hasConfigApiKey: !!config?.apiKey,
-        hasUserConfig: !!userConfig,
-        hasUserApiKey: !!userConfig?.apiKey,
-        userBaseUrl: userConfig?.baseUrl
-      })
-      
-      const botResult = await invokeBotForVideoGeneration(
-        prompt,
-        {
-          apiKey: config?.apiKey || userConfig?.apiKey || undefined,
-          baseUrl: config?.baseUrl || userConfig?.baseUrl,
-        },
-        firstFrameUrl  // 传递图片 URL 作为第三个参数
-      )
-      
-      if (botResult.videoUrl) {
-        logger.info('Image-to-video generation completed via Bot Skills')
-        return { 
-          videoUrl: botResult.videoUrl,
-          lastFrameUrl: botResult.lastFrameUrl 
+    // 策略3: 通过 Bot 调用 Skills（仅在配置了 Bot ID 时）
+    const botId = await getBotId()
+    if (botId) {
+      logger.info('Trying image-to-video via Bot Skills')
+      try {
+        const userConfig = await getUserCozeConfig()
+        const botResult = await invokeBotForVideoGeneration(
+          prompt,
+          {
+            apiKey: config?.apiKey || userConfig?.apiKey || undefined,
+            baseUrl: config?.baseUrl || userConfig?.baseUrl,
+          },
+          firstFrameUrl  // 传递图片 URL 作为第三个参数
+        )
+        
+        if (botResult.videoUrl) {
+          logger.info('Image-to-video generation completed via Bot Skills')
+          return { 
+            videoUrl: botResult.videoUrl,
+            lastFrameUrl: botResult.lastFrameUrl 
+          }
         }
+      } catch (botErr) {
+        const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+        logger.warn('Bot Skills failed for image-to-video:', { error: errMsg })
       }
-    } catch (botErr) {
-      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
-      logger.warn('Bot Skills failed for image-to-video:', { error: errMsg })
     }
 
     // 所有策略都失败
@@ -1894,6 +1981,7 @@ export async function generateVideoFromImage(
 /**
  * 图生视频（首帧 + 尾帧）
  * 支持用户配置的 Coze API Key
+ * 策略顺序：沙箱凭证 → 用户 PAT → Bot Skills
  */
 export async function generateVideoFromFrames(
   prompt: string,
@@ -1909,63 +1997,114 @@ export async function generateVideoFromFrames(
   try {
     logger.info('Frame-to-video generation started')
 
-    // 策略1: 尝试直接调用视频生成 API
+    // 策略1: 优先尝试沙箱内置凭证（仅在有沙箱环境时）
+    const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
+    if (hasSandboxCredentials) {
+      try {
+        const sdkConfig = new Config()
+        const client = new VideoGenerationClient(sdkConfig, headers)
+
+        const content = [
+          {
+            type: 'image_url' as const,
+            image_url: { url: firstFrameUrl },
+            role: 'first_frame' as const,
+          },
+          {
+            type: 'image_url' as const,
+            image_url: { url: lastFrameUrl },
+            role: 'last_frame' as const,
+          },
+          { type: 'text' as const, text: prompt },
+        ]
+
+        const response = await client.videoGeneration(content, {
+          model: options?.model || DEFAULT_VIDEO_MODEL,
+          duration: options?.duration ?? 5,
+          ratio: options?.ratio ?? '16:9',
+          resolution: options?.resolution ?? '720p',
+          generateAudio: options?.generateAudio ?? true,
+        })
+
+        if (response.videoUrl) {
+          logger.info('Frame-to-video generation completed with sandbox credentials')
+          return { videoUrl: response.videoUrl }
+        }
+      } catch (sandboxErr) {
+        const errMsg = sandboxErr instanceof Error ? sandboxErr.message : String(sandboxErr)
+        logger.warn('Sandbox credentials failed for frame-to-video:', { error: errMsg })
+      }
+    }
+
+    // 策略2: 尝试用户 PAT 直接调用 API
     try {
-      const client = await createVideoClientAsync(config, headers)
+      const userConfig = await getUserCozeConfig()
+      const apiKey = config?.apiKey || userConfig?.apiKey
+      
+      if (apiKey) {
+        const clientConfig = new Config({
+          apiKey,
+          baseUrl: config?.baseUrl || userConfig?.baseUrl || 'https://api.coze.cn',
+          timeout: 600000,
+        })
+        const client = new VideoGenerationClient(clientConfig, headers)
 
-      const content = [
-        {
-          type: 'image_url' as const,
-          image_url: { url: firstFrameUrl },
-          role: 'first_frame' as const,
-        },
-        {
-          type: 'image_url' as const,
-          image_url: { url: lastFrameUrl },
-          role: 'last_frame' as const,
-        },
-        { type: 'text' as const, text: prompt },
-      ]
+        const content = [
+          {
+            type: 'image_url' as const,
+            image_url: { url: firstFrameUrl },
+            role: 'first_frame' as const,
+          },
+          {
+            type: 'image_url' as const,
+            image_url: { url: lastFrameUrl },
+            role: 'last_frame' as const,
+          },
+          { type: 'text' as const, text: prompt },
+        ]
 
-      const response = await client.videoGeneration(content, {
-        model: options?.model || DEFAULT_VIDEO_MODEL,
-        duration: options?.duration ?? 5,
-        ratio: options?.ratio ?? '16:9',
-        resolution: options?.resolution ?? '720p',
-        generateAudio: options?.generateAudio ?? true,
-      })
+        const response = await client.videoGeneration(content, {
+          model: options?.model || DEFAULT_VIDEO_MODEL,
+          duration: options?.duration ?? 5,
+          ratio: options?.ratio ?? '16:9',
+          resolution: options?.resolution ?? '720p',
+          generateAudio: options?.generateAudio ?? true,
+        })
 
-      if (response.videoUrl) {
-        logger.info('Frame-to-video generation completed via direct API')
-        return { videoUrl: response.videoUrl }
+        if (response.videoUrl) {
+          logger.info('Frame-to-video generation completed via user PAT')
+          return { videoUrl: response.videoUrl }
+        }
       }
     } catch (directErr) {
       const errMsg = directErr instanceof Error ? directErr.message : String(directErr)
       logger.warn('Direct frame-to-video API failed:', { error: errMsg })
-      // 直接调用失败，尝试 Bot Skills
     }
 
-    // 策略2: 通过 Bot 调用 Skills
-    logger.info('Trying frame-to-video via Bot Skills')
-    try {
-      const userConfig = await getUserCozeConfig()
-      const botResult = await invokeBotForVideoGeneration(
-        prompt,
-        {
-          apiKey: config?.apiKey || userConfig?.apiKey || undefined,
-          baseUrl: config?.baseUrl || userConfig?.baseUrl,
-        },
-        firstFrameUrl,  // 传递首帧图片 URL
-        lastFrameUrl    // 传递尾帧图片 URL
-      )
-      
-      if (botResult.videoUrl) {
-        logger.info('Frame-to-video generation completed via Bot Skills')
-        return { videoUrl: botResult.videoUrl }
+    // 策略3: 通过 Bot 调用 Skills（仅在配置了 Bot ID 时）
+    const botId = await getBotId()
+    if (botId) {
+      logger.info('Trying frame-to-video via Bot Skills')
+      try {
+        const userConfig = await getUserCozeConfig()
+        const botResult = await invokeBotForVideoGeneration(
+          prompt,
+          {
+            apiKey: config?.apiKey || userConfig?.apiKey || undefined,
+            baseUrl: config?.baseUrl || userConfig?.baseUrl,
+          },
+          firstFrameUrl,  // 传递首帧图片 URL
+          lastFrameUrl    // 传递尾帧图片 URL
+        )
+        
+        if (botResult.videoUrl) {
+          logger.info('Frame-to-video generation completed via Bot Skills')
+          return { videoUrl: botResult.videoUrl }
+        }
+      } catch (botErr) {
+        const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
+        logger.warn('Bot Skills failed for frame-to-video:', { error: errMsg })
       }
-    } catch (botErr) {
-      const errMsg = botErr instanceof Error ? botErr.message : String(botErr)
-      logger.warn('Bot Skills failed for frame-to-video:', { error: errMsg })
     }
 
     // 所有策略都失败
