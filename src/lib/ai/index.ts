@@ -413,10 +413,15 @@ async function getBotConfig(): Promise<BotConfig> {
           .select('coze_bot_id, coze_bot_type, coze_bot_endpoint, coze_bot_project_id, coze_bot_session_id')
           .maybeSingle()
         
-        if (!error && data?.coze_bot_id) {
-          console.log('[AI Config] Got bot config from database')
+        // 只要有任何 Bot 相关配置就返回
+        if (!error && data && (data.coze_bot_id || data.coze_bot_type === 'stream_run')) {
+          console.log('[AI Config] Got bot config from database', { 
+            hasBotId: !!data.coze_bot_id,
+            botType: data.coze_bot_type,
+            hasEndpoint: !!data.coze_bot_endpoint 
+          })
           return {
-            botId: data.coze_bot_id,
+            botId: data.coze_bot_id || null,
             botType: data.coze_bot_type || 'v3_chat',
             botEndpoint: data.coze_bot_endpoint || undefined,
             botProjectId: data.coze_bot_project_id || undefined,
@@ -431,14 +436,18 @@ async function getBotConfig(): Promise<BotConfig> {
     // 尝试从内存存储获取
     const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
     const config = getCozeConfigFromMemory()
-    if (config?.botId) {
-      console.log('[AI Config] Got bot config from memory store')
+    if (config?.botId || config?.botType === 'stream_run') {
+      console.log('[AI Config] Got bot config from memory store', {
+        hasBotId: !!config?.botId,
+        botType: config?.botType,
+        hasEndpoint: !!config?.botEndpoint
+      })
       return {
-        botId: config.botId,
-        botType: config.botType || 'v3_chat',
-        botEndpoint: config.botEndpoint,
-        botProjectId: config.botProjectId,
-        botSessionId: config.botSessionId,
+        botId: config?.botId || null,
+        botType: config?.botType || 'v3_chat',
+        botEndpoint: config?.botEndpoint,
+        botProjectId: config?.botProjectId,
+        botSessionId: config?.botSessionId,
       }
     }
   } catch {
@@ -668,22 +677,24 @@ async function invokeBotForImageGeneration(
     throw new Error('通过 Bot 调用图像生成需要配置 Coze API Key')
   }
   
-  if (!botId) {
-    throw new Error('通过 Bot 调用图像生成需要配置 Bot ID。请在 Coze 平台创建配置了图像生成 Skill 的智能体，并在设置页面配置 Bot ID。')
-  }
-  
-  // 如果是 stream_run 类型，使用新的 API
+  // 如果是 stream_run 类型，使用新的 API（不需要 botId）
   if (botType === 'stream_run') {
     if (!botEndpoint || !botProjectId) {
       throw new Error('Stream Run 模式需要配置端点 URL 和 Project ID')
     }
     
+    console.log('[AI Config] Using Stream Run API for image generation')
     return invokeStreamRunForImageGeneration(prompt, {
       apiKey,
       endpoint: botEndpoint,
       projectId: botProjectId,
       sessionId: botSessionId,
     }, referenceImages)
+  }
+  
+  // V3 Chat 模式需要 botId
+  if (!botId) {
+    throw new Error('通过 Bot 调用图像生成需要配置 Bot ID。请在 Coze 平台创建配置了图像生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
   // 默认使用 v3/chat API
@@ -955,22 +966,24 @@ async function invokeBotForVideoGeneration(
     throw new Error('通过 Bot 调用视频生成需要配置 Coze API Key')
   }
   
-  if (!botId) {
-    throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
-  }
-  
-  // 如果是 stream_run 类型，使用新的 API
+  // 如果是 stream_run 类型，使用新的 API（不需要 botId）
   if (botType === 'stream_run') {
     if (!botEndpoint || !botProjectId) {
       throw new Error('Stream Run 模式需要配置端点 URL 和 Project ID')
     }
     
+    console.log('[AI Config] Using Stream Run API for video generation')
     return invokeStreamRunForVideoGeneration(prompt, {
       apiKey,
       endpoint: botEndpoint,
       projectId: botProjectId,
       sessionId: botSessionId,
     }, imageUrl, lastFrameUrl)
+  }
+  
+  // V3 Chat 模式需要 botId
+  if (!botId) {
+    throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
   
   // 默认使用 v3/chat API
