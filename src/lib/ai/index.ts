@@ -165,7 +165,8 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
     
     if (isDatabaseConfigured()) {
       try {
-        const db = getSupabaseClient()
+        // 使用 service_role 客户端绕过 RLS
+        const db = getSupabaseClient(true)
         const { data, error } = await db
           .from('user_settings')
           .select('coze_api_key, coze_base_url')
@@ -181,10 +182,14 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
             apiKey: data.coze_api_key,
             baseUrl: data.coze_base_url || undefined,
           }
+        } else if (!error) {
+          console.log('[AI Config] Database query returned no data')
         }
       } catch (dbError) {
         console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
       }
+    } else {
+      console.log('[AI Config] Database not configured')
     }
     
     // 尝试从内存存储获取
@@ -407,7 +412,8 @@ async function getBotConfig(): Promise<BotConfig> {
     
     if (isDatabaseConfigured()) {
       try {
-        const db = getSupabaseClient()
+        // 使用 service_role 客户端绕过 RLS
+        const db = getSupabaseClient(true)
         const { data, error } = await db
           .from('user_settings')
           .select('coze_bot_id, coze_bot_type, coze_bot_endpoint, coze_bot_project_id, coze_bot_session_id')
@@ -427,9 +433,13 @@ async function getBotConfig(): Promise<BotConfig> {
             botProjectId: data.coze_bot_project_id || undefined,
             botSessionId: data.coze_bot_session_id || undefined,
           }
+        } else if (!error) {
+          console.log('[AI Config] Database query returned no bot config')
+        } else {
+          console.log('[AI Config] Database query error:', error?.message)
         }
-      } catch {
-        // 数据库不可用，继续尝试内存存储
+      } catch (dbError) {
+        console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
       }
     }
     
