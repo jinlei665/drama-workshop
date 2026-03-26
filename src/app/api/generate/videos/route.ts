@@ -570,41 +570,171 @@ async function generateSequential(
 }
 
 /**
+ * 将图片 URL 转换为视频 Skill 支持的格式
+ * 
+ * Coze 视频 Skill 要求：
+ * - 明确的图片格式（png, jpg, jpeg）
+ * - Content-Type: image/png 或 image/jpeg
+ * 
+ * 不支持的格式：
+ * - s.coze.cn 短链接（有时不稳定）
+ * - application/octet-stream
+ */
+async function convertImageUrlForVideo(
+  imageUrl: string, 
+  sceneId: string,
+  storage: S3Storage
+): Promise<string> {
+  console.log(`[convertImageUrl] 原始 URL: ${imageUrl.substring(0, 80)}...`);
+  
+  // 检查 URL 是否已经是支持的格式
+  const supportedPatterns = [
+    /\.png$/i,
+    /\.jpg$/i,
+    /\.jpeg$/i,
+    /\.webp$/i,
+  ];
+  
+  // 如果 URL 已经包含明确的图片格式后缀，直接返回
+  if (supportedPatterns.some(pattern => pattern.test(imageUrl))) {
+    console.log(`[convertImageUrl] URL 已包含支持的图片格式`);
+    return imageUrl;
+  }
+  
+  // 检查是否是 Coze 存储链接（s.coze.cn 或 tos）
+  const isCozeStorage = imageUrl.includes('s.coze.cn') || 
+                        imageUrl.includes('tos.coze.site') ||
+                        imageUrl.includes('lf-bot-studio-plugin-resource');
+  
+  if (!isCozeStorage) {
+    // 非 Coze 存储链接，尝试添加 .png 后缀
+    const urlWithFormat = imageUrl + (imageUrl.includes('?') ? '&format=png' : '?format=png');
+    console.log(`[convertImageUrl] 非 Coze 存储，添加格式参数`);
+    return urlWithFormat;
+  }
+  
+  // 对于 Coze 存储链接，下载并验证图片
+  try {
+    console.log(`[convertImageUrl] 下载图片验证格式...`);
+    
+    const response = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      }
+    });
+    
+    if (!response.ok) {
+      console.warn(`[convertImageUrl] 图片下载失败: ${response.status}`);
+      return imageUrl; // 返回原始 URL
+    }
+    
+    const contentType = response.headers.get('content-type') || '';
+    console.log(`[convertImageUrl] Content-Type: ${contentType}`);
+    
+    // 如果已经是正确的图片格式，直接返回
+    if (contentType.includes('image/png') || 
+        contentType.includes('image/jpeg') || 
+        contentType.includes('image/jpg')) {
+      console.log(`[convertImageUrl] 图片格式正确`);
+      return imageUrl;
+    }
+    
+    // 如果是 octet-stream 或其他格式，需要转换
+    if (contentType.includes('octet-stream') || contentType.includes('application/')) {
+      console.log(`[convertImageUrl] 需要转换图片格式...`);
+      
+      // 下载图片
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      // 检测实际图片格式（通过魔数）
+      let format = 'png';
+      if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+        format = 'jpg';
+      } else if (buffer[0] === 0x89 && buffer[1] === 0x50) {
+        format = 'png';
+      } else if (buffer[0] === 0x52 && buffer[1] === 0x49) {
+        format = 'webp';
+      }
+      
+      console.log(`[convertImageUrl] 检测到图片格式: ${format}, 大小: ${(buffer.length / 1024).toFixed(2)} KB`);
+      
+      // 尝试上传到对象存储
+      try {
+        const key = `video-frames/${sceneId}/frame_${Date.now()}.${format}`;
+        await storage.uploadFile({
+          fileContent: buffer,
+          fileName: key,
+          contentType: `image/${format}`,
+        });
+        
+        const signedUrl = await storage.generatePresignedUrl({
+          key,
+          expireTime: 3600,
+        });
+        
+        const newUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url;
+        console.log(`[convertImageUrl] 已转换为正确格式: ${newUrl.substring(0, 60)}...`);
+        return newUrl;
+      } catch (uploadErr) {
+        console.warn(`[convertImageUrl] 上传失败，使用原始 URL:`, uploadErr);
+        return imageUrl;
+      }
+    }
+    
+    return imageUrl;
+  } catch (err) {
+    console.warn(`[convertImageUrl] 转换失败:`, err);
+    return imageUrl;
+  }
+}
+
+/**
  * 获取分镜图片URL
  * 支持多种字段名：image_key（数据库）、imageKey（内存）、image_url、imageUrl
  */
-async function getImageUrl(scene: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }, storage: S3Storage): Promise<string | null> {
+async function getImageUrl(
+  scene: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }, 
+  storage: S3Storage
+): Promise<string | null> {
+  let rawUrl: string | null = null;
+  
   // 优先使用直接存储的URL
   if (scene.imageUrl) {
     console.log(`[getImageUrl] 使用 imageUrl: ${scene.imageUrl.substring(0, 50)}...`);
-    return scene.imageUrl;
-  }
-  
-  if (scene.image_url) {
+    rawUrl = scene.imageUrl;
+  } else if (scene.image_url) {
     console.log(`[getImageUrl] 使用 image_url: ${scene.image_url.substring(0, 50)}...`);
-    return scene.image_url;
+    rawUrl = scene.image_url;
   }
 
   // 从对象存储获取签名URL
-  const imageKey = scene.image_key || scene.imageKey;
-  if (imageKey) {
-    try {
-      console.log(`[getImageUrl] 从对象存储获取签名URL, key: ${imageKey}`);
-      const signedUrl = await storage.generatePresignedUrl({
-        key: imageKey,
-        expireTime: 3600,
-      });
-      const url = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url;
-      console.log(`[getImageUrl] 签名URL: ${url.substring(0, 50)}...`);
-      return url;
-    } catch (e) {
-      console.error('[getImageUrl] 获取图片URL失败:', e);
-      return null;
+  if (!rawUrl) {
+    const imageKey = scene.image_key || scene.imageKey;
+    if (imageKey) {
+      try {
+        console.log(`[getImageUrl] 从对象存储获取签名URL, key: ${imageKey}`);
+        const signedUrl = await storage.generatePresignedUrl({
+          key: imageKey,
+          expireTime: 3600,
+        });
+        rawUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url;
+        console.log(`[getImageUrl] 签名URL: ${rawUrl.substring(0, 50)}...`);
+      } catch (e) {
+        console.error('[getImageUrl] 获取图片URL失败:', e);
+        return null;
+      }
     }
   }
-
-  console.log('[getImageUrl] 未找到图片字段');
-  return null;
+  
+  if (!rawUrl) {
+    console.log('[getImageUrl] 未找到图片字段');
+    return null;
+  }
+  
+  // 转换为视频 Skill 支持的格式
+  const sceneId = (scene as any).id || 'unknown';
+  return convertImageUrlForVideo(rawUrl, sceneId, storage);
 }
 
 /**
