@@ -41,7 +41,16 @@ export function saveSettingsToMemory(settings: Record<string, unknown>): void {
  * 从内存获取设置
  */
 export function getSettingsFromMemory(): Record<string, unknown> | null {
-  return globalForStore.memoryStore.settings
+  const settings = globalForStore.memoryStore.settings
+  if (settings) {
+    console.log('[MemoryStore] Getting settings from memory:', {
+      hasCozeApiKey: !!settings.coze_api_key,
+      botId: settings.coze_bot_id,
+    })
+  } else {
+    console.log('[MemoryStore] No settings in memory')
+  }
+  return settings
 }
 
 /**
@@ -50,8 +59,15 @@ export function getSettingsFromMemory(): Record<string, unknown> | null {
 export function getCozeConfigFromMemory(): { apiKey?: string; baseUrl?: string; botId?: string } | null {
   const settings = globalForStore.memoryStore.settings
   if (!settings?.coze_api_key) {
+    console.log('[MemoryStore] No coze_api_key in memory settings')
     return null
   }
+  
+  console.log('[MemoryStore] Returning Coze config from memory:', {
+    hasApiKey: true,
+    baseUrl: settings.coze_base_url,
+    botId: settings.coze_bot_id,
+  })
   
   return {
     apiKey: settings.coze_api_key as string,

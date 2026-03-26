@@ -159,14 +159,14 @@ export const AVAILABLE_LLM_MODELS = [
  * 获取用户配置的 Coze API Key
  * 优先级：内存（最新设置） → 数据库 → 环境变量
  */
-async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string }> {
+async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string; botId?: string }> {
   try {
     // 优先从内存获取（最新的设置）
     const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
     const memoryConfig = getCozeConfigFromMemory()
     if (memoryConfig?.apiKey) {
       console.log('[AI Config] Got config from memory store, botId:', memoryConfig.botId)
-      return memoryConfig
+      return { apiKey: memoryConfig.apiKey, baseUrl: memoryConfig.baseUrl, botId: memoryConfig.botId }
     }
     
     // 再尝试从数据库获取
@@ -189,6 +189,7 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string 
           return {
             apiKey: data.coze_api_key,
             baseUrl: data.coze_base_url || undefined,
+            botId: data.coze_bot_id || undefined,
           }
         }
       } catch (dbError) {
@@ -348,7 +349,7 @@ export function getAvailableProviders() {
  */
 async function getBotId(): Promise<string | null> {
   try {
-    // 优先从内存获取（最新的设置）
+    // 策略1: 优先从内存获取（最新的设置）
     const { getSettingsFromMemory } = await import('@/lib/memory-store')
     const memorySettings = getSettingsFromMemory()
     if (memorySettings?.coze_bot_id) {
@@ -356,7 +357,14 @@ async function getBotId(): Promise<string | null> {
       return memorySettings.coze_bot_id as string
     }
     
-    // 再尝试从数据库获取
+    // 策略2: 从 getUserCozeConfig 获取（也会优先检查内存）
+    const userConfig = await getUserCozeConfig()
+    if (userConfig?.botId) {
+      console.log('[AI Config] Got bot_id from user config:', userConfig.botId)
+      return userConfig.botId
+    }
+    
+    // 策略3: 最后尝试从数据库直接获取
     const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
     
     if (isDatabaseConfigured()) {
@@ -375,8 +383,10 @@ async function getBotId(): Promise<string | null> {
         // 数据库不可用
       }
     }
-  } catch {
-    // 忽略错误
+    
+    console.log('[AI Config] No bot_id found in memory, user config, or database')
+  } catch (err) {
+    console.log('[AI Config] Error getting bot_id:', err instanceof Error ? err.message : String(err))
   }
   
   return null
