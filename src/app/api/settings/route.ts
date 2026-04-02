@@ -5,7 +5,7 @@
  * 默认使用系统自带的模型：
  * - LLM: doubao-seed-1-8-251228
  * - 图像: doubao-seedream-4-0-250828 (2K)
- * - 视频: doubao-seedance-1-0-pro-250528 (720p, 16:9)
+ * - 视频: doubao-seedance-1-5-pro-251215 (720p, 16:9)
  */
 
 import { NextRequest } from 'next/server'

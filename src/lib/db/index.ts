@@ -380,7 +380,7 @@ export const SettingsService = {
         },
         video: {
           provider: 'doubao',
-          model: 'doubao-seedance-1-0-pro-250528',
+          model: 'doubao-seedance-1-5-pro-251215',
           apiKey: process.env.VIDEO_API_KEY,
           baseUrl: process.env.VIDEO_BASE_URL,
         },

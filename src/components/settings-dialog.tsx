@@ -124,7 +124,8 @@ const IMAGE_MODELS = [
 // 火山引擎视频生成模型列表
 // 文档：https://www.volcengine.com/docs/82379/1587798
 const VIDEO_MODELS = [
-  { value: "doubao-seedance-1-0-pro-250528", label: "Doubao Seedance 1.0 Pro (推荐)", description: "首尾帧生视频、多镜头叙事、1080P" },
+  { value: "doubao-seedance-1-5-pro-251215", label: "Doubao Seedance 1.5 Pro (推荐)", description: "支持音频生成、首尾帧生视频" },
+  { value: "doubao-seedance-1-0-pro-250528", label: "Doubao Seedance 1.0 Pro", description: "首尾帧生视频、多镜头叙事" },
   { value: "doubao-seedance-1-0-pro-fast", label: "Doubao Seedance 1.0 Pro Fast", description: "快速生成版本" },
   { value: "doubao-seedance-1-0-lite", label: "Doubao Seedance 1.0 Lite", description: "轻量版，性价比之选" },
 ]

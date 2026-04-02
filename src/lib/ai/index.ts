@@ -137,7 +137,7 @@ export const DEFAULT_IMAGE_MODEL = 'doubao-seedream-4-0-250828'
 export const DEFAULT_IMAGE_SIZE = '2K'
 
 /** 系统默认视频模型 */
-export const DEFAULT_VIDEO_MODEL = 'doubao-seedance-1-0-pro-250528'
+export const DEFAULT_VIDEO_MODEL = 'doubao-seedance-1-5-pro-251215'
 
 /** 可用的 LLM 模型列表 */
 export const AVAILABLE_LLM_MODELS = [
@@ -1592,28 +1592,19 @@ async function generateImageWithOpenAICompatible(params: {
 }): Promise<{ urls: string[]; b64List?: string[] }> {
   const { prompt, apiKey, baseUrl, model, size = '2K', watermark = false, image } = params
   
-  // 尺寸映射：将 2K/4K 转换为实际像素尺寸
-  const sizeMapping: Record<string, string> = {
-    '2K': '2048x2048',
-    '4K': '4096x4096',
-    '1024x1024': '1024x1024',
-    '2048x2048': '2048x2048',
-    '4096x4096': '4096x4096',
-  }
-  const actualSize = sizeMapping[size] || '2048x2048'
-  
   // 构建请求体
+  // 火山引擎支持 size 参数为分辨率（1K/2K/4K）或像素尺寸（2048x2048）
   const requestBody: Record<string, unknown> = {
     model,
     prompt,
-    size: actualSize,
-    n: 1,
+    size,  // 直接传递分辨率字符串，如 "2K"
     response_format: 'url',
   }
   
   // 火山引擎等 Provider 支持额外参数
-  // 参考：https://www.volcengine.com/docs/6561/1362581
-  if (baseUrl.includes('volcengine') || baseUrl.includes('doubao')) {
+  // 参考：https://www.volcengine.com/docs/82379/1541523
+  // 火山引擎 URL 格式: https://ark.cn-beijing.volces.com/api/v3
+  if (baseUrl.includes('volces.com') || baseUrl.includes('volcengine') || baseUrl.includes('doubao')) {
     requestBody.watermark = watermark
   }
   
@@ -1631,7 +1622,7 @@ async function generateImageWithOpenAICompatible(params: {
   logger.info('Calling OpenAI-compatible image API', { 
     baseUrl, 
     model, 
-    size: actualSize,
+    size,
     hasImage: !!image 
   })
   
@@ -1705,11 +1696,17 @@ export async function generateImage(
     const apiKey = config?.apiKey || userConfig?.apiKey
     const botId = await getBotId()
     
-    // 策略1: 检查用户是否配置了自定义图像 Provider（非 doubao/Coze）
+    // 策略1: 检查用户是否配置了自定义图像 Provider
     const imageConfig = await getUserImageConfig()
     
-    // 如果用户配置了自定义 API Key 和 Base URL（火山引擎、阿里云等），优先使用
-    if (imageConfig.apiKey && imageConfig.baseUrl && imageConfig.provider !== 'doubao') {
+    // 判断是否使用自定义 Provider：
+    // 1. 配置了 API Key 和 Base URL
+    // 2. Base URL 不是 Coze API（api.coze.cn 或 api.coze.com）
+    const isCustomProvider = imageConfig.apiKey && imageConfig.baseUrl && 
+      !imageConfig.baseUrl.includes('api.coze.cn') && 
+      !imageConfig.baseUrl.includes('api.coze.com')
+    
+    if (isCustomProvider) {
       logger.info('Trying image generation with custom provider', { 
         provider: imageConfig.provider,
         baseUrl: imageConfig.baseUrl,
@@ -1720,8 +1717,8 @@ export async function generateImage(
         // 使用 OpenAI 兼容格式调用图像生成 API
         const result = await generateImageWithOpenAICompatible({
           prompt,
-          apiKey: imageConfig.apiKey,
-          baseUrl: imageConfig.baseUrl,
+          apiKey: imageConfig.apiKey!,
+          baseUrl: imageConfig.baseUrl!,
           model: imageConfig.model || DEFAULT_IMAGE_MODEL,
           size: options?.size || imageConfig.size || DEFAULT_IMAGE_SIZE,
           watermark: options?.watermark ?? false,
