@@ -701,9 +701,11 @@ async function convertImageUrlForVideo(
 /**
  * 获取分镜图片URL
  * 支持多种字段名：image_key（数据库）、imageKey（内存）、image_url、imageUrl
+ * 
+ * 关键改进：对于火山引擎 TOS URL，下载并保存到本地，解决服务器无法访问的问题
  */
 async function getImageUrl(
-  scene: { image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }, 
+  scene: { id: string; image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }, 
   storage: S3Storage
 ): Promise<string | null> {
   let rawUrl: string | null = null;
@@ -741,9 +743,81 @@ async function getImageUrl(
     return null;
   }
   
-  // 转换为视频 Skill 支持的格式
-  const sceneId = (scene as any).id || 'unknown';
-  return convertImageUrlForVideo(rawUrl, sceneId, storage);
+  // 检查是否是火山引擎 TOS URL（服务器端可能无法访问）
+  const isVolcengineTosUrl = rawUrl.includes('ark-content-generation') || 
+                             rawUrl.includes('tos-cn-beijing.volces.com');
+  
+  if (isVolcengineTosUrl) {
+    console.log(`[getImageUrl] 检测到火山引擎 TOS URL，尝试下载并保存到本地...`);
+    
+    try {
+      // 下载图片 - 使用更完整的请求头模拟浏览器访问
+      const response = await fetch(rawUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Sec-Fetch-Dest': 'image',
+          'Sec-Fetch-Mode': 'no-cors',
+          'Sec-Fetch-Site': 'cross-site',
+        },
+        redirect: 'follow',
+      });
+      if (!response.ok) {
+        console.warn(`[getImageUrl] 下载失败: ${response.status}，使用原始 URL`);
+        return rawUrl;
+      }
+      
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      
+      // 保存到本地
+      const fs = await import('fs');
+      const path = await import('path');
+      
+      const publicDir = path.join(process.cwd(), 'public', 'scenes', scene.id);
+      if (!fs.existsSync(publicDir)) {
+        fs.mkdirSync(publicDir, { recursive: true });
+      }
+      
+      const localFileName = `image_${Date.now()}.png`;
+      const localFilePath = path.join(publicDir, localFileName);
+      fs.writeFileSync(localFilePath, imageBuffer);
+      
+      // 本地相对路径
+      const localUrl = `/scenes/${scene.id}/${localFileName}`;
+      console.log(`[getImageUrl] 图片已保存到本地: ${localFilePath}`);
+      
+      // 更新数据库（使用本地路径）
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client');
+      if (isDatabaseConfigured()) {
+        const supabase = getSupabaseClient();
+        await supabase
+          .from('scenes')
+          .update({ image_url: localUrl })
+          .eq('id', scene.id);
+        console.log(`[getImageUrl] 数据库已更新为本地路径`);
+      }
+      
+      // 更新内存
+      const { memoryScenes } = await import('@/lib/memory-storage');
+      const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
+      if (sceneIndex !== -1) {
+        memoryScenes[sceneIndex].imageUrl = localUrl;
+      }
+      
+      // 返回本地完整 URL
+      return convertImageUrlForVideo(localUrl, scene.id, storage);
+    } catch (downloadError) {
+      console.warn(`[getImageUrl] 下载保存失败:`, downloadError);
+      // 使用原始 URL
+      return rawUrl;
+    }
+  }
+  
+  // 转换为视频 API 支持的格式
+  return convertImageUrlForVideo(rawUrl, scene.id, storage);
 }
 
 /**

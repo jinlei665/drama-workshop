@@ -629,7 +629,22 @@ export async function generateVideoWithVolcengine(params: {
   // 辅助函数：将图片 URL 转换为 base64 格式
   async function convertImageToBase64(url: string): Promise<string> {
     console.log('[Volcengine Video] Downloading image for base64 conversion...')
-    const response = await fetch(url)
+    
+    // 使用完整的请求头模拟浏览器访问
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'image',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'cross-site',
+      },
+      redirect: 'follow',
+    })
+    
     if (!response.ok) {
       throw new Error(`Failed to download image: ${response.status}`)
     }
