@@ -131,10 +131,13 @@ export type LLMProvider = 'coze' | 'openai-compatible'
 export const DEFAULT_LLM_PROVIDER: LLMProvider = 'coze'
 
 /** 系统默认图像模型 */
+export const DEFAULT_IMAGE_MODEL = 'doubao-seedream-4-0-250828'
+
+/** 系统默认图像尺寸 */
 export const DEFAULT_IMAGE_SIZE = '2K'
 
 /** 系统默认视频模型 */
-export const DEFAULT_VIDEO_MODEL = 'doubao-seedance-1-5-pro-251215'
+export const DEFAULT_VIDEO_MODEL = 'doubao-seedance-1-0-pro-250528'
 
 /** 可用的 LLM 模型列表 */
 export const AVAILABLE_LLM_MODELS = [
@@ -1719,7 +1722,7 @@ export async function generateImage(
           prompt,
           apiKey: imageConfig.apiKey,
           baseUrl: imageConfig.baseUrl,
-          model: imageConfig.model || 'doubao-seed-3-0',
+          model: imageConfig.model || DEFAULT_IMAGE_MODEL,
           size: options?.size || imageConfig.size || DEFAULT_IMAGE_SIZE,
           watermark: options?.watermark ?? false,
           image: options?.image,

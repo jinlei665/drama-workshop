@@ -17,7 +17,7 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   llmBaseUrl: null,
   // 图像配置
   imageProvider: 'doubao',
-  imageModel: 'doubao-seed-3-0',
+  imageModel: 'doubao-seedream-4-0-250828',
   imageApiKey: null,
   imageBaseUrl: null,
   imageSize: '2K',

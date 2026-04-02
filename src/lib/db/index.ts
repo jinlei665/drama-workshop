@@ -374,13 +374,13 @@ export const SettingsService = {
         },
         image: {
           provider: 'doubao',
-          model: 'doubao-seed-3-0',
+          model: 'doubao-seedream-4-0-250828',
           apiKey: process.env.IMAGE_API_KEY,
           baseUrl: process.env.IMAGE_BASE_URL,
         },
         video: {
           provider: 'doubao',
-          model: 'doubao-seedance-1-5-pro-251215',
+          model: 'doubao-seedance-1-0-pro-250528',
           apiKey: process.env.VIDEO_API_KEY,
           baseUrl: process.env.VIDEO_BASE_URL,
         },
@@ -400,7 +400,7 @@ export const SettingsService = {
       },
       image: {
         provider: data.image_provider || 'doubao',
-        model: data.image_model || 'doubao-seed-3-0',
+        model: data.image_model || 'doubao-seedream-4-0-250828',
         apiKey: data.image_api_key || process.env.IMAGE_API_KEY,
         baseUrl: data.image_base_url || process.env.IMAGE_BASE_URL,
       },

@@ -4,8 +4,8 @@
  * 
  * 默认使用系统自带的模型：
  * - LLM: doubao-seed-1-8-251228
- * - 图像: doubao-seed-3-0 (2K)
- * - 视频: doubao-seedance-1-5-pro-251215 (720p, 16:9)
+ * - 图像: doubao-seedream-4-0-250828 (2K)
+ * - 视频: doubao-seedance-1-0-pro-250528 (720p, 16:9)
  */
 
 import { NextRequest } from 'next/server'
@@ -34,7 +34,7 @@ function getDefaultSettings() {
     llm_base_url: null,
     // 图像配置
     image_provider: 'doubao',
-    image_model: 'doubao-seed-3-0',
+    image_model: 'doubao-seedream-4-0-250828',
     image_api_key: null,
     image_base_url: null,
     image_size: DEFAULT_IMAGE_SIZE,

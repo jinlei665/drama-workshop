@@ -306,7 +306,7 @@ export const userSettings = pgTable(
     
     // 图像生成配置
     imageProvider: varchar("image_provider", { length: 50 }).default("doubao"),
-    imageModel: varchar("image_model", { length: 100 }).default("doubao-seed-3-0"),
+    imageModel: varchar("image_model", { length: 100 }).default("doubao-seedream-4-0-250828"),
     imageApiKey: text("image_api_key"),
     imageBaseUrl: varchar("image_base_url", { length: 255 }),
     imageSize: varchar("image_size", { length: 20 }).default("2K"),

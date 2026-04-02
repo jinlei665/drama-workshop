@@ -45,12 +45,12 @@ const DEFAULT_SETTINGS: Settings = {
   llm_api_key: null,
   llm_base_url: null,
   image_provider: 'doubao',
-  image_model: 'doubao-seed-3-0',
+  image_model: 'doubao-seedream-4-0-250828',
   image_api_key: null,
   image_base_url: null,
   image_size: '2K',
   video_provider: 'doubao',
-  video_model: 'doubao-seedance-1-5-pro-251215',
+  video_model: 'doubao-seedance-1-0-pro-250528',
   video_api_key: null,
   video_base_url: null,
   video_resolution: '720p',
@@ -113,14 +113,20 @@ const LLM_MODELS = [
   { value: "kimi-k2-5-260127", label: "Kimi K2.5", description: "Agent、代码、多模态" },
 ]
 
+// 火山引擎图像生成模型列表
+// 文档：https://www.volcengine.com/docs/82379/1541523
 const IMAGE_MODELS = [
-  { value: "doubao-seed-3-0", label: "Doubao Seed 3.0 (默认)", description: "高质量图像生成" },
-  { value: "doubao-seedream-3-0-t2i-250415", label: "Doubao Seedream 3.0", description: "艺术风格图像" },
-  { value: "doubao-seedream-4-0-250828", label: "Doubao Seedream 4.0", description: "最新艺术风格图像" },
+  { value: "doubao-seedream-4-0-250828", label: "Doubao Seedream 4.0 (推荐)", description: "SOTA级多模态图像创作，支持多图融合、组图生成" },
+  { value: "doubao-seedream-3-0-t2i-250415", label: "Doubao Seedream 3.0", description: "原生2K分辨率，文本排版效果增强" },
+  { value: "doubao-seed-3-0", label: "Doubao Seed 3.0", description: "通用图像生成" },
 ]
 
+// 火山引擎视频生成模型列表
+// 文档：https://www.volcengine.com/docs/82379/1587798
 const VIDEO_MODELS = [
-  { value: "doubao-seedance-1-5-pro-251215", label: "Doubao Seedance 1.5 Pro (默认)", description: "支持音频生成" },
+  { value: "doubao-seedance-1-0-pro-250528", label: "Doubao Seedance 1.0 Pro (推荐)", description: "首尾帧生视频、多镜头叙事、1080P" },
+  { value: "doubao-seedance-1-0-pro-fast", label: "Doubao Seedance 1.0 Pro Fast", description: "快速生成版本" },
+  { value: "doubao-seedance-1-0-lite", label: "Doubao Seedance 1.0 Lite", description: "轻量版，性价比之选" },
 ]
 
 const VOICE_MODELS = [
