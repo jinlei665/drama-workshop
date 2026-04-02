@@ -100,12 +100,20 @@ export async function POST(request: NextRequest) {
       // 使用用户配置的自定义 LLM Provider（DeepSeek、Kimi 等）
       console.log('[Analyze] Using custom LLM provider:', llmConfig.provider)
       
-      // 导入 OpenAI 兼容客户端
-      const { OpenAICompatibleClient } = await import('@/lib/ai/openai-compatible')
+      // 导入 OpenAI 兼容客户端和模型名称映射
+      const { OpenAICompatibleClient, getActualModelName } = await import('@/lib/ai/openai-compatible')
+      
+      // 获取实际的模型名称（将 Coze 平台的模型名映射到各 Provider 的实际模型名）
+      const actualModelName = getActualModelName(llmConfig.provider, llmConfig.model)
+      console.log('[Analyze] Model name mapping:', { 
+        original: llmConfig.model, 
+        actual: actualModelName 
+      })
+      
       const client = new OpenAICompatibleClient({
         apiKey: llmConfig.apiKey!,
         baseUrl: llmConfig.baseUrl || 'https://api.deepseek.com',
-        model: llmConfig.model || 'deepseek-chat',
+        model: actualModelName,
       })
       
       responseContent = await client.invoke(messages, { temperature: 0.3 })

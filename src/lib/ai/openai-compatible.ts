@@ -12,6 +12,65 @@
 
 import { logger } from '@/lib/errors'
 
+/**
+ * Coze 模型名到各 Provider 实际模型名的映射
+ * 用于将 UI 中显示的 Coze 模型名转换为各 Provider API 实际接受的模型名
+ */
+export const MODEL_NAME_MAPPING: Record<string, Record<string, string>> = {
+  // DeepSeek 映射
+  'deepseek-v3-2-251201': {
+    deepseek: 'deepseek-chat',
+  },
+  'deepseek-r1-250528': {
+    deepseek: 'deepseek-reasoner',
+  },
+  // Kimi 映射
+  'kimi-k2-250905': {
+    kimi: 'moonshot-v1-128k',
+  },
+  'kimi-k2-5-260127': {
+    kimi: 'moonshot-v1-128k',
+  },
+  // 智谱映射
+  'glm-4': {
+    zhipu: 'glm-4',
+  },
+  // 通义千问映射
+  'qwen-max': {
+    qwen: 'qwen-max',
+  },
+}
+
+/**
+ * 获取实际的模型名称
+ * @param provider Provider 名称
+ * @param model UI 中显示的模型名（可能是 Coze 平台的模型名）
+ * @returns 该 Provider API 实际接受的模型名
+ */
+export function getActualModelName(provider: string, model?: string): string {
+  if (!model) {
+    // 返回各 Provider 的默认模型
+    const defaultModels: Record<string, string> = {
+      deepseek: 'deepseek-chat',
+      kimi: 'moonshot-v1-128k',
+      moonshot: 'moonshot-v1-128k',
+      zhipu: 'glm-4',
+      qwen: 'qwen-max',
+      minimax: 'abab6.5s-chat',
+      ollama: 'llama3',
+    }
+    return defaultModels[provider] || 'gpt-3.5-turbo'
+  }
+  
+  // 检查是否有映射
+  if (MODEL_NAME_MAPPING[model]?.[provider]) {
+    return MODEL_NAME_MAPPING[model][provider]
+  }
+  
+  // 如果模型名已经包含 provider 前缀（如 deepseek-chat），直接返回
+  return model
+}
+
 /** OpenAI 兼容配置 */
 export interface OpenAICompatibleConfig {
   apiKey: string
