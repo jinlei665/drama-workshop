@@ -702,7 +702,7 @@ async function convertImageUrlForVideo(
  * 获取分镜图片URL
  * 支持多种字段名：image_key（数据库）、imageKey（内存）、image_url、imageUrl
  * 
- * 关键改进：对于火山引擎 TOS URL，下载并保存到本地，解决服务器无法访问的问题
+ * 存储策略：先尝试对象存储，失败后回退到本地存储
  */
 async function getImageUrl(
   scene: { id: string; image_key?: string; image_url?: string; imageKey?: string; imageUrl?: string }, 
@@ -747,8 +747,16 @@ async function getImageUrl(
   const isVolcengineTosUrl = rawUrl.includes('ark-content-generation') || 
                              rawUrl.includes('tos-cn-beijing.volces.com');
   
+  // 检查是否是本地存储 URL
+  const isLocalStorageUrl = rawUrl.startsWith('/scenes/') || rawUrl.startsWith('/characters/');
+  
+  if (isLocalStorageUrl) {
+    // 本地存储 URL，直接转换为完整 URL
+    return convertImageUrlForVideo(rawUrl, scene.id, storage);
+  }
+  
   if (isVolcengineTosUrl) {
-    console.log(`[getImageUrl] 检测到火山引擎 TOS URL，尝试下载并保存到本地...`);
+    console.log(`[getImageUrl] 检测到火山引擎 TOS URL，尝试下载并重新存储...`);
     
     try {
       // 下载图片 - 使用更完整的请求头模拟浏览器访问
@@ -765,50 +773,62 @@ async function getImageUrl(
         },
         redirect: 'follow',
       });
+      
       if (!response.ok) {
         console.warn(`[getImageUrl] 下载失败: ${response.status}，使用原始 URL`);
         return rawUrl;
       }
       
       const imageBuffer = Buffer.from(await response.arrayBuffer());
+      console.log(`[getImageUrl] 图片下载成功，大小: ${(imageBuffer.length / 1024).toFixed(2)} KB`);
       
-      // 保存到本地
-      const fs = await import('fs');
-      const path = await import('path');
+      let finalUrl: string;
       
-      const publicDir = path.join(process.cwd(), 'public', 'scenes', scene.id);
-      if (!fs.existsSync(publicDir)) {
-        fs.mkdirSync(publicDir, { recursive: true });
+      // 策略1: 先尝试上传到对象存储
+      try {
+        const key = `scenes/${scene.id}/image_${Date.now()}.png`;
+        await storage.uploadFile({
+          fileContent: imageBuffer,
+          fileName: key,
+          contentType: 'image/png',
+        });
+        
+        const signedUrl = await storage.generatePresignedUrl({
+          key,
+          expireTime: 86400 * 7, // 7天有效期
+        });
+        finalUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url;
+        console.log(`[getImageUrl] 图片已上传到对象存储: ${key}`);
+        
+        // 更新数据库
+        await updateSceneImageUrl(scene.id, key, finalUrl);
+        
+      } catch (storageErr) {
+        console.warn(`[getImageUrl] 对象存储上传失败，尝试本地存储:`, storageErr);
+        
+        // 策略2: 回退到本地存储
+        const fs = await import('fs');
+        const path = await import('path');
+        
+        const publicDir = path.join(process.cwd(), 'public', 'scenes', scene.id);
+        if (!fs.existsSync(publicDir)) {
+          fs.mkdirSync(publicDir, { recursive: true });
+        }
+        
+        const localFileName = `image_${Date.now()}.png`;
+        const localFilePath = path.join(publicDir, localFileName);
+        fs.writeFileSync(localFilePath, imageBuffer);
+        
+        finalUrl = `/scenes/${scene.id}/${localFileName}`;
+        console.log(`[getImageUrl] 图片已保存到本地: ${localFilePath}`);
+        
+        // 更新数据库
+        await updateSceneImageUrl(scene.id, null, finalUrl);
       }
       
-      const localFileName = `image_${Date.now()}.png`;
-      const localFilePath = path.join(publicDir, localFileName);
-      fs.writeFileSync(localFilePath, imageBuffer);
+      // 返回转换后的 URL
+      return convertImageUrlForVideo(finalUrl, scene.id, storage);
       
-      // 本地相对路径
-      const localUrl = `/scenes/${scene.id}/${localFileName}`;
-      console.log(`[getImageUrl] 图片已保存到本地: ${localFilePath}`);
-      
-      // 更新数据库（使用本地路径）
-      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client');
-      if (isDatabaseConfigured()) {
-        const supabase = getSupabaseClient();
-        await supabase
-          .from('scenes')
-          .update({ image_url: localUrl })
-          .eq('id', scene.id);
-        console.log(`[getImageUrl] 数据库已更新为本地路径`);
-      }
-      
-      // 更新内存
-      const { memoryScenes } = await import('@/lib/memory-storage');
-      const sceneIndex = memoryScenes.findIndex(s => s.id === scene.id);
-      if (sceneIndex !== -1) {
-        memoryScenes[sceneIndex].imageUrl = localUrl;
-      }
-      
-      // 返回本地完整 URL
-      return convertImageUrlForVideo(localUrl, scene.id, storage);
     } catch (downloadError) {
       console.warn(`[getImageUrl] 下载保存失败:`, downloadError);
       // 使用原始 URL
@@ -816,8 +836,38 @@ async function getImageUrl(
     }
   }
   
-  // 转换为视频 API 支持的格式
+  // 非 TOS URL，直接转换格式
   return convertImageUrlForVideo(rawUrl, scene.id, storage);
+}
+
+/**
+ * 更新分镜图片 URL（数据库和内存）
+ */
+async function updateSceneImageUrl(sceneId: string, imageKey: string | null, imageUrl: string): Promise<void> {
+  // 更新数据库
+  const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client');
+  if (isDatabaseConfigured()) {
+    const supabase = getSupabaseClient();
+    const updateData: Record<string, any> = { image_url: imageUrl };
+    if (imageKey) {
+      updateData.image_key = imageKey;
+    }
+    await supabase
+      .from('scenes')
+      .update(updateData)
+      .eq('id', sceneId);
+    console.log(`[updateSceneImageUrl] 数据库已更新`);
+  }
+  
+  // 更新内存
+  const { memoryScenes } = await import('@/lib/memory-storage');
+  const sceneIndex = memoryScenes.findIndex(s => s.id === sceneId);
+  if (sceneIndex !== -1) {
+    memoryScenes[sceneIndex].imageUrl = imageUrl;
+    if (imageKey) {
+      memoryScenes[sceneIndex].imageKey = imageKey;
+    }
+  }
 }
 
 /**
