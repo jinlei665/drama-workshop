@@ -205,6 +205,74 @@ async function getUserCozeConfig(): Promise<{ apiKey?: string; baseUrl?: string;
 }
 
 /**
+ * 获取完整的用户 LLM 配置
+ * 包括 llm_provider, llm_api_key, llm_base_url, llm_model
+ * 优先级：内存 → 数据库
+ */
+export async function getUserLLMConfig(): Promise<{
+  provider: string
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+}> {
+  try {
+    // 优先从内存获取
+    const { getSettingsFromMemory } = await import('@/lib/memory-store')
+    const memorySettings = getSettingsFromMemory()
+    
+    if (memorySettings?.llm_api_key || memorySettings?.llm_provider) {
+      console.log('[AI Config] Got LLM config from memory:', {
+        provider: memorySettings.llm_provider,
+        hasApiKey: !!memorySettings.llm_api_key,
+        model: memorySettings.llm_model,
+      })
+      return {
+        provider: (memorySettings.llm_provider as string) || 'doubao',
+        apiKey: memorySettings.llm_api_key as string | undefined,
+        baseUrl: memorySettings.llm_base_url as string | undefined,
+        model: memorySettings.llm_model as string | undefined,
+      }
+    }
+    
+    // 再尝试从数据库获取
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      try {
+        const db = getSupabaseClient()
+        const { data, error } = await db
+          .from('user_settings')
+          .select('llm_provider, llm_api_key, llm_base_url, llm_model')
+          .maybeSingle()
+        
+        if (!error && data) {
+          console.log('[AI Config] Got LLM config from database:', {
+            provider: data.llm_provider,
+            hasApiKey: !!data.llm_api_key,
+            model: data.llm_model,
+          })
+          return {
+            provider: data.llm_provider || 'doubao',
+            apiKey: data.llm_api_key || undefined,
+            baseUrl: data.llm_base_url || undefined,
+            model: data.llm_model || undefined,
+          }
+        }
+      } catch (dbError) {
+        console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
+      }
+    }
+  } catch (err) {
+    console.log('[AI Config] Error getting LLM config:', err instanceof Error ? err.message : String(err))
+  }
+  
+  // 返回默认配置
+  return {
+    provider: 'doubao',
+  }
+}
+
+/**
  * 获取服务端 AI 配置（供 API 路由使用）
  */
 export async function getServerAIConfig(): Promise<{
@@ -212,8 +280,13 @@ export async function getServerAIConfig(): Promise<{
   baseUrl?: string
   model: string
   useSystemDefault: boolean
+  llmProvider?: string
+  llmApiKey?: string
+  llmBaseUrl?: string
+  llmModel?: string
 }> {
   const userConfig = await getUserCozeConfig()
+  const llmConfig = await getUserLLMConfig()
   
   // 国内用户默认使用 api.coze.cn
   const defaultBaseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
@@ -225,6 +298,10 @@ export async function getServerAIConfig(): Promise<{
       baseUrl: userConfig.baseUrl || defaultBaseUrl,
       model: DEFAULT_LLM_MODEL,
       useSystemDefault: false,
+      llmProvider: llmConfig.provider,
+      llmApiKey: llmConfig.apiKey,
+      llmBaseUrl: llmConfig.baseUrl,
+      llmModel: llmConfig.model,
     }
   }
   
@@ -233,6 +310,10 @@ export async function getServerAIConfig(): Promise<{
     baseUrl: defaultBaseUrl,
     model: DEFAULT_LLM_MODEL,
     useSystemDefault: true,
+    llmProvider: llmConfig.provider,
+    llmApiKey: llmConfig.apiKey,
+    llmBaseUrl: llmConfig.baseUrl,
+    llmModel: llmConfig.model,
   }
 }
 

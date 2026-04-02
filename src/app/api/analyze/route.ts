@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL, getServerAIConfig } from "@/lib/ai"
+import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL, getServerAIConfig, getUserLLMConfig } from "@/lib/ai"
 import { invokeCozeDirect, getCozeDirectConfig } from "@/lib/ai/coze-direct"
 import { memoryCharacters, memoryScenes, generateId } from "@/lib/memory-storage"
 
@@ -14,37 +14,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "内容不能为空" }, { status: 400 })
   }
 
-  // 使用服务端配置获取用户设置
+  // 获取完整的 AI 配置
   const aiConfig = await getServerAIConfig()
+  const llmConfig = await getUserLLMConfig()
   
-  // 获取用户配置（可选，用于日志）
-  let userSettings: {
-    llm_model?: string
-    llm_api_key?: string | null
-    llm_base_url?: string | null
-  } | null = null
-
-  if (aiConfig.apiKey) {
-    userSettings = {
-      llm_model: aiConfig.model,
-      llm_api_key: aiConfig.apiKey,
-      llm_base_url: aiConfig.baseUrl,
-    }
-  }
-
   // 提取请求头用于转发
   const customHeaders = extractHeaders(request.headers)
 
-  // 使用统一配置（支持用户配置回退到系统模型）
-  const model = aiConfig.model || DEFAULT_LLM_MODEL
-  const apiKey = aiConfig.apiKey
-  const baseUrl = aiConfig.baseUrl
-
-  console.log("LLM Config:", {
-    model,
-    hasApiKey: !!apiKey,
-    baseUrl: baseUrl || 'default (system)',
-    useSystemDefault: aiConfig.useSystemDefault,
+  // 打印配置信息
+  console.log("[Analyze] LLM Config:", {
+    cozeProvider: {
+      hasApiKey: !!aiConfig.apiKey,
+      baseUrl: aiConfig.baseUrl,
+      model: aiConfig.model,
+      useSystemDefault: aiConfig.useSystemDefault,
+    },
+    llmProvider: {
+      provider: llmConfig.provider,
+      hasApiKey: !!llmConfig.apiKey,
+      baseUrl: llmConfig.baseUrl,
+      model: llmConfig.model,
+    },
   })
 
   // 检查内容长度，如果太长则截断
@@ -98,44 +88,70 @@ export async function POST(request: NextRequest) {
       { role: "user" as const, content: `请分析以下内容：\n\n${processedContent}` },
     ]
 
-    // 调用 LLM
+    // 调用 LLM - 根据用户配置的 llm_provider 选择
     let responseContent: string
     
-    // 优先使用直接 Coze API（需要 bot_id）
-    const cozeDirectConfig = await getCozeDirectConfig()
-    if (cozeDirectConfig?.botId) {
-      console.log('[Analyze] Using direct Coze API with bot_id:', cozeDirectConfig.botId)
-      responseContent = await invokeCozeDirect(messages, cozeDirectConfig)
-    } else if (apiKey) {
-      // 使用 SDK（可能需要系统模型）
-      console.log('[Analyze] Using SDK with user API key')
-      try {
-        responseContent = await invokeLLM(
-          messages,
-          {
-            model,
-            temperature: 0.3,
-          },
-          { apiKey, baseUrl, model },
-          customHeaders
-        )
-      } catch (err) {
-        // 如果是回退错误，尝试用系统模型
-        if (err instanceof Error && (err as any).fallbackAttempted) {
-          console.warn("User model failed, already attempted fallback, using error message")
+    // 判断是否使用用户配置的 LLM Provider
+    const useCustomLLMProvider = llmConfig.provider && 
+      llmConfig.provider !== 'doubao' && 
+      llmConfig.apiKey
+    
+    if (useCustomLLMProvider) {
+      // 使用用户配置的自定义 LLM Provider（DeepSeek、Kimi 等）
+      console.log('[Analyze] Using custom LLM provider:', llmConfig.provider)
+      
+      // 导入 OpenAI 兼容客户端
+      const { OpenAICompatibleClient } = await import('@/lib/ai/openai-compatible')
+      const client = new OpenAICompatibleClient({
+        apiKey: llmConfig.apiKey!,
+        baseUrl: llmConfig.baseUrl || 'https://api.deepseek.com',
+        model: llmConfig.model || 'deepseek-chat',
+      })
+      
+      responseContent = await client.invoke(messages, { temperature: 0.3 })
+    } else {
+      // 使用 Coze/豆包模型
+      // 获取 Coze Direct 配置（用于 Bot 调用）
+      const cozeDirectConfig = await getCozeDirectConfig()
+      
+      // 只有当 llm_provider 是 doubao 且配置了 botId 时才使用 Coze Direct API
+      const shouldUseCozeDirect = (llmConfig.provider === 'doubao' || !llmConfig.provider) && 
+        cozeDirectConfig?.botId && 
+        cozeDirectConfig?.apiKey
+      
+      if (shouldUseCozeDirect) {
+        console.log('[Analyze] Using direct Coze API with bot_id:', cozeDirectConfig!.botId)
+        responseContent = await invokeCozeDirect(messages, cozeDirectConfig!)
+      } else if (aiConfig.apiKey) {
+        // 使用 Coze SDK
+        console.log('[Analyze] Using Coze SDK with user API key')
+        try {
+          responseContent = await invokeLLM(
+            messages,
+            {
+              model: aiConfig.model,
+              temperature: 0.3,
+            },
+            { apiKey: aiConfig.apiKey, baseUrl: aiConfig.baseUrl, model: aiConfig.model },
+            customHeaders
+          )
+        } catch (err) {
+          if (err instanceof Error && (err as any).fallbackAttempted) {
+            console.warn("User model failed, already attempted fallback")
+            throw err
+          }
           throw err
         }
-        throw err
+      } else {
+        // 使用系统默认模型
+        console.log('[Analyze] Using system default model')
+        responseContent = await invokeLLM(
+          messages,
+          { model: aiConfig.model, temperature: 0.3 },
+          undefined,
+          customHeaders
+        )
       }
-    } else {
-      // 使用系统默认模型
-      console.log('[Analyze] Using system default model')
-      responseContent = await invokeLLM(
-        messages,
-        { model, temperature: 0.3 },
-        undefined,
-        customHeaders
-      )
     }
 
     // 解析 JSON 响应
