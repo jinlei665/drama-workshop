@@ -587,6 +587,15 @@ async function convertImageUrlForVideo(
 ): Promise<string> {
   console.log(`[convertImageUrl] 原始 URL: ${imageUrl.substring(0, 80)}...`);
   
+  // 处理本地存储的图片 URL（以 /scenes/ 或 /characters/ 开头）
+  if (imageUrl.startsWith('/scenes/') || imageUrl.startsWith('/characters/')) {
+    // 构造完整的 URL
+    const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+    const fullUrl = `${domain}${imageUrl}`
+    console.log(`[convertImageUrl] 本地图片，转换为完整 URL: ${fullUrl}`)
+    return fullUrl
+  }
+  
   // 检查 URL 是否已经是支持的格式
   const supportedPatterns = [
     /\.png$/i,

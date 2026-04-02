@@ -177,7 +177,28 @@ export async function POST(request: NextRequest) {
 
       console.log("Image uploaded to storage:", fileKey)
     } catch (storageError) {
-      console.warn("Failed to upload to storage, using original URL:", storageError)
+      console.warn("Failed to upload to storage, saving to local:", storageError)
+      
+      // 对象存储不可用，保存到本地 public 目录
+      try {
+        const fs = await import('fs')
+        const path = await import('path')
+        
+        const publicDir = path.join(process.cwd(), 'public', 'scenes', sceneId)
+        if (!fs.existsSync(publicDir)) {
+          fs.mkdirSync(publicDir, { recursive: true })
+        }
+        
+        const localFileName = `image_${Date.now()}.png`
+        const localFilePath = path.join(publicDir, localFileName)
+        fs.writeFileSync(localFilePath, imageBuffer)
+        
+        fileKey = `${sceneId}/${localFileName}`
+        viewUrl = `/scenes/${fileKey}`
+        console.log("Image saved to local:", localFilePath)
+      } catch (localError) {
+        console.warn("Failed to save to local:", localError)
+      }
     }
 
     // 更新数据库

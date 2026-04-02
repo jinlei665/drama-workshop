@@ -215,24 +215,65 @@ export async function POST(request: NextRequest) {
       let fileKey: string | null = null
       let viewUrl: string = imageUrl
 
-      // 尝试上传到存储
-      if (storage) {
-        try {
-          const imageBuffer = await downloadFile(imageUrl)
+      // 尝试下载并上传到存储
+      try {
+        const imageBuffer = await downloadFile(imageUrl)
+        
+        // 尝试上传到对象存储
+        if (storage) {
+          try {
+            fileKey = await storage.uploadFile({
+              fileContent: imageBuffer,
+              fileName: `scenes/${sceneId}/image_${Date.now()}.png`,
+              contentType: "image/png",
+            })
 
-          fileKey = await storage.uploadFile({
-            fileContent: imageBuffer,
-            fileName: `scenes/${sceneId}/image_${Date.now()}.png`,
-            contentType: "image/png",
-          })
-
-          viewUrl = await storage.generatePresignedUrl({
-            key: fileKey,
-            expireTime: 86400 * 7,
-          })
-        } catch (e) {
-          console.warn("Failed to upload to storage:", e)
+            viewUrl = await storage.generatePresignedUrl({
+              key: fileKey,
+              expireTime: 86400 * 7,
+            })
+            console.log(`Scene ${sceneId} image uploaded to storage:`, fileKey)
+          } catch (storageErr) {
+            console.warn(`Scene ${sceneId} storage upload failed, saving to local:`, storageErr)
+            
+            // 对象存储不可用，保存到本地 public 目录
+            const fs = await import('fs')
+            const path = await import('path')
+            
+            const publicDir = path.join(process.cwd(), 'public', 'scenes', sceneId)
+            if (!fs.existsSync(publicDir)) {
+              fs.mkdirSync(publicDir, { recursive: true })
+            }
+            
+            const localFileName = `image_${Date.now()}.png`
+            const localFilePath = path.join(publicDir, localFileName)
+            fs.writeFileSync(localFilePath, imageBuffer)
+            
+            fileKey = `${sceneId}/${localFileName}`
+            viewUrl = `/scenes/${fileKey}`
+            console.log(`Scene ${sceneId} image saved to local:`, localFilePath)
+          }
+        } else {
+          // 没有对象存储配置，直接保存到本地
+          const fs = await import('fs')
+          const path = await import('path')
+          
+          const publicDir = path.join(process.cwd(), 'public', 'scenes', sceneId)
+          if (!fs.existsSync(publicDir)) {
+            fs.mkdirSync(publicDir, { recursive: true })
+          }
+          
+          const localFileName = `image_${Date.now()}.png`
+          const localFilePath = path.join(publicDir, localFileName)
+          fs.writeFileSync(localFilePath, imageBuffer)
+          
+          fileKey = `${sceneId}/${localFileName}`
+          viewUrl = `/scenes/${fileKey}`
+          console.log(`Scene ${sceneId} image saved to local:`, localFilePath)
         }
+      } catch (downloadErr) {
+        console.warn(`Scene ${sceneId} image download failed, using original URL:`, downloadErr)
+        // 下载失败，使用原始 URL
       }
 
       // 更新数据库
