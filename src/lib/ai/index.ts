@@ -346,6 +346,346 @@ export async function getUserImageConfig(): Promise<{
 }
 
 /**
+ * 获取用户视频配置
+ * 优先级：内存 → 数据库 → 默认值
+ */
+export async function getUserVideoConfig(): Promise<{
+  provider: string
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+  resolution?: string
+  ratio?: string
+}> {
+  try {
+    // 优先从内存获取
+    const { getSettingsFromMemory } = await import('@/lib/memory-store')
+    const memorySettings = getSettingsFromMemory()
+    
+    if (memorySettings?.video_api_key || memorySettings?.video_provider) {
+      console.log('[AI Config] Got video config from memory:', {
+        provider: memorySettings.video_provider,
+        hasApiKey: !!memorySettings.video_api_key,
+        model: memorySettings.video_model,
+      })
+      return {
+        provider: (memorySettings.video_provider as string) || 'doubao',
+        apiKey: memorySettings.video_api_key as string | undefined,
+        baseUrl: memorySettings.video_base_url as string | undefined,
+        model: memorySettings.video_model as string | undefined,
+        resolution: memorySettings.video_resolution as string | undefined,
+        ratio: memorySettings.video_ratio as string | undefined,
+      }
+    }
+    
+    // 再尝试从数据库获取
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      try {
+        const db = getSupabaseClient()
+        const { data, error } = await db
+          .from('user_settings')
+          .select('video_provider, video_api_key, video_base_url, video_model, video_resolution, video_ratio')
+          .maybeSingle()
+        
+        if (!error && data) {
+          console.log('[AI Config] Got video config from database:', {
+            provider: data.video_provider,
+            hasApiKey: !!data.video_api_key,
+            model: data.video_model,
+          })
+          return {
+            provider: data.video_provider || 'doubao',
+            apiKey: data.video_api_key || undefined,
+            baseUrl: data.video_base_url || undefined,
+            model: data.video_model || undefined,
+            resolution: data.video_resolution || undefined,
+            ratio: data.video_ratio || undefined,
+          }
+        }
+      } catch (dbError) {
+        console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
+      }
+    }
+  } catch (err) {
+    console.log('[AI Config] Error getting video config:', err instanceof Error ? err.message : String(err))
+  }
+  
+  // 返回默认配置
+  return {
+    provider: 'doubao',
+  }
+}
+
+// 默认视频配置
+const DEFAULT_VIDEO_RESOLUTION = '720p'
+const DEFAULT_VIDEO_RATIO = '16:9'
+
+/**
+ * 火山引擎视频生成 API 内容类型
+ */
+interface VolcengineVideoContent {
+  type: 'text' | 'image_url' | 'draft_task'
+  text?: string
+  image_url?: { url: string }
+  role?: 'first_frame' | 'last_frame' | 'reference_image'
+  draft_task?: { id: string }
+}
+
+/**
+ * 火山引擎视频生成请求参数
+ */
+interface VolcengineVideoRequest {
+  model: string
+  content: VolcengineVideoContent[]
+  ratio?: string
+  resolution?: string
+  duration?: number
+  seed?: number
+  camera_fixed?: boolean
+  watermark?: boolean
+  generate_audio?: boolean
+  return_last_frame?: boolean
+  callback_url?: string
+}
+
+/**
+ * 火山引擎视频生成任务响应
+ */
+interface VolcengineVideoTaskResponse {
+  id: string
+}
+
+/**
+ * 火山引擎视频任务状态响应
+ */
+interface VolcengineVideoStatusResponse {
+  id: string
+  model: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'expired'
+  error?: {
+    code: string
+    message: string
+  }
+  content?: {
+    video_url?: string
+    last_frame_url?: string
+  }
+  created_at: number
+  updated_at: number
+  duration?: number
+  resolution?: string
+  ratio?: string
+}
+
+/**
+ * 创建火山引擎视频生成任务
+ */
+async function createVolcengineVideoTask(
+  apiKey: string,
+  baseUrl: string,
+  request: VolcengineVideoRequest
+): Promise<string> {
+  const url = `${baseUrl}/contents/generations/tasks`
+  
+  console.log('[Volcengine Video] Creating task:', {
+    url,
+    model: request.model,
+    contentCount: request.content.length,
+  })
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(request),
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`创建视频任务失败 (${response.status}): ${errorText}`)
+  }
+  
+  const data: VolcengineVideoTaskResponse = await response.json()
+  console.log('[Volcengine Video] Task created:', data.id)
+  
+  return data.id
+}
+
+/**
+ * 查询火山引擎视频任务状态
+ */
+async function queryVolcengineVideoTask(
+  apiKey: string,
+  baseUrl: string,
+  taskId: string
+): Promise<VolcengineVideoStatusResponse> {
+  const url = `${baseUrl}/contents/generations/tasks/${taskId}`
+  
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`查询视频任务失败 (${response.status}): ${errorText}`)
+  }
+  
+  return await response.json()
+}
+
+/**
+ * 轮询等待视频生成完成
+ */
+async function waitForVolcengineVideo(
+  apiKey: string,
+  baseUrl: string,
+  taskId: string,
+  maxWaitTime: number = 600000, // 默认等待 10 分钟
+  pollInterval: number = 5000   // 每 5 秒查询一次
+): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
+  const startTime = Date.now()
+  
+  console.log('[Volcengine Video] Waiting for task:', taskId)
+  
+  while (Date.now() - startTime < maxWaitTime) {
+    const status = await queryVolcengineVideoTask(apiKey, baseUrl, taskId)
+    
+    console.log('[Volcengine Video] Task status:', {
+      id: taskId,
+      status: status.status,
+      progress: `${Math.round((Date.now() - startTime) / 1000)}s`,
+    })
+    
+    if (status.status === 'succeeded') {
+      if (!status.content?.video_url) {
+        throw new Error('视频生成成功但未返回视频 URL')
+      }
+      console.log('[Volcengine Video] Task succeeded:', {
+        videoUrl: status.content.video_url.substring(0, 80),
+        hasLastFrame: !!status.content.last_frame_url,
+      })
+      return {
+        videoUrl: status.content.video_url,
+        lastFrameUrl: status.content.last_frame_url,
+      }
+    }
+    
+    if (status.status === 'failed') {
+      throw new Error(`视频生成失败: ${status.error?.message || '未知错误'}`)
+    }
+    
+    if (status.status === 'expired') {
+      throw new Error('视频生成任务超时')
+    }
+    
+    // 等待后继续轮询
+    await new Promise(resolve => setTimeout(resolve, pollInterval))
+  }
+  
+  throw new Error('视频生成超时')
+}
+
+/**
+ * 使用火山引擎 API 生成视频
+ * 支持文生视频、图生视频（首帧）、首尾帧生视频
+ */
+export async function generateVideoWithVolcengine(params: {
+  apiKey: string
+  baseUrl: string
+  model?: string
+  prompt: string
+  firstFrameUrl?: string
+  lastFrameUrl?: string
+  resolution?: string
+  ratio?: string
+  duration?: number
+  watermark?: boolean
+  generateAudio?: boolean
+  returnLastFrame?: boolean
+}): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
+  const {
+    apiKey,
+    baseUrl,
+    model = DEFAULT_VIDEO_MODEL,
+    prompt,
+    firstFrameUrl,
+    lastFrameUrl,
+    resolution = DEFAULT_VIDEO_RESOLUTION,
+    ratio = DEFAULT_VIDEO_RATIO,
+    duration = 5,
+    watermark = false,
+    generateAudio = true,
+    returnLastFrame = true,
+  } = params
+  
+  // 构建内容数组
+  const content: VolcengineVideoContent[] = []
+  
+  // 添加图片内容
+  if (firstFrameUrl && lastFrameUrl) {
+    // 首尾帧生视频
+    content.push({
+      type: 'image_url',
+      image_url: { url: firstFrameUrl },
+      role: 'first_frame',
+    })
+    content.push({
+      type: 'image_url',
+      image_url: { url: lastFrameUrl },
+      role: 'last_frame',
+    })
+  } else if (firstFrameUrl) {
+    // 仅首帧图生视频
+    content.push({
+      type: 'image_url',
+      image_url: { url: firstFrameUrl },
+      role: 'first_frame',
+    })
+  }
+  
+  // 添加文本提示词
+  content.push({
+    type: 'text',
+    text: prompt,
+  })
+  
+  // 构建请求
+  const request: VolcengineVideoRequest = {
+    model,
+    content,
+    ratio,
+    resolution,
+    duration,
+    watermark,
+    generate_audio: generateAudio,
+    return_last_frame: returnLastFrame,
+  }
+  
+  console.log('[Volcengine Video] Starting generation:', {
+    model,
+    hasFirstFrame: !!firstFrameUrl,
+    hasLastFrame: !!lastFrameUrl,
+    resolution,
+    ratio,
+    duration,
+  })
+  
+  // 创建任务
+  const taskId = await createVolcengineVideoTask(apiKey, baseUrl, request)
+  
+  // 等待完成
+  return await waitForVolcengineVideo(apiKey, baseUrl, taskId)
+}
+
+/**
  * 获取服务端 AI 配置（供 API 路由使用）
  */
 export async function getServerAIConfig(): Promise<{
@@ -2142,8 +2482,8 @@ export async function generateVideo(
 
 /**
  * 图生视频（首帧）
- * 支持用户配置的 Coze API Key
- * 策略顺序：沙箱凭证 → 用户 PAT → Bot Skills
+ * 支持用户配置的火山引擎 API
+ * 策略顺序：自定义 Provider（火山引擎等）→ 沙箱凭证 → 用户 PAT → Bot Skills
  */
 export async function generateVideoFromImage(
   prompt: string,
@@ -2152,10 +2492,51 @@ export async function generateVideoFromImage(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  // 注意：不再禁用代理，因为用户可能需要代理访问 API
-  
   try {
     logger.info('Image-to-video generation started')
+
+    // 策略0: 检查用户配置的自定义 Provider（火山引擎等）
+    const videoConfig = await getUserVideoConfig()
+    
+    // 判断是否使用自定义 Provider：
+    // 1. 配置了 API Key 和 Base URL
+    // 2. Base URL 不是 Coze API（api.coze.cn 或 api.coze.com）
+    const isCustomProvider = videoConfig.apiKey && videoConfig.baseUrl && 
+      !videoConfig.baseUrl.includes('api.coze.cn') && 
+      !videoConfig.baseUrl.includes('api.coze.com')
+    
+    if (isCustomProvider) {
+      logger.info('Trying video generation with custom provider', { 
+        provider: videoConfig.provider,
+        baseUrl: videoConfig.baseUrl,
+        model: videoConfig.model 
+      })
+      
+      try {
+        const result = await generateVideoWithVolcengine({
+          apiKey: videoConfig.apiKey!,
+          baseUrl: videoConfig.baseUrl!,
+          model: videoConfig.model || options?.model || DEFAULT_VIDEO_MODEL,
+          prompt,
+          firstFrameUrl,
+          resolution: options?.resolution || videoConfig.resolution || DEFAULT_VIDEO_RESOLUTION,
+          ratio: options?.ratio || videoConfig.ratio || DEFAULT_VIDEO_RATIO,
+          duration: options?.duration ?? 5,
+          watermark: options?.watermark ?? false,
+          generateAudio: options?.generateAudio ?? true,
+          returnLastFrame: true,
+        })
+        
+        logger.info('Video generation completed with custom provider', { 
+          provider: videoConfig.provider,
+        })
+        return result
+      } catch (customErr) {
+        const errMsg = customErr instanceof Error ? customErr.message : String(customErr)
+        logger.warn('Custom provider failed for video generation:', { error: errMsg })
+        // 自定义 Provider 失败，继续尝试其他方式
+      }
+    }
 
     // 策略1: 优先尝试沙箱内置凭证（仅在有沙箱环境时）
     const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
@@ -2281,8 +2662,8 @@ export async function generateVideoFromImage(
 
 /**
  * 图生视频（首帧 + 尾帧）
- * 支持用户配置的 Coze API Key
- * 策略顺序：沙箱凭证 → 用户 PAT → Bot Skills
+ * 支持用户配置的火山引擎 API
+ * 策略顺序：自定义 Provider（火山引擎等）→ 沙箱凭证 → 用户 PAT → Bot Skills
  */
 export async function generateVideoFromFrames(
   prompt: string,
@@ -2292,11 +2673,52 @@ export async function generateVideoFromFrames(
   config?: AIServiceConfig,
   headers?: Record<string, string>
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
-  // 禁用代理，避免本地代理（如 Clash）连接失败
-  const savedProxy = disableProxy()
-  
   try {
     logger.info('Frame-to-video generation started')
+
+    // 策略0: 检查用户配置的自定义 Provider（火山引擎等）
+    const videoConfig = await getUserVideoConfig()
+    
+    // 判断是否使用自定义 Provider：
+    // 1. 配置了 API Key 和 Base URL
+    // 2. Base URL 不是 Coze API（api.coze.cn 或 api.coze.com）
+    const isCustomProvider = videoConfig.apiKey && videoConfig.baseUrl && 
+      !videoConfig.baseUrl.includes('api.coze.cn') && 
+      !videoConfig.baseUrl.includes('api.coze.com')
+    
+    if (isCustomProvider) {
+      logger.info('Trying frame-to-video with custom provider', { 
+        provider: videoConfig.provider,
+        baseUrl: videoConfig.baseUrl,
+        model: videoConfig.model 
+      })
+      
+      try {
+        const result = await generateVideoWithVolcengine({
+          apiKey: videoConfig.apiKey!,
+          baseUrl: videoConfig.baseUrl!,
+          model: videoConfig.model || options?.model || DEFAULT_VIDEO_MODEL,
+          prompt,
+          firstFrameUrl,
+          lastFrameUrl,
+          resolution: options?.resolution || videoConfig.resolution || DEFAULT_VIDEO_RESOLUTION,
+          ratio: options?.ratio || videoConfig.ratio || DEFAULT_VIDEO_RATIO,
+          duration: options?.duration ?? 5,
+          watermark: options?.watermark ?? false,
+          generateAudio: options?.generateAudio ?? true,
+          returnLastFrame: true,
+        })
+        
+        logger.info('Frame-to-video generation completed with custom provider', { 
+          provider: videoConfig.provider,
+        })
+        return result
+      } catch (customErr) {
+        const errMsg = customErr instanceof Error ? customErr.message : String(customErr)
+        logger.warn('Custom provider failed for frame-to-video:', { error: errMsg })
+        // 自定义 Provider 失败，继续尝试其他方式
+      }
+    }
 
     // 策略1: 优先尝试沙箱内置凭证（仅在有沙箱环境时）
     const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
@@ -2417,9 +2839,6 @@ export async function generateVideoFromFrames(
       throw err
     }
     throw Errors.AIRequestFailed('Video', err instanceof Error ? err.message : undefined)
-  } finally {
-    // 恢复代理设置
-    restoreProxy(savedProxy)
   }
 }
 
