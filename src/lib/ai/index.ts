@@ -273,6 +273,76 @@ export async function getUserLLMConfig(): Promise<{
 }
 
 /**
+ * 获取用户配置的图像生成设置
+ * 优先级：内存 → 数据库 → 环境变量
+ */
+export async function getUserImageConfig(): Promise<{
+  provider: string
+  apiKey?: string
+  baseUrl?: string
+  model?: string
+  size?: string
+}> {
+  try {
+    // 优先从内存获取
+    const { getSettingsFromMemory } = await import('@/lib/memory-store')
+    const memorySettings = getSettingsFromMemory()
+    
+    if (memorySettings?.image_api_key || memorySettings?.image_provider) {
+      console.log('[AI Config] Got image config from memory:', {
+        provider: memorySettings.image_provider,
+        hasApiKey: !!memorySettings.image_api_key,
+        model: memorySettings.image_model,
+      })
+      return {
+        provider: (memorySettings.image_provider as string) || 'doubao',
+        apiKey: memorySettings.image_api_key as string | undefined,
+        baseUrl: memorySettings.image_base_url as string | undefined,
+        model: memorySettings.image_model as string | undefined,
+        size: memorySettings.image_size as string | undefined,
+      }
+    }
+    
+    // 再尝试从数据库获取
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      try {
+        const db = getSupabaseClient()
+        const { data, error } = await db
+          .from('user_settings')
+          .select('image_provider, image_api_key, image_base_url, image_model, image_size')
+          .maybeSingle()
+        
+        if (!error && data) {
+          console.log('[AI Config] Got image config from database:', {
+            provider: data.image_provider,
+            hasApiKey: !!data.image_api_key,
+            model: data.image_model,
+          })
+          return {
+            provider: data.image_provider || 'doubao',
+            apiKey: data.image_api_key || undefined,
+            baseUrl: data.image_base_url || undefined,
+            model: data.image_model || undefined,
+            size: data.image_size || undefined,
+          }
+        }
+      } catch (dbError) {
+        console.log('[AI Config] Database error:', dbError instanceof Error ? dbError.message : String(dbError))
+      }
+    }
+  } catch (err) {
+    console.log('[AI Config] Error getting image config:', err instanceof Error ? err.message : String(err))
+  }
+  
+  // 返回默认配置
+  return {
+    provider: 'doubao',
+  }
+}
+
+/**
  * 获取服务端 AI 配置（供 API 路由使用）
  */
 export async function getServerAIConfig(): Promise<{
@@ -1505,6 +1575,113 @@ export function createImageClient(
 }
 
 /**
+ * 使用 OpenAI 兼容格式生成图像
+ * 支持火山引擎、阿里云等 OpenAI 兼容的图像生成 API
+ */
+async function generateImageWithOpenAICompatible(params: {
+  prompt: string
+  apiKey: string
+  baseUrl: string
+  model: string
+  size?: string
+  watermark?: boolean
+  image?: string | string[]
+}): Promise<{ urls: string[]; b64List?: string[] }> {
+  const { prompt, apiKey, baseUrl, model, size = '2K', watermark = false, image } = params
+  
+  // 尺寸映射：将 2K/4K 转换为实际像素尺寸
+  const sizeMapping: Record<string, string> = {
+    '2K': '2048x2048',
+    '4K': '4096x4096',
+    '1024x1024': '1024x1024',
+    '2048x2048': '2048x2048',
+    '4096x4096': '4096x4096',
+  }
+  const actualSize = sizeMapping[size] || '2048x2048'
+  
+  // 构建请求体
+  const requestBody: Record<string, unknown> = {
+    model,
+    prompt,
+    size: actualSize,
+    n: 1,
+    response_format: 'url',
+  }
+  
+  // 火山引擎等 Provider 支持额外参数
+  // 参考：https://www.volcengine.com/docs/6561/1362581
+  if (baseUrl.includes('volcengine') || baseUrl.includes('doubao')) {
+    requestBody.watermark = watermark
+  }
+  
+  // 图生图：传入参考图片
+  if (image) {
+    const imageUrls = Array.isArray(image) ? image : [image]
+    if (imageUrls.length === 1) {
+      requestBody.image = imageUrls[0]
+    } else {
+      // 多张参考图片（多人物融合）
+      requestBody.image = imageUrls
+    }
+  }
+  
+  logger.info('Calling OpenAI-compatible image API', { 
+    baseUrl, 
+    model, 
+    size: actualSize,
+    hasImage: !!image 
+  })
+  
+  const response = await fetch(`${baseUrl}/images/generations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(requestBody),
+  })
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    logger.error('OpenAI-compatible image API error', { 
+      status: response.status, 
+      error: errorText.slice(0, 500) 
+    })
+    throw new Error(`图像生成 API 错误 (${response.status}): ${errorText.slice(0, 200)}`)
+  }
+  
+  const data = await response.json()
+  
+  // 提取图片 URL
+  const urls: string[] = []
+  const b64List: string[] = []
+  
+  if (data.data && Array.isArray(data.data)) {
+    for (const item of data.data) {
+      if (item.url) {
+        urls.push(item.url)
+      } else if (item.b64_json) {
+        b64List.push(item.b64_json)
+        // 如果返回的是 base64，可以转换为临时 URL
+        // 但这里直接返回 b64，让调用方处理
+      }
+    }
+  }
+  
+  if (urls.length === 0 && b64List.length === 0) {
+    logger.warn('OpenAI-compatible API returned no images', { response: JSON.stringify(data).slice(0, 500) })
+    throw new Error('图像生成 API 未返回有效图片')
+  }
+  
+  logger.info('OpenAI-compatible image generation completed', { urlCount: urls.length, b64Count: b64List.length })
+  
+  return {
+    urls,
+    b64List: b64List.length > 0 ? b64List : undefined,
+  }
+}
+
+/**
  * 生成图像 - 直接调用 Coze API
  * 支持用户配置的 Coze API Key
  */
@@ -1525,7 +1702,44 @@ export async function generateImage(
     const apiKey = config?.apiKey || userConfig?.apiKey
     const botId = await getBotId()
     
-    // 策略1: 先尝试沙箱内置凭证（仅在有沙箱环境时）
+    // 策略1: 检查用户是否配置了自定义图像 Provider（非 doubao/Coze）
+    const imageConfig = await getUserImageConfig()
+    
+    // 如果用户配置了自定义 API Key 和 Base URL（火山引擎、阿里云等），优先使用
+    if (imageConfig.apiKey && imageConfig.baseUrl && imageConfig.provider !== 'doubao') {
+      logger.info('Trying image generation with custom provider', { 
+        provider: imageConfig.provider,
+        baseUrl: imageConfig.baseUrl,
+        model: imageConfig.model 
+      })
+      
+      try {
+        // 使用 OpenAI 兼容格式调用图像生成 API
+        const result = await generateImageWithOpenAICompatible({
+          prompt,
+          apiKey: imageConfig.apiKey,
+          baseUrl: imageConfig.baseUrl,
+          model: imageConfig.model || 'doubao-seed-3-0',
+          size: options?.size || imageConfig.size || DEFAULT_IMAGE_SIZE,
+          watermark: options?.watermark ?? false,
+          image: options?.image,
+        })
+        
+        if (result.urls.length > 0) {
+          logger.info('Image generation completed with custom provider', { 
+            provider: imageConfig.provider,
+            count: result.urls.length 
+          })
+          return result
+        }
+      } catch (customErr) {
+        const errMsg = customErr instanceof Error ? customErr.message : String(customErr)
+        logger.warn('Custom provider failed for image generation:', { error: errMsg })
+        // 自定义 Provider 失败，继续尝试其他方式
+      }
+    }
+    
+    // 策略2: 先尝试沙箱内置凭证（仅在有沙箱环境时）
     const hasSandboxCredentials = !!process.env.COZE_WORKLOAD_IDENTITY_API_KEY
     if (hasSandboxCredentials) {
       try {
@@ -1556,7 +1770,7 @@ export async function generateImage(
       }
     }
 
-    // 策略2: 如果配置了 Bot ID，优先使用 Bot Skills（只需要对话权限）
+    // 策略3: 如果配置了 Bot ID，使用 Bot Skills（只需要对话权限）
     if (apiKey && botId) {
       logger.info('Trying image generation via Bot Skills (has Bot ID)')
       try {
@@ -1585,7 +1799,7 @@ export async function generateImage(
       }
     }
 
-    // 策略3: 尝试用户配置的 PAT 直接调用图像生成 API（需要专门权限）
+    // 策略4: 尝试用户配置的 PAT 直接调用图像生成 API（需要专门权限）
     if (apiKey) {
       try {
         logger.info('Trying image generation with user credentials (direct API)')

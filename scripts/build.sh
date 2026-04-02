@@ -10,6 +10,6 @@ pnpm install --prefer-frozen-lockfile --prefer-offline --loglevel debug --report
 
 echo "Building the project..."
 # 使用 webpack 构建，避免 Turbopack 的模块打包问题
-npx next build --webpack
+pnpm next build --webpack
 
 echo "Build completed successfully!"

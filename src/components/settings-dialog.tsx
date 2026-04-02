@@ -116,6 +116,7 @@ const LLM_MODELS = [
 const IMAGE_MODELS = [
   { value: "doubao-seed-3-0", label: "Doubao Seed 3.0 (默认)", description: "高质量图像生成" },
   { value: "doubao-seedream-3-0-t2i-250415", label: "Doubao Seedream 3.0", description: "艺术风格图像" },
+  { value: "doubao-seedream-4-0-250828", label: "Doubao Seedream 4.0", description: "最新艺术风格图像" },
 ]
 
 const VIDEO_MODELS = [
@@ -141,6 +142,7 @@ const VOICE_STYLES = [
 
 const PROVIDERS = [
   { value: "doubao", label: "豆包 / 字节跳动 (系统默认)" },
+  { value: "volcengine", label: "火山引擎 (OpenAI兼容)" },
   { value: "deepseek", label: "DeepSeek" },
   { value: "kimi", label: "Kimi / 月之暗面" },
   { value: "openai", label: "OpenAI" },
@@ -729,7 +731,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                         value={settings.image_provider}
                         onChange={(e) => updateSetting("image_provider", e.target.value)}
                       >
-                        {PROVIDERS.filter(p => ['doubao', 'custom'].includes(p.value)).map((p) => (
+                        {PROVIDERS.filter(p => ['doubao', 'volcengine', 'custom'].includes(p.value)).map((p) => (
                           <option key={p.value} value={p.value}>{p.label}</option>
                         ))}
                       </select>
@@ -779,10 +781,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                       Base URL (可选)
                     </Label>
                     <Input
-                      placeholder="如: https://api.openai.com/v1"
+                      placeholder="火山引擎: https://ark.cn-beijing.volces.com/api/v3"
                       value={settings.image_base_url || ""}
                       onChange={(e) => updateSetting("image_base_url", e.target.value || null)}
                     />
+                    <p className="text-xs text-muted-foreground">
+                      选择火山引擎时，填写火山方舟BASE URL
+                    </p>
                   </div>
                 </CardContent>
               </Card>
