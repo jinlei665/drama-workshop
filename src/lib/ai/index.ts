@@ -630,7 +630,36 @@ export async function generateVideoWithVolcengine(params: {
   async function convertImageToBase64(url: string): Promise<string> {
     console.log('[Volcengine Video] Downloading image for base64 conversion...')
     
-    // 使用完整的请求头模拟浏览器访问
+    // 检查是否是本地 URL，直接读取文件系统
+    const isLocal = url.startsWith('http://localhost') || 
+                    url.startsWith('https://localhost') ||
+                    url.includes('://127.0.0.1')
+    
+    if (isLocal) {
+      // 从 URL 中提取路径（去掉 http://localhost:5000 前缀）
+      const urlObj = new URL(url)
+      const localPath = urlObj.pathname
+      const fs = await import('fs')
+      const path = await import('path')
+      
+      // 构建完整文件路径
+      const filePath = path.join(process.cwd(), 'public', localPath)
+      console.log(`[Volcengine Video] Reading local file: ${filePath}`)
+      
+      if (fs.existsSync(filePath)) {
+        const buffer = fs.readFileSync(filePath)
+        const base64 = buffer.toString('base64')
+        // 检测图片格式
+        const ext = path.extname(filePath).toLowerCase().replace('.', '')
+        const format = ext === 'jpg' ? 'jpeg' : ext || 'png'
+        console.log(`[Volcengine Video] Local file read successfully, size: ${(buffer.length / 1024).toFixed(2)} KB`)
+        return `data:image/${format};base64,${base64}`
+      } else {
+        console.warn(`[Volcengine Video] Local file not found: ${filePath}, trying HTTP fetch`)
+      }
+    }
+    
+    // 非本地 URL 或本地文件不存在，通过 HTTP 请求下载
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -661,17 +690,34 @@ export async function generateVideoWithVolcengine(params: {
     url.includes('ark-content-generation') || 
     url.includes('tos-cn-beijing.volces.com')
   
+  // 检查 URL 是否是本地 URL（外部服务器无法访问）
+  const isLocalUrl = (url: string) => 
+    url.startsWith('http://localhost') || 
+    url.startsWith('https://localhost') ||
+    url.includes('://127.0.0.1') ||
+    url.includes('://[::1]')
+  
+  // 判断是否需要转换为 base64（TOS URL 或本地 URL）
+  const needsBase64Conversion = (url: string) => 
+    isVolcengineTosUrl(url) || isLocalUrl(url)
+  
   // 转换图片 URL 为可用格式
   let processedFirstFrameUrl = firstFrameUrl
   let processedLastFrameUrl = lastFrameUrl
   
   try {
-    if (firstFrameUrl && isVolcengineTosUrl(firstFrameUrl)) {
-      console.log('[Volcengine Video] Converting first frame to base64...')
+    if (firstFrameUrl && needsBase64Conversion(firstFrameUrl)) {
+      console.log('[Volcengine Video] Converting first frame to base64...', {
+        isTos: isVolcengineTosUrl(firstFrameUrl),
+        isLocal: isLocalUrl(firstFrameUrl),
+      })
       processedFirstFrameUrl = await convertImageToBase64(firstFrameUrl)
     }
-    if (lastFrameUrl && isVolcengineTosUrl(lastFrameUrl)) {
-      console.log('[Volcengine Video] Converting last frame to base64...')
+    if (lastFrameUrl && needsBase64Conversion(lastFrameUrl)) {
+      console.log('[Volcengine Video] Converting last frame to base64...', {
+        isTos: isVolcengineTosUrl(lastFrameUrl),
+        isLocal: isLocalUrl(lastFrameUrl),
+      })
       processedLastFrameUrl = await convertImageToBase64(lastFrameUrl)
     }
   } catch (conversionError) {
