@@ -42,7 +42,11 @@ export async function GET(request: NextRequest) {
             age: c.age,
             style: c.style,
             // imageUrl 优先使用 front_view_key（可能是完整URL或文件key）
-            imageUrl: c.front_view_key || c.image_url,
+            imageUrl: c.front_view_key
+              ? (c.front_view_key.startsWith('http')
+                  ? c.front_view_key
+                  : `/characters/${c.front_view_key}`)
+              : c.image_url,
             frontViewKey: c.front_view_key,
             projectId: c.project_id,
             createdAt: c.created_at,

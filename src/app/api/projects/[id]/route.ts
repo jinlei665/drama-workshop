@@ -112,7 +112,11 @@ export async function GET(
               backViewKey: c.back_view_key,
               status: c.status,
               // imageUrl 优先使用 front_view_key（可能是完整URL或文件key）
-              imageUrl: c.front_view_key || c.image_url,
+              imageUrl: c.front_view_key
+                ? (c.front_view_key.startsWith('http')
+                    ? c.front_view_key
+                    : `/characters/${c.front_view_key}`)
+                : c.image_url,
               createdAt: c.created_at,
             })),
             scenes: (scenes || []).map((s: any) => ({

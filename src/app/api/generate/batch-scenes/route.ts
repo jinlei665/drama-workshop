@@ -167,7 +167,18 @@ export async function POST(request: NextRequest) {
       // 获取人物参考图URL（用于保持人物一致性）
       // 优先使用 frontViewKey（三视图），其次是 imageUrl
       const characterReferenceImages = sceneCharacters
-        .map((c: { frontViewKey?: string; imageUrl?: string } | undefined) => c?.frontViewKey || c?.imageUrl)
+        .map((c: { frontViewKey?: string; imageUrl?: string } | undefined) => {
+          if (c?.frontViewKey) {
+            // 如果是完整 URL 直接使用
+            if (c.frontViewKey.startsWith('http')) {
+              return c.frontViewKey
+            }
+            // 如果是本地路径，构造完整 URL（AI API 需要完整 URL）
+            const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+            return `${domain}/characters/${c.frontViewKey}`
+          }
+          return c?.imageUrl
+        })
         .filter(Boolean) as string[]
 
       // 构建真人实拍风格提示词

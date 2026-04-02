@@ -74,7 +74,15 @@ export async function POST(request: NextRequest) {
         
         if (characters) {
           characterReferenceImages = characters
-            .map((c: any) => c.front_view_key || c.image_url)
+            .map((c: any) => {
+              const key = c.front_view_key || c.image_url
+              if (!key) return null
+              // 如果是完整 URL 直接使用
+              if (key.startsWith('http')) return key
+              // 如果是本地路径，构造完整 URL
+              const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+              return `${domain}/characters/${key}`
+            })
             .filter(Boolean)
         }
       } else {
@@ -82,7 +90,13 @@ export async function POST(request: NextRequest) {
         characterReferenceImages = characterIds
           .map((id: string) => {
             const char = memoryCharacters.find(c => c.id === id)
-            return char?.frontViewKey || char?.imageUrl
+            const key = char?.frontViewKey || char?.imageUrl
+            if (!key) return null
+            // 如果是完整 URL 直接使用
+            if (key.startsWith('http')) return key
+            // 如果是本地路径，构造完整 URL
+            const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+            return `${domain}/characters/${key}`
           })
           .filter(Boolean) as string[]
       }
