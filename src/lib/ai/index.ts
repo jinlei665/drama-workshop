@@ -626,27 +626,65 @@ export async function generateVideoWithVolcengine(params: {
     returnLastFrame = true,
   } = params
   
+  // 辅助函数：将图片 URL 转换为 base64 格式
+  async function convertImageToBase64(url: string): Promise<string> {
+    console.log('[Volcengine Video] Downloading image for base64 conversion...')
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status}`)
+    }
+    const buffer = await response.arrayBuffer()
+    const base64 = Buffer.from(buffer).toString('base64')
+    // 检测图片格式
+    const contentType = response.headers.get('content-type') || 'image/png'
+    const format = contentType.split('/')[1] || 'png'
+    return `data:image/${format};base64,${base64}`
+  }
+  
+  // 检查 URL 是否是火山引擎 TOS URL（可能无法被视频 API 访问）
+  const isVolcengineTosUrl = (url: string) => 
+    url.includes('ark-content-generation') || 
+    url.includes('tos-cn-beijing.volces.com')
+  
+  // 转换图片 URL 为可用格式
+  let processedFirstFrameUrl = firstFrameUrl
+  let processedLastFrameUrl = lastFrameUrl
+  
+  try {
+    if (firstFrameUrl && isVolcengineTosUrl(firstFrameUrl)) {
+      console.log('[Volcengine Video] Converting first frame to base64...')
+      processedFirstFrameUrl = await convertImageToBase64(firstFrameUrl)
+    }
+    if (lastFrameUrl && isVolcengineTosUrl(lastFrameUrl)) {
+      console.log('[Volcengine Video] Converting last frame to base64...')
+      processedLastFrameUrl = await convertImageToBase64(lastFrameUrl)
+    }
+  } catch (conversionError) {
+    console.warn('[Volcengine Video] Failed to convert images to base64, trying original URLs:', conversionError)
+    // 如果转换失败，继续使用原始 URL
+  }
+  
   // 构建内容数组
   const content: VolcengineVideoContent[] = []
   
   // 添加图片内容
-  if (firstFrameUrl && lastFrameUrl) {
+  if (processedFirstFrameUrl && processedLastFrameUrl) {
     // 首尾帧生视频
     content.push({
       type: 'image_url',
-      image_url: { url: firstFrameUrl },
+      image_url: { url: processedFirstFrameUrl },
       role: 'first_frame',
     })
     content.push({
       type: 'image_url',
-      image_url: { url: lastFrameUrl },
+      image_url: { url: processedLastFrameUrl },
       role: 'last_frame',
     })
-  } else if (firstFrameUrl) {
+  } else if (processedFirstFrameUrl) {
     // 仅首帧图生视频
     content.push({
       type: 'image_url',
-      image_url: { url: firstFrameUrl },
+      image_url: { url: processedFirstFrameUrl },
       role: 'first_frame',
     })
   }
