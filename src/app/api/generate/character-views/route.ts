@@ -117,19 +117,43 @@ export async function POST(request: NextRequest) {
 
       console.log("Image uploaded to storage:", fileKey)
     } catch (storageError) {
-      console.warn("Failed to upload to storage, using original URL:", storageError)
+      console.warn("Failed to upload to storage, saving to local:", storageError)
+      
+      // 对象存储不可用，保存到本地 public 目录
+      try {
+        const fs = await import('fs')
+        const path = await import('path')
+        
+        // 确保目录存在
+        const publicDir = path.join(process.cwd(), 'public', 'characters', characterId)
+        if (!fs.existsSync(publicDir)) {
+          fs.mkdirSync(publicDir, { recursive: true })
+        }
+        
+        // 保存图片
+        const localFileName = `views_${Date.now()}.png`
+        const localFilePath = path.join(publicDir, localFileName)
+        fs.writeFileSync(localFilePath, imageBuffer)
+        
+        // 使用本地相对路径作为 URL
+        fileKey = `${characterId}/${localFileName}`
+        viewUrl = `/characters/${fileKey}`
+        
+        console.log("Image saved to local:", localFilePath)
+      } catch (localError) {
+        console.warn("Failed to save to local:", localError)
+      }
     }
 
     // 更新数据库
     if (isDatabaseConfigured()) {
       try {
         const supabase = getSupabaseClient()
-        // 直接将图片 URL 存储到 front_view_key（因为本地环境没有对象存储）
-        // front_view_key 可以存储文件 key 或直接存储 URL
+        // 存储相对路径或文件 key
         const { error } = await supabase
           .from("characters")
           .update({
-            front_view_key: fileKey || viewUrl,  // 如果没有上传到存储，直接存储 URL
+            front_view_key: fileKey,  // 存储相对路径，更短
             updated_at: new Date().toISOString(),
           })
           .eq("id", characterId)
@@ -137,7 +161,7 @@ export async function POST(request: NextRequest) {
         if (error) {
           console.warn("Database update error:", error.message)
         } else {
-          console.log("Database updated with front_view_key:", (fileKey || viewUrl).substring(0, 50) + "...")
+          console.log("Database updated with front_view_key:", fileKey)
         }
       } catch (dbError) {
         console.warn("Failed to update database:", dbError)
