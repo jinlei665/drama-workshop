@@ -1037,34 +1037,47 @@ async function invokeBotForImageGeneration(
   
   // 如果有参考图片，创建多模态消息
   if (referenceImages && referenceImages.length > 0) {
+    console.log('[Bot Image] Processing reference images:', referenceImages)
+
     // 多模态消息格式：包含图片和文本
     const multimodalContent: Array<{
       type: string
       text?: string
       image_url?: {
         url: string
+        detail?: 'low' | 'high'
       }
     }> = []
-    
+
     // 先添加参考图片
-    for (const refUrl of referenceImages) {
+    for (let i = 0; i < referenceImages.length; i++) {
+      const refUrl = referenceImages[i]
+      console.log(`[Bot Image] Adding reference image ${i + 1}/${referenceImages.length}:`, refUrl)
+
       multimodalContent.push({
         type: 'image_url',
         image_url: {
-          url: refUrl
+          url: refUrl,
+          detail: 'low'  // 使用 low detail 以减少 token 消耗
         }
       })
     }
-    
+
     // 然后添加文本提示
     multimodalContent.push({
       type: 'text',
-      text: `请参考以上图片生成新图片，保持人物外观一致。新图片要求：${prompt}`
+      text: `请参考以上 ${referenceImages.length} 张图片生成新图片，保持所有人物的外观一致性。新图片要求：${prompt}`
     })
-    
+
     additionalMessages.push({
       role: 'user',
       content: multimodalContent,
+    })
+
+    console.log('[Bot Image] Multimodal message structure:', {
+      totalContentItems: multimodalContent.length,
+      imageCount: multimodalContent.filter(item => item.type === 'image_url').length,
+      hasText: multimodalContent.some(item => item.type === 'text')
     })
   } else {
     // 没有参考图片，使用纯文本消息
