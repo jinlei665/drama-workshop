@@ -434,7 +434,15 @@ async function generateSequential(
     // 确定使用哪个场景的尾帧
     // 如果用户指定了 lastFrameSceneId，使用该场景；否则使用下一个分镜
     let lastFrameScene: any = null;
-    if (userLastFrameSceneId && scenesWithImages.length === 1 && scene.id === userLastFrameSceneId) {
+
+    // 判断用户是否选择了"无尾帧"（userLastFrameSceneId 为空或 'none'）
+    const isNoLastFrame = !userLastFrameSceneId || userLastFrameSceneId === 'none';
+
+    if (isNoLastFrame) {
+      // 用户选择了无尾帧
+      console.log(`[连续模式] 分镜 ${scene.scene_number}: 用户选择无尾帧`);
+      lastFrameScene = null;
+    } else if (userLastFrameSceneId && scenesWithImages.length === 1 && scene.id === userLastFrameSceneId) {
       // 用户指定了特定的尾帧场景
       lastFrameScene = allScenes.find(s => s.id === userLastFrameSceneId);
       console.log(`[连续模式] 分镜 ${scene.scene_number}: 使用用户指定的尾帧场景 ${userLastFrameSceneId}`);
