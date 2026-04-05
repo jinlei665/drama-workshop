@@ -1323,12 +1323,12 @@ ${prompt}
 请直接返回生成的视频链接。`
   }
   
-  logger.info('Bot video generation prompt', { 
-    hasImageUrl: !!imageUrl, 
+  logger.info('Bot video generation prompt', {
+    hasImageUrl: !!imageUrl,
     promptLength: videoPrompt.length
   })
 
-  // 使用限流器包装 API 调用
+  // 使用限流器包装 API 调用（禁用重试）
   return withRateLimitAndRetry(
     async () => {
       // 调用 Bot API
@@ -1600,7 +1600,7 @@ ${prompt}
     },
     {
       config: VIDEO_RATE_LIMIT_CONFIG,
-      maxRetries: 3,
+      maxRetries: 0, // 禁用重试
       baseDelay: 5000,
     }
   )
