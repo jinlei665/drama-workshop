@@ -647,14 +647,16 @@ async function convertImageUrlForVideo(
       console.log(`[convertImageUrl] 本地图片格式: ${format}, 大小: ${(buffer.length / 1024).toFixed(2)} KB`)
 
       // 上传到对象存储
-      const key = `scenes/${sceneId}/image_${Date.now()}.${format}`
+      // 确保使用正斜杠作为路径分隔符
+      const key = `scenes/${sceneId}/image_${Date.now()}.${format}`.replace(/\\/g, '/')
       console.log(`[convertImageUrl] 上传到 OSS，key: ${key}`)
-      await storage.uploadFile({
+      console.log(`[convertImageUrl] sceneId: ${sceneId}`)
+      const uploadResult = await storage.uploadFile({
         fileContent: buffer,
         fileName: key,
         contentType: `image/${format}`,
       })
-      console.log(`[convertImageUrl] 上传成功`)
+      console.log(`[convertImageUrl] 上传成功，返回值: ${JSON.stringify(uploadResult)}`)
 
       // 生成预签名 URL（使用阿里云 OSS SDK）
       let newUrl: string
