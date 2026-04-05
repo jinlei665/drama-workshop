@@ -214,7 +214,7 @@ async function saveVideo(
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectId, sceneIds, mode = 'continuous' } = body;
+    const { projectId, sceneIds, mode = 'continuous', duration: userDuration, dialogue: userDialogue, action: userAction, emotion: userEmotion, lastFrameSceneId: userLastFrameSceneId } = body;
 
     if (!projectId) {
       return NextResponse.json(
@@ -354,10 +354,10 @@ export async function POST(request: NextRequest) {
 
     // 根据模式选择生成方式
     if (mode === 'fast') {
-      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt);
+      results = await generateFast(scenesWithImages, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt, userDuration, userDialogue, userAction, userEmotion, userLastFrameSceneId);
     } else {
       // 连续模式：传入完整分镜列表用于获取下一个分镜的尾帧
-      results = await generateSequential(scenesWithImages, scenesList, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt);
+      results = await generateSequential(scenesWithImages, scenesList, storage, supabase, videoModel, videoResolution, videoRatio, actuallyUseDatabase, stylePrompt, userDuration, userDialogue, userAction, userEmotion, userLastFrameSceneId);
     }
 
     // 更新项目状态（仅数据库模式）
@@ -412,7 +412,12 @@ async function generateSequential(
   videoResolution: '480p' | '720p' | '1080p',
   videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
   actuallyUseDatabase: boolean,
-  stylePrompt: string
+  stylePrompt: string,
+  userDuration?: number,
+  userDialogue?: string,
+  userAction?: string,
+  userEmotion?: string,
+  userLastFrameSceneId?: string
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
   
@@ -425,13 +430,20 @@ async function generateSequential(
 
   for (let i = 0; i < scenesWithImages.length; i++) {
     const scene = scenesWithImages[i];
-    
-    // 从完整分镜列表中获取下一个分镜（按分镜序号查找，而不是数组索引）
-    // 这样即使下一个分镜还没有图片，也能正确找到它
-    const nextSceneNumber = scene.scene_number + 1;
-    const nextScene = allScenes.find(s => s.scene_number === nextSceneNumber);
-    
-    console.log(`[连续模式] 分镜 ${scene.scene_number}: 查找分镜 ${nextSceneNumber}, 结果: ${nextScene ? '找到' : '未找到'}`);
+
+    // 确定使用哪个场景的尾帧
+    // 如果用户指定了 lastFrameSceneId，使用该场景；否则使用下一个分镜
+    let lastFrameScene: any = null;
+    if (userLastFrameSceneId && scenesWithImages.length === 1 && scene.id === userLastFrameSceneId) {
+      // 用户指定了特定的尾帧场景
+      lastFrameScene = allScenes.find(s => s.id === userLastFrameSceneId);
+      console.log(`[连续模式] 分镜 ${scene.scene_number}: 使用用户指定的尾帧场景 ${userLastFrameSceneId}`);
+    } else {
+      // 使用默认逻辑：下一个分镜
+      const nextSceneNumber = scene.scene_number + 1;
+      lastFrameScene = allScenes.find(s => s.scene_number === nextSceneNumber);
+      console.log(`[连续模式] 分镜 ${scene.scene_number}: 查找分镜 ${nextSceneNumber}, 结果: ${lastFrameScene ? '找到' : '未找到'}`);
+    }
     
     // 添加延迟避免限流（10秒间隔）
     if (i > 0) {
@@ -448,20 +460,27 @@ async function generateSequential(
 
       // 获取下一个分镜图片作为尾帧（如果存在且有图片）
       let lastFrameUrl: string | null = null;
-      if (nextScene) {
-        lastFrameUrl = await getImageUrl(nextScene, storage);
+      if (lastFrameScene) {
+        lastFrameUrl = await getImageUrl(lastFrameScene, storage);
         if (lastFrameUrl) {
-          console.log(`分镜 ${scene.scene_number} 将使用分镜 ${nextScene.scene_number} 的图片作为尾帧`);
+          console.log(`分镜 ${scene.scene_number} 将使用分镜 ${lastFrameScene.scene_number} 的图片作为尾帧`);
         } else {
-          console.log(`分镜 ${scene.scene_number} 的下一个分镜 ${nextScene.scene_number} 没有图片，无法作为尾帧`);
+          console.log(`分镜 ${scene.scene_number} 的尾帧分镜 ${lastFrameScene.scene_number} 没有图片，无法作为尾帧`);
         }
       } else {
-        console.log(`分镜 ${scene.scene_number} 是最后一个分镜，没有尾帧`);
+        console.log(`分镜 ${scene.scene_number} 没有尾帧`);
       }
 
       // 构建视频描述，添加风格提示词
-      const videoPrompt = `${stylePrompt}，${buildVideoPrompt(scene)}`;
-      const duration = calculateDuration(scene);
+      // 使用用户提供的参数覆盖场景中的值
+      const modifiedScene = {
+        ...scene,
+        dialogue: userDialogue !== undefined ? userDialogue : scene.dialogue,
+        action: userAction !== undefined ? userAction : scene.action,
+        emotion: userEmotion !== undefined ? userEmotion : scene.emotion
+      };
+      const videoPrompt = `${stylePrompt}，${buildVideoPrompt(modifiedScene)}`;
+      const duration = userDuration !== undefined ? userDuration : calculateDuration(scene);
 
       console.log(`开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒，${lastFrameUrl ? '有尾帧' : '无尾帧'}`);
 
@@ -935,7 +954,12 @@ async function generateFast(
   videoResolution: '480p' | '720p' | '1080p',
   videoRatio: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
   actuallyUseDatabase: boolean,
-  stylePrompt: string
+  stylePrompt: string,
+  userDuration?: number,
+  userDialogue?: string,
+  userAction?: string,
+  userEmotion?: string,
+  userLastFrameSceneId?: string
 ): Promise<{ sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[]> {
   const results: { sceneId: string; sceneNumber: number; videoUrl?: string; duration?: number; status: string; error?: string }[] = [];
 
@@ -953,8 +977,15 @@ async function generateFast(
         throw new Error('无法获取分镜图片URL');
       }
 
-      const videoPrompt = `${stylePrompt}，${buildVideoPrompt(scene)}`;
-      const duration = calculateDuration(scene);
+      // 使用用户提供的参数覆盖场景中的值
+      const modifiedScene = {
+        ...scene,
+        dialogue: userDialogue !== undefined ? userDialogue : scene.dialogue,
+        action: userAction !== undefined ? userAction : scene.action,
+        emotion: userEmotion !== undefined ? userEmotion : scene.emotion
+      };
+      const videoPrompt = `${stylePrompt}，${buildVideoPrompt(modifiedScene)}`;
+      const duration = userDuration !== undefined ? userDuration : calculateDuration(scene);
 
       console.log(`[快速模式] 开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
 

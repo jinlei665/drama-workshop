@@ -8,10 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -23,11 +25,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
-import { 
-  ArrowLeft, 
-  Users, 
-  Image, 
-  Play, 
+import {
+  ArrowLeft,
+  Users,
+  Image,
+  Play,
   Loader2,
   Sparkles,
   Video,
@@ -43,7 +45,8 @@ import {
   SkipForward,
   Package,
   FolderOpen,
-  Settings
+  Settings,
+  Info
 } from "lucide-react"
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
@@ -125,6 +128,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     canPause: false,
     isPaused: false
   })
+  const [videoGenerateConfirmDialogOpen, setVideoGenerateConfirmDialogOpen] = useState(false)
+  const [pendingVideoMode, setPendingVideoMode] = useState<'fast' | 'continuous'>('continuous')
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
   const fetchData = async () => {
@@ -199,6 +204,14 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       return
     }
 
+    // 打开确认对话框
+    setPendingVideoMode(mode)
+    setVideoGenerateConfirmDialogOpen(true)
+  }
+
+  // 确认批量生成视频
+  const handleConfirmGenerateVideos = async () => {
+    setVideoGenerateConfirmDialogOpen(false)
     setVideoGenerationSession({
       isGenerating: true,
       total: completedScenes.length,
@@ -212,7 +225,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       const res = await fetch("/api/generate/videos-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: id, mode, episodeId: selectedEpisodeId })
+        body: JSON.stringify({ projectId: id, mode: pendingVideoMode, episodeId: selectedEpisodeId })
       })
       
       if (!res.ok) {
@@ -731,6 +744,71 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* 批量视频生成确认对话框 */}
+      <Dialog open={videoGenerateConfirmDialogOpen} onOpenChange={setVideoGenerateConfirmDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Film className="w-5 h-5 text-blue-500" />
+              确认批量生成视频
+            </DialogTitle>
+            <DialogDescription>
+              即将开始批量生成分镜视频，请确认以下信息
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-4">
+            {/* 统计信息 */}
+            <div className="bg-secondary/50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">待生成分镜</span>
+                <span className="font-semibold text-lg">{completedScenes.length} 个</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">生成模式</span>
+                <Badge variant="outline">
+                  {pendingVideoMode === 'continuous' ? '连续生成（推荐）' : '快速生成'}
+                </Badge>
+              </div>
+            </div>
+
+            {/* 模式说明 */}
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                {pendingVideoMode === 'continuous' 
+                  ? '连续生成模式会使用上一个分镜的图片作为首帧，确保视频连贯性，但速度较慢。'
+                  : '快速生成模式并行生成所有视频，速度快但可能不够连贯。'}
+              </AlertDescription>
+            </Alert>
+
+            {/* 警告 */}
+            <Alert variant="destructive">
+              <Film className="h-4 w-4" />
+              <AlertDescription>
+                视频生成可能需要较长时间，请确保网络连接稳定。生成过程中请不要关闭页面。
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setVideoGenerateConfirmDialogOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleConfirmGenerateVideos}
+              className="blue-gradient text-white border-0"
+            >
+              <Film className="w-4 h-4 mr-2" />
+              开始生成
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Slider } from "@/components/ui/slider"
 import {
   Dialog,
   DialogContent,
@@ -88,6 +89,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [imageGenerateDialogOpen, setImageGenerateDialogOpen] = useState(false)
+  const [videoGenerateDialogOpen, setVideoGenerateDialogOpen] = useState(false)
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [creating, setCreating] = useState(false)
   const [generatingImage, setGeneratingImage] = useState<string | null>(null)
@@ -97,6 +99,13 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     action: "",
     emotion: "",
     characterIds: [] as string[]
+  })
+  const [videoGenerateFormData, setVideoGenerateFormData] = useState({
+    duration: 6,
+    dialogue: "",
+    action: "",
+    emotion: "",
+    lastFrameSceneId: "" as string | null
   })
   const [formData, setFormData] = useState({
     sceneNumber: scenes.length + 1,
@@ -278,21 +287,47 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     }
   }
 
-  // 生成单个分镜视频
+  // 生成单个分镜视频 - 打开确认对话框
   const handleGenerateVideo = async (scene: Scene) => {
     if (!scene.imageKey && !scene.imageUrl) {
       toast.error("请先生成分镜图片")
       return
     }
 
-    setGeneratingVideo(scene.id)
+    // 查找下一个分镜（自动选择为尾帧）
+    const nextScene = scenes.find(s => s.sceneNumber === scene.sceneNumber + 1)
+    const nextSceneWithImage = nextScene && (nextScene.imageKey || nextScene.imageUrl) ? nextScene : null
+
+    setSelectedScene(scene)
+    setVideoGenerateFormData({
+      duration: 6, // 默认6秒
+      dialogue: scene.dialogue || "",
+      action: scene.action || "",
+      emotion: scene.emotion || "",
+      lastFrameSceneId: nextSceneWithImage?.id || null
+    })
+    setVideoGenerateDialogOpen(true)
+  }
+
+  // 确认生成单个分镜视频
+  const handleConfirmGenerateVideo = async () => {
+    if (!selectedScene) return
+
+    setGeneratingVideo(selectedScene.id)
+    setVideoGenerateDialogOpen(false)
+
     try {
       const res = await fetch("/api/generate/videos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           projectId,
-          sceneIds: [scene.id]
+          sceneIds: [selectedScene.id],
+          duration: videoGenerateFormData.duration,
+          dialogue: videoGenerateFormData.dialogue,
+          action: videoGenerateFormData.action,
+          emotion: videoGenerateFormData.emotion,
+          lastFrameSceneId: videoGenerateFormData.lastFrameSceneId
         })
       })
 
@@ -658,6 +693,220 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
               >
                 <Sparkles className="w-4 h-4 mr-2" />
                 确认生成
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* 视频生成确认对话框 */}
+        <Dialog open={videoGenerateDialogOpen} onOpenChange={setVideoGenerateDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Film className="w-5 h-5 text-blue-500" />
+                确认生成分镜视频
+              </DialogTitle>
+              <DialogDescription>
+                请确认视频生成参数，AI 将根据首尾帧生成连贯的视频片段
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 mt-4">
+              {/* 提示信息 */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  视频生成将使用当前分镜图片作为首帧，确保画面连贯性。您可以在这里调整时长和内容。
+                </AlertDescription>
+              </Alert>
+
+              {/* 分镜序号 */}
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-lg px-3 py-1">
+                  分镜 {selectedScene?.sceneNumber}
+                </Badge>
+                {selectedScene?.title && (
+                  <span className="font-semibold">{selectedScene.title}</span>
+                )}
+              </div>
+
+              {/* 首尾帧预览 */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* 首帧 */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Video className="w-4 h-4" />
+                    首帧（当前分镜）
+                  </Label>
+                  <div className="aspect-video rounded-lg bg-secondary/50 overflow-hidden border">
+                    {selectedScene?.imageUrl ? (
+                      <img
+                        src={selectedScene.imageUrl}
+                        alt={`分镜 ${selectedScene.sceneNumber}`}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="text-xs text-muted-foreground">无图片</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 尾帧 */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Video className="w-4 h-4" />
+                    尾帧（下一个分镜）
+                  </Label>
+                  <div className="aspect-video rounded-lg bg-secondary/50 overflow-hidden border">
+                    {videoGenerateFormData.lastFrameSceneId ? (() => {
+                      const nextScene = scenes.find(s => s.id === videoGenerateFormData.lastFrameSceneId)
+                      return nextScene?.imageUrl ? (
+                        <img
+                          src={nextScene.imageUrl}
+                          alt={`分镜 ${nextScene.sceneNumber}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="text-xs text-muted-foreground">无图片</span>
+                        </div>
+                      )
+                    })() : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <span className="text-xs text-muted-foreground">未选择尾帧</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 尾帧选择 */}
+              <div className="space-y-3">
+                <Label>选择尾帧参考（可选）</Label>
+                <div className="flex flex-wrap gap-2">
+                  <label
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                      videoGenerateFormData.lastFrameSceneId === null
+                        ? "bg-primary/10 border-primary text-primary"
+                        : "bg-secondary hover:bg-secondary/80"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="lastFrame"
+                      className="hidden"
+                      checked={videoGenerateFormData.lastFrameSceneId === null}
+                      onChange={() => setVideoGenerateFormData({ ...videoGenerateFormData, lastFrameSceneId: null })}
+                    />
+                    <span className="font-medium">不使用尾帧</span>
+                    {videoGenerateFormData.lastFrameSceneId === null && <Check className="w-4 h-4" />}
+                  </label>
+
+                  {scenes
+                    .filter(s => selectedScene && s.sceneNumber === selectedScene.sceneNumber + 1)
+                    .filter(s => s.imageKey || s.imageUrl)
+                    .map((scene) => (
+                      <label
+                        key={scene.id}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                          videoGenerateFormData.lastFrameSceneId === scene.id
+                            ? "bg-primary/10 border-primary text-primary"
+                            : "bg-secondary hover:bg-secondary/80"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="lastFrame"
+                          className="hidden"
+                          checked={videoGenerateFormData.lastFrameSceneId === scene.id}
+                          onChange={() => setVideoGenerateFormData({ ...videoGenerateFormData, lastFrameSceneId: scene.id })}
+                        />
+                        <span className="font-medium">分镜 {scene.sceneNumber}</span>
+                        {scene.title && <span className="text-xs text-muted-foreground">({scene.title})</span>}
+                        {videoGenerateFormData.lastFrameSceneId === scene.id && <Check className="w-4 h-4" />}
+                      </label>
+                    ))}
+                </div>
+                {!selectedScene || scenes.filter(s => s.sceneNumber === selectedScene.sceneNumber + 1).filter(s => s.imageKey || s.imageUrl).length === 0 && (
+                  <p className="text-xs text-muted-foreground">下一个分镜还没有图片，无法选择尾帧</p>
+                )}
+              </div>
+
+              {/* 时长选择 */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="duration">视频时长</Label>
+                  <Badge variant="outline" className="text-lg px-3 py-1">
+                    {videoGenerateFormData.duration} 秒
+                  </Badge>
+                </div>
+                <Slider
+                  id="duration"
+                  min={4}
+                  max={12}
+                  step={1}
+                  value={[videoGenerateFormData.duration]}
+                  onValueChange={(value) => setVideoGenerateFormData({ ...videoGenerateFormData, duration: value[0] })}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>4秒（快速过渡）</span>
+                  <span>12秒（详细场景）</span>
+                </div>
+              </div>
+
+              {/* 对话编辑 */}
+              <div className="space-y-2">
+                <Label htmlFor="video-dialogue">对话内容</Label>
+                <Textarea
+                  id="video-dialogue"
+                  value={videoGenerateFormData.dialogue}
+                  onChange={(e) => setVideoGenerateFormData({ ...videoGenerateFormData, dialogue: e.target.value })}
+                  placeholder="角色的对白内容（如需要）"
+                  className="min-h-[80px]"
+                />
+              </div>
+
+              {/* 动作编辑 */}
+              <div className="space-y-2">
+                <Label htmlFor="video-action">动作描述</Label>
+                <Textarea
+                  id="video-action"
+                  value={videoGenerateFormData.action}
+                  onChange={(e) => setVideoGenerateFormData({ ...videoGenerateFormData, action: e.target.value })}
+                  placeholder="描述视频中的动作和表演"
+                  className="min-h-[60px]"
+                />
+              </div>
+
+              {/* 情绪编辑 */}
+              <div className="space-y-2">
+                <Label htmlFor="video-emotion">情绪氛围</Label>
+                <Input
+                  id="video-emotion"
+                  value={videoGenerateFormData.emotion}
+                  onChange={(e) => setVideoGenerateFormData({ ...videoGenerateFormData, emotion: e.target.value })}
+                  placeholder="如：紧张、温馨、悲伤"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setVideoGenerateDialogOpen(false)}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleConfirmGenerateVideo}
+                disabled={!selectedScene}
+                className="blue-gradient text-white border-0"
+              >
+                <Film className="w-4 h-4 mr-2" />
+                开始生成
               </Button>
             </DialogFooter>
           </DialogContent>
