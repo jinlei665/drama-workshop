@@ -660,6 +660,19 @@ async function convertImageUrlForVideo(
       })
       console.log(`[convertImageUrl] 上传成功，返回值: ${JSON.stringify(uploadResult)}`)
 
+      // 使用实际上传的 key（storage.uploadFile 可能会修改文件名）
+      let actualKey = key
+      if (typeof uploadResult === 'string') {
+        actualKey = uploadResult
+      } else if (uploadResult && typeof uploadResult === 'object' && 'key' in uploadResult) {
+        actualKey = (uploadResult as { key: string }).key
+      } else if (uploadResult && typeof uploadResult === 'object' && 'fileName' in uploadResult) {
+        actualKey = (uploadResult as { fileName: string }).fileName
+      }
+      // 清理实际 key 中的反斜杠
+      actualKey = actualKey.replace(/\\/g, '/')
+      console.log(`[convertImageUrl] 实际上传的 key: ${actualKey}`)
+
       // 生成预签名 URL（使用阿里云 OSS SDK）
       let newUrl: string
       try {
@@ -668,7 +681,7 @@ async function convertImageUrlForVideo(
         console.log(`[convertImageUrl] 开始生成预签名 URL...`)
         console.log(`[convertImageUrl] OSS Bucket: ${process.env.S3_BUCKET}`)
         console.log(`[convertImageUrl] OSS Region: ${process.env.S3_REGION}`)
-        console.log(`[convertImageUrl] Object Key: ${key}`)
+        console.log(`[convertImageUrl] Object Key: ${actualKey}`)
         console.log(`[convertImageUrl] Access Key: ${process.env.S3_ACCESS_KEY?.substring(0, 10)}...`)
 
         // 创建 OSS 客户端
@@ -682,11 +695,11 @@ async function convertImageUrlForVideo(
 
         // 设置图片为公开读取
         console.log(`[convertImageUrl] 设置图片为公开读取...`)
-        await client.putACL(key, 'public-read')
+        await client.putACL(actualKey, 'public-read')
         console.log(`[convertImageUrl] 图片已设置为公开读取`)
 
         // 使用公网 URL（不带签名）
-        newUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${key}`
+        newUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${actualKey}`
         console.log(`[convertImageUrl] 公网 URL 生成成功`)
         console.log(`[convertImageUrl] 完整 URL: ${newUrl}`)
 
@@ -721,7 +734,7 @@ async function convertImageUrlForVideo(
             .from('scenes')
             .update({
               image_url: newUrl,
-              image_key: key,
+              image_key: actualKey,
               updated_at: new Date().toISOString(),
             })
             .eq('id', sceneId)
