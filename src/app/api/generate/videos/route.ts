@@ -646,81 +646,57 @@ async function convertImageUrlForVideo(
 
       console.log(`[convertImageUrl] 本地图片格式: ${format}, 大小: ${(buffer.length / 1024).toFixed(2)} KB`)
 
-      // 上传到对象存储
-      // 确保使用正斜杠作为路径分隔符，并清理所有反斜杠
+      // 使用阿里云 OSS SDK 直接上传（确保使用正斜杠）
+      const OSS = await import('ali-oss')
+
+      // 确保使用正斜杠作为路径分隔符
       const cleanedSceneId = sceneId.replace(/\\/g, '/')
       const key = `scenes/${cleanedSceneId}/image_${Date.now()}.${format}`.replace(/\\/g, '/')
       console.log(`[convertImageUrl] 上传到 OSS，key: ${key}`)
       console.log(`[convertImageUrl] 原始 sceneId: ${sceneId}`)
       console.log(`[convertImageUrl] 清理后 sceneId: ${cleanedSceneId}`)
-      const uploadResult = await storage.uploadFile({
-        fileContent: buffer,
-        fileName: key,
-        contentType: `image/${format}`,
+
+      // 创建 OSS 客户端
+      const client = new OSS.default({
+        region: process.env.S3_REGION || 'oss-cn-chengdu',
+        bucket: process.env.S3_BUCKET || 'drama-studio',
+        accessKeyId: process.env.S3_ACCESS_KEY || '',
+        accessKeySecret: process.env.S3_SECRET_KEY || '',
+        secure: true,
+      })
+
+      // 上传图片
+      console.log(`[convertImageUrl] 开始上传图片到 OSS...`)
+      const uploadResult = await client.put(key, buffer, {
+        headers: {
+          'Content-Type': `image/${format}`,
+        },
       })
       console.log(`[convertImageUrl] 上传成功，返回值: ${JSON.stringify(uploadResult)}`)
 
-      // 使用实际上传的 key（storage.uploadFile 可能会修改文件名）
-      let actualKey = key
-      if (typeof uploadResult === 'string') {
-        actualKey = uploadResult
-      } else if (uploadResult && typeof uploadResult === 'object' && 'key' in uploadResult) {
-        actualKey = (uploadResult as { key: string }).key
-      } else if (uploadResult && typeof uploadResult === 'object' && 'fileName' in uploadResult) {
-        actualKey = (uploadResult as { fileName: string }).fileName
-      }
-      // 清理实际 key 中的反斜杠
-      actualKey = actualKey.replace(/\\/g, '/')
-      console.log(`[convertImageUrl] 实际上传的 key: ${actualKey}`)
+      // 设置图片为公开读取
+      console.log(`[convertImageUrl] 设置图片为公开读取...`)
+      await client.putACL(key, 'public-read')
+      console.log(`[convertImageUrl] 图片已设置为公开读取`)
 
-      // 生成预签名 URL（使用阿里云 OSS SDK）
-      let newUrl: string
+      // 使用公网 URL（不带签名）
+      const newUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${key}`
+      console.log(`[convertImageUrl] 公网 URL 生成成功`)
+      console.log(`[convertImageUrl] 完整 URL: ${newUrl}`)
+
+      // 验证 URL 是否可访问
+      console.log(`[convertImageUrl] 验证 URL 是否可访问...`)
       try {
-        const OSS = await import('ali-oss')
-
-        console.log(`[convertImageUrl] 开始生成预签名 URL...`)
-        console.log(`[convertImageUrl] OSS Bucket: ${process.env.S3_BUCKET}`)
-        console.log(`[convertImageUrl] OSS Region: ${process.env.S3_REGION}`)
-        console.log(`[convertImageUrl] Object Key: ${actualKey}`)
-        console.log(`[convertImageUrl] Access Key: ${process.env.S3_ACCESS_KEY?.substring(0, 10)}...`)
-
-        // 创建 OSS 客户端
-        const client = new OSS.default({
-          region: process.env.S3_REGION || 'oss-cn-chengdu',
-          bucket: process.env.S3_BUCKET || 'drama-studio',
-          accessKeyId: process.env.S3_ACCESS_KEY || '',
-          accessKeySecret: process.env.S3_SECRET_KEY || '',
-          secure: true, // 使用 HTTPS
-        })
-
-        // 设置图片为公开读取
-        console.log(`[convertImageUrl] 设置图片为公开读取...`)
-        await client.putACL(actualKey, 'public-read')
-        console.log(`[convertImageUrl] 图片已设置为公开读取`)
-
-        // 使用公网 URL（不带签名）
-        newUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${actualKey}`
-        console.log(`[convertImageUrl] 公网 URL 生成成功`)
-        console.log(`[convertImageUrl] 完整 URL: ${newUrl}`)
-
-        // 验证 URL 是否可访问
-        console.log(`[convertImageUrl] 验证 URL 是否可访问...`)
-        try {
-          const testResponse = await fetch(newUrl, { method: 'HEAD' })
-          if (testResponse.ok) {
-            console.log(`[convertImageUrl] URL 验证成功，HTTP ${testResponse.status}`)
-          } else {
-            console.warn(`[convertImageUrl] URL 验证失败，HTTP ${testResponse.status}`)
-            throw new Error(`URL 不可访问: HTTP ${testResponse.status}`)
-          }
-        } catch (fetchError) {
-          console.error(`[convertImageUrl] URL 验证失败:`, fetchError)
-          throw new Error(`URL 验证失败: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
+        const testResponse = await fetch(newUrl, { method: 'HEAD' })
+        if (testResponse.ok) {
+          console.log(`[convertImageUrl] URL 验证成功，HTTP ${testResponse.status}`)
+        } else {
+          console.warn(`[convertImageUrl] URL 验证失败，HTTP ${testResponse.status}`)
+          throw new Error(`URL 不可访问: HTTP ${testResponse.status}`)
         }
-      } catch (urlError) {
-        console.error(`[convertImageUrl] 使用阿里云 OSS SDK 生成预签名 URL 失败:`, urlError)
-        // 抛出错误，不使用回退方案
-        throw new Error(`生成预签名 URL 失败: ${urlError instanceof Error ? urlError.message : String(urlError)}`)
+      } catch (fetchError) {
+        console.error(`[convertImageUrl] URL 验证失败:`, fetchError)
+        throw new Error(`URL 验证失败: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
       }
 
       console.log(`[convertImageUrl] 已上传到对象存储: ${newUrl.substring(0, 80)}...`)
@@ -734,7 +710,7 @@ async function convertImageUrlForVideo(
             .from('scenes')
             .update({
               image_url: newUrl,
-              image_key: actualKey,
+              image_key: key,
               updated_at: new Date().toISOString(),
             })
             .eq('id', sceneId)
