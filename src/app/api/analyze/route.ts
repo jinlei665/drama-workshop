@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { invokeLLM, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL, getServerAIConfig, getUserLLMConfig } from "@/lib/ai"
+import { invokeLLM, invokeLLMWithStream, parseLLMJson, extractHeaders, DEFAULT_LLM_MODEL, getServerAIConfig, getUserLLMConfig } from "@/lib/ai"
 import { invokeCozeDirect, getCozeDirectConfig } from "@/lib/ai/coze-direct"
 import { memoryCharacters, memoryScenes, generateId } from "@/lib/memory-storage"
 
@@ -131,10 +131,10 @@ export async function POST(request: NextRequest) {
         console.log('[Analyze] Using direct Coze API with bot_id:', cozeDirectConfig!.botId)
         responseContent = await invokeCozeDirect(messages, cozeDirectConfig!)
       } else if (aiConfig.apiKey) {
-        // 使用 Coze SDK
-        console.log('[Analyze] Using Coze SDK with user API key')
+        // 使用 Coze SDK - 使用流式输出监听完整响应
+        console.log('[Analyze] Using Coze SDK with user API key (stream mode)')
         try {
-          responseContent = await invokeLLM(
+          responseContent = await invokeLLMWithStream(
             messages,
             {
               model: aiConfig.model,
@@ -151,9 +151,9 @@ export async function POST(request: NextRequest) {
           throw err
         }
       } else {
-        // 使用系统默认模型
-        console.log('[Analyze] Using system default model')
-        responseContent = await invokeLLM(
+        // 使用系统默认模型 - 使用流式输出监听完整响应
+        console.log('[Analyze] Using system default model (stream mode)')
+        responseContent = await invokeLLMWithStream(
           messages,
           { model: aiConfig.model, temperature: 0.3 },
           undefined,

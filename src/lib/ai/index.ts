@@ -1972,6 +1972,47 @@ export async function* streamLLM(
   }
 }
 
+/**
+ * 使用流式输出监听完整响应的 LLM 调用
+ * 这个函数会累积流式输出的所有内容，确保获得完整的响应
+ * 避免因响应过长被截断导致 JSON 解析失败
+ */
+export async function invokeLLMWithStream(
+  messages: LLMMessage[],
+  options?: LLMOptions,
+  config?: AIServiceConfig,
+  headers?: Record<string, string>
+): Promise<string> {
+  logger.info('LLM invoke with stream started')
+  
+  let fullResponse = ''
+  let chunkCount = 0
+  
+  try {
+    // 使用流式输出累积完整响应
+    const stream = streamLLM(messages, options, config, headers)
+    
+    for await (const chunk of stream) {
+      fullResponse += chunk
+      chunkCount++
+    }
+    
+    logger.info('LLM invoke with stream completed', {
+      responseLength: fullResponse.length,
+      chunkCount,
+      preview: fullResponse.substring(0, 200)
+    })
+    
+    return fullResponse
+  } catch (err) {
+    logger.error('LLM invoke with stream failed', {
+      error: err instanceof Error ? err.message : String(err),
+      partialLength: fullResponse.length,
+    })
+    throw err
+  }
+}
+
 // ==================== 图像生成服务 ====================
 
 /**
