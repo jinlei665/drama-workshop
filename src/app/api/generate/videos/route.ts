@@ -133,10 +133,47 @@ async function saveVideo(
     // 返回原始 URL，让前端尝试直接播放
     return originalUrl;
   }
-  
+
   console.log(`视频验证通过，大小: ${(buffer.length / 1024).toFixed(2)} KB`);
-  
-  // 尝试上传到对象存储
+
+  // 尝试上传到阿里云 OSS（使用阿里云 OSS SDK）
+  if (process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY && process.env.S3_BUCKET) {
+    try {
+      const OSS = await import('ali-oss');
+
+      // 创建 OSS 客户端
+      const client = new OSS.default({
+        region: process.env.S3_REGION || 'oss-cn-chengdu',
+        bucket: process.env.S3_BUCKET || 'drama-studio',
+        accessKeyId: process.env.S3_ACCESS_KEY,
+        accessKeySecret: process.env.S3_SECRET_KEY,
+        secure: true,
+      });
+
+      // 上传视频
+      const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
+      console.log(`开始上传视频到 OSS，key: ${key}`);
+      const uploadResult = await client.put(key, buffer, {
+        headers: {
+          'Content-Type': 'video/mp4',
+        },
+      });
+      console.log(`视频上传成功，返回值: ${JSON.stringify(uploadResult)}`);
+
+      // 设置视频为公开读取
+      await client.putACL(key, 'public-read');
+      console.log(`视频已设置为公开读取`);
+
+      // 生成公网 URL
+      const publicUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${key}`;
+      console.log(`视频公网 URL: ${publicUrl}`);
+      return publicUrl;
+    } catch (uploadErr) {
+      console.warn(`阿里云 OSS 上传失败，尝试本地存储:`, uploadErr);
+    }
+  }
+
+  // 尝试使用 storage.uploadFile（如果有配置）
   if (storage) {
     try {
       const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
