@@ -8,7 +8,7 @@ import { successResponse, errorResponse, getJSON } from '@/lib/api/response'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { writeFileSync, unlinkSync, existsSync, mkdirSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { tmpdir } from 'os'
 
 const execAsync = promisify(exec)
@@ -260,16 +260,18 @@ export async function POST(request: NextRequest) {
     
     // 创建合并列表文件
     const listFilePath = join(tmpDir, `list_${Date.now()}.txt`)
-    const listContent = videoPaths.map(p => `file '${p}'`).join('\n')
+    // 使用相对路径避免 Windows 路径问题
+    const listContent = videoPaths.map(p => `file '${basename(p)}'`).join('\n')
     writeFileSync(listFilePath, listContent)
-    
+
     // 输出文件名
     const outputFilename = outputName || `merged_${projectId}_${Date.now()}.mp4`
     const outputPath = join(tmpDir, outputFilename)
-    
+
     // 构建 FFmpeg 命令
     // 使用 concat demuxer 合并视频
-    let ffmpegCmd = `"${ffmpegPaths.ffmpeg}" -y -f concat -safe 0 -i "${listFilePath}" -c copy "${outputPath}"`
+    // 切换到临时目录执行，避免路径问题
+    let ffmpegCmd = `cd "${tmpDir}" && "${ffmpegPaths.ffmpeg}" -y -f concat -safe 0 -i "${basename(listFilePath)}" -c copy "${outputFilename}"`
     
     console.log(`[VideoMerge] 执行命令: ${ffmpegCmd}`)
     

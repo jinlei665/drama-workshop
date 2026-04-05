@@ -71,12 +71,14 @@ export async function POST(
 
     // 创建文件列表用于 FFmpeg concat
     const listPath = path.join(tempDir, "filelist.txt")
-    const fileListContent = videoFiles.map(f => `file '${f}'`).join("\n")
+    // 使用相对路径避免 Windows 路径问题
+    const fileListContent = videoFiles.map(f => `file '${path.basename(f)}'`).join("\n")
     await fs.writeFile(listPath, fileListContent)
 
     // 使用 FFmpeg 合并视频
     const outputPath = path.join(tempDir, "merged.mp4")
-    await execAsync(`ffmpeg -f concat -safe 0 -i "${listPath}" -c copy "${outputPath}"`)
+    // 切换到临时目录执行 FFmpeg，避免路径问题
+    await execAsync(`cd "${tempDir}" && ffmpeg -f concat -safe 0 -i "filelist.txt" -c copy "merged.mp4"`)
 
     // 读取合并后的视频
     const mergedVideo = await fs.readFile(outputPath)

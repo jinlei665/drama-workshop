@@ -44,7 +44,7 @@ export async function PUT(
   const dbData: Record<string, any> = {
     updated_at: new Date().toISOString(),
   }
-  
+
   if (parsed.data.sceneNumber !== undefined) dbData.scene_number = parsed.data.sceneNumber
   if (parsed.data.title !== undefined) dbData.title = parsed.data.title
   if (parsed.data.description !== undefined) dbData.description = parsed.data.description
@@ -53,8 +53,13 @@ export async function PUT(
   if (parsed.data.emotion !== undefined) dbData.emotion = parsed.data.emotion
   if (parsed.data.characterIds !== undefined) dbData.character_ids = parsed.data.characterIds
   if (parsed.data.imageKey !== undefined) dbData.image_key = parsed.data.imageKey
+  if (parsed.data.imageUrl !== undefined) dbData.image_url = parsed.data.imageUrl
+  if (parsed.data.videoUrl !== undefined) dbData.video_url = parsed.data.videoUrl
+  if (parsed.data.videoStatus !== undefined) dbData.video_status = parsed.data.videoStatus
+  if (parsed.data.lastFrameUrl !== undefined) dbData.last_frame_url = parsed.data.lastFrameUrl
   if (parsed.data.status !== undefined) dbData.status = parsed.data.status
   if (parsed.data.metadata !== undefined) dbData.metadata = parsed.data.metadata
+  if (parsed.data.episodeId !== undefined) dbData.episode_id = parsed.data.episodeId
 
   const { data, error } = await client
     .from("scenes")
