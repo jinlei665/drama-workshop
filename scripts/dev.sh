@@ -33,4 +33,4 @@ echo "Starting HTTP service on port ${PORT} for dev..."
 # 使用 webpack 模式（更稳定），启用轮询避免 WebSocket 问题
 # --webpack 是 Next.js 16 中禁用 Turbopack 的正确参数
 # WATCHPACK_POLLING=true 使用轮询检测文件变化
-WATCHPACK_POLLING=true pnpm next dev --webpack --port $PORT --hostname 0.0.0.0
+WATCHPACK_POLLING=true node node_modules/.pnpm/next@16.1.1_@babel+core@7.28.6_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/bin/next dev --webpack --port $PORT --hostname 0.0.0.0
