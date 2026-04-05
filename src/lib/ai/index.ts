@@ -1267,29 +1267,37 @@ async function invokeBotForVideoGeneration(
   prompt: string,
   config?: { apiKey?: string; baseUrl?: string },
   imageUrl?: string,
-  lastFrameUrl?: string
+  lastFrameUrl?: string,
+  options?: VideoGenerationOptions
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
   const { apiKey, baseUrl = 'https://api.coze.cn' } = config || {}
   const botId = await getBotId()
-  
+
   if (!apiKey) {
     throw new Error('通过 Bot 调用视频生成需要配置 Coze API Key')
   }
-  
+
   if (!botId) {
     throw new Error('通过 Bot 调用视频生成需要配置 Bot ID。请在 Coze 平台创建配置了视频生成 Skill 的智能体，并在设置页面配置 Bot ID。')
   }
-  
-  logger.info('Invoking Bot for video generation', { 
-    botId, 
-    baseUrl, 
+
+  const duration = options?.duration ?? 5
+  const ratio = options?.ratio ?? '16:9'
+  const resolution = options?.resolution ?? '720p'
+
+  logger.info('Invoking Bot for video generation', {
+    botId,
+    baseUrl,
     hasImageUrl: !!imageUrl,
-    hasLastFrameUrl: !!lastFrameUrl
+    hasLastFrameUrl: !!lastFrameUrl,
+    duration,
+    ratio,
+    resolution
   })
-  
+
   // 构建视频生成提示词
   let videoPrompt = ''
-  
+
   if (imageUrl && lastFrameUrl) {
     // 首尾帧模式 - 同时提供首帧和尾帧
     videoPrompt = `请使用图生视频功能，根据以下首帧和尾帧图片生成视频：
@@ -1300,9 +1308,12 @@ async function invokeBotForVideoGeneration(
 视频要求：
 1. 以首帧图片作为视频的第一帧
 2. 以尾帧图片作为视频的最后一帧
-3. ${prompt}
-4. 保持画面风格一致，确保从首帧到尾帧的自然过渡
-5. 请直接返回生成的视频链接`
+3. 视频时长：${duration}秒
+4. 视频比例：${ratio}
+5. 视频分辨率：${resolution}
+6. ${prompt}
+7. 保持画面风格一致，确保从首帧到尾帧的自然过渡
+8. 请直接返回生成的视频链接`
   } else if (imageUrl) {
     // 仅首帧模式 - 图生视频
     videoPrompt = `请使用图生视频功能，根据以下首帧图片生成视频：
@@ -1311,14 +1322,21 @@ async function invokeBotForVideoGeneration(
 
 视频要求：
 1. 以提供的图片作为视频的第一帧
-2. ${prompt}
-3. 保持画面风格一致
-4. 请直接返回生成的视频链接，并返回尾帧图片链接`
+2. 视频时长：${duration}秒
+3. 视频比例：${ratio}
+4. 视频分辨率：${resolution}
+5. ${prompt}
+6. 保持画面风格一致
+7. 请直接返回生成的视频链接，并返回尾帧图片链接`
   } else {
     // 纯文本生成视频模式
     videoPrompt = `请生成以下视频：
 
-${prompt}
+视频要求：
+1. 视频时长：${duration}秒
+2. 视频比例：${ratio}
+3. 视频分辨率：${resolution}
+4. ${prompt}
 
 请直接返回生成的视频链接。`
   }
@@ -2819,14 +2837,16 @@ export async function generateVideoFromImage(
             apiKey: config?.apiKey || userConfig?.apiKey || undefined,
             baseUrl: config?.baseUrl || userConfig?.baseUrl,
           },
-          firstFrameUrl  // 传递图片 URL 作为第三个参数
+          firstFrameUrl,  // 传递图片 URL 作为第三个参数
+          undefined,      // lastFrameUrl
+          options         // 传递 options 参数
         )
-        
+
         if (botResult.videoUrl) {
           logger.info('Image-to-video generation completed via Bot Skills')
-          return { 
+          return {
             videoUrl: botResult.videoUrl,
-            lastFrameUrl: botResult.lastFrameUrl 
+            lastFrameUrl: botResult.lastFrameUrl
           }
         }
       } catch (botErr) {
@@ -3004,9 +3024,10 @@ export async function generateVideoFromFrames(
             baseUrl: config?.baseUrl || userConfig?.baseUrl,
           },
           firstFrameUrl,  // 传递首帧图片 URL
-          lastFrameUrl    // 传递尾帧图片 URL
+          lastFrameUrl,   // 传递尾帧图片 URL
+          options         // 传递 options 参数
         )
-        
+
         if (botResult.videoUrl) {
           logger.info('Frame-to-video generation completed via Bot Skills')
           return { videoUrl: botResult.videoUrl }
