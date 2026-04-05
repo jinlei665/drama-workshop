@@ -3049,6 +3049,68 @@ export function parseLLMJson<T>(content: string): T {
       if (braceDiff > 0 || bracketDiff > 0) {
         logger.warn(`[parseLLMJson] JSON appears truncated: {${openBraces}/${closeBraces}}, [${openBrackets}/${closeBrackets}]`)
         
+        // 修复策略4：尝试截断到最后一个完整的对象
+        // 如果引号数量是奇数，说明有未闭合的字符串，需要截断到上一个闭合位置
+        const openQuotes = (fixed.match(/"/g) || []).length
+        if (openQuotes % 2 !== 0) {
+          logger.warn(`[parseLLMJson] Unclosed quote detected (${openQuotes} quotes), trying to truncate to last valid position`)
+          
+          // 找到最后一个完整的字符串结束位置
+          const lines = fixed.split('\n')
+          let truncated = ''
+          let inString = false
+          let stringStart = 0
+          
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i]
+            
+            // 简单的启发式：检查这一行是否会导致引号不平衡
+            const lineQuotes = (line.match(/"/g) || []).length
+            const totalQuotes = ((truncated.match(/"/g) || []).length) + lineQuotes
+            
+            if (totalQuotes % 2 !== 0) {
+              // 这一行会导致引号不平衡，截断到这里
+              logger.warn(`[parseLLMJson] Truncating at line ${i + 1} to fix quote balance`)
+              break
+            }
+            
+            truncated += (truncated ? '\n' : '') + line
+            
+            // 如果这是最后一个不完整的行（比如只输出了部分内容），也截断
+            // 检查行是否以不完整的字段结束
+            const trimmedLine = line.trim()
+            if (trimmedLine.length > 0 && 
+                !trimmedLine.endsWith(',') && 
+                !trimmedLine.endsWith('}') && 
+                !trimmedLine.endsWith(']') &&
+                (trimmedLine.includes(':') || trimmedLine.endsWith('"'))) {
+              // 这一行可能不完整
+              logger.warn(`[parseLLMJson] Line ${i + 1} appears incomplete: ${trimmedLine.substring(0, 50)}`)
+              // 尝试截断到上一个逗号或括号
+              const lastComma = truncated.lastIndexOf(',')
+              const lastBrace = truncated.lastIndexOf('}')
+              const lastBracket = truncated.lastIndexOf(']')
+              
+              if (lastBrace > lastComma && lastBrace > lastBracket) {
+                truncated = truncated.substring(0, lastBrace + 1)
+                logger.warn(`[parseLLMJson] Truncated to last complete object`)
+              }
+              break
+            }
+          }
+          
+          fixed = truncated
+          
+          // 重新计算括号
+          const newOpenBraces = (fixed.match(/{/g) || []).length
+          const newCloseBraces = (fixed.match(/}/g) || []).length
+          const newOpenBrackets = (fixed.match(/\[/g) || []).length
+          const newCloseBrackets = (fixed.match(/\]/g) || []).length
+          
+          braceDiff = newOpenBraces - newCloseBraces
+          bracketDiff = newOpenBrackets - newCloseBrackets
+        }
+        
         // 补全缺失的括号
         // 先补全方括号
         for (let i = 0; i < bracketDiff; i++) {
@@ -3060,13 +3122,6 @@ export function parseLLMJson<T>(content: string): T {
         }
         
         logger.info(`[parseLLMJson] Added ${bracketDiff} ] and ${braceDiff} } brackets`)
-      }
-      
-      // 修复策略4：检查引号是否闭合
-      const openQuotes = (fixed.match(/"/g) || []).length
-      if (openQuotes % 2 !== 0) {
-        logger.warn(`[parseLLMJson] Unclosed quote detected (${openQuotes} quotes), adding closing quote`)
-        fixed += '"'
       }
       
       logger.info(`[parseLLMJson] Fixed JSON preview (first 200 chars): ${fixed.substring(0, 200)}`)
