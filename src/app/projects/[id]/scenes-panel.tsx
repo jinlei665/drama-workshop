@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -21,18 +22,22 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { 
-  Plus, 
-  MoreVertical, 
-  Trash2, 
-  Edit, 
-  Sparkles, 
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  Plus,
+  MoreVertical,
+  Trash2,
+  Edit,
+  Sparkles,
   Loader2,
   Image as ImageIcon,
   Video,
   Play,
   Film,
-  Download
+  Download,
+  Check,
+  Info,
+  AlertTriangle
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -72,10 +77,17 @@ interface ScenesPanelProps {
 export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesPanelProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [imageGenerateDialogOpen, setImageGenerateDialogOpen] = useState(false)
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null)
   const [creating, setCreating] = useState(false)
   const [generatingImage, setGeneratingImage] = useState<string | null>(null)
   const [generatingVideo, setGeneratingVideo] = useState<string | null>(null)
+  const [imageGenerateFormData, setImageGenerateFormData] = useState({
+    description: "",
+    action: "",
+    emotion: "",
+    characterIds: [] as string[]
+  })
   const [formData, setFormData] = useState({
     sceneNumber: scenes.length + 1,
     title: "",
@@ -198,17 +210,33 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     }
   }
 
-  // 生成分镜图片
-  const handleGenerateImage = async (scene: Scene) => {
+  // 生成分镜图片 - 打开确认对话框
+  const handleGenerateImage = (scene: Scene) => {
     if (!scene.description) {
       toast.error("请先填写场景描述")
       return
     }
 
-    setGeneratingImage(scene.id)
+    setSelectedScene(scene)
+    setImageGenerateFormData({
+      description: scene.description,
+      action: scene.action || "",
+      emotion: scene.emotion || "",
+      characterIds: scene.characterIds || []
+    })
+    setImageGenerateDialogOpen(true)
+  }
+
+  // 确认生成分镜图片
+  const handleConfirmGenerateImage = async () => {
+    if (!selectedScene) return
+
+    setGeneratingImage(selectedScene.id)
+    setImageGenerateDialogOpen(false)
+
     try {
       // 获取出场人物的外貌描述
-      const charDescriptions = scene.characterIds
+      const charDescriptions = imageGenerateFormData.characterIds
         .map(id => characters.find(c => c.id === id)?.appearance)
         .filter(Boolean)
 
@@ -216,11 +244,11 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sceneId: scene.id,
-          description: scene.description,
-          emotion: scene.emotion,
+          sceneId: selectedScene.id,
+          description: imageGenerateFormData.description,
+          emotion: imageGenerateFormData.emotion,
           characterDescriptions: charDescriptions,
-          characterIds: scene.characterIds  // 传递人物ID以获取参考图
+          characterIds: imageGenerateFormData.characterIds
         })
       })
 
@@ -388,6 +416,201 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
               loading={creating}
               submitText="保存修改"
             />
+          </DialogContent>
+        </Dialog>
+
+        {/* 图片生成确认对话框 */}
+        <Dialog open={imageGenerateDialogOpen} onOpenChange={setImageGenerateDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                确认生成分镜图片
+              </DialogTitle>
+              <DialogDescription>
+                请确认分镜信息，生成图片时会根据以下内容创作
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 mt-4">
+              {/* 提示信息 */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  AI 将根据以下信息生成分镜图片，确保人物外观保持一致。您可以在这里微调内容。
+                </AlertDescription>
+              </Alert>
+
+              {/* 分镜序号 */}
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-lg px-3 py-1">
+                  分镜 {selectedScene?.sceneNumber}
+                </Badge>
+                {selectedScene?.title && (
+                  <span className="font-semibold">{selectedScene.title}</span>
+                )}
+              </div>
+
+              {/* 场景描述 */}
+              <div className="space-y-2">
+                <Label htmlFor="gen-desc">场景描述 *</Label>
+                <Textarea
+                  id="gen-desc"
+                  value={imageGenerateFormData.description}
+                  onChange={(e) => setImageGenerateFormData({ ...imageGenerateFormData, description: e.target.value })}
+                  placeholder="详细描述场景画面：环境、构图、光线、角度等"
+                  className="min-h-[100px]"
+                />
+                <p className="text-xs text-muted-foreground">
+                  场景描述越详细，生成的画面越准确
+                </p>
+              </div>
+
+              {/* 动作描述 */}
+              <div className="space-y-2">
+                <Label htmlFor="gen-action">动作/表演描述</Label>
+                <Textarea
+                  id="gen-action"
+                  value={imageGenerateFormData.action}
+                  onChange={(e) => setImageGenerateFormData({ ...imageGenerateFormData, action: e.target.value })}
+                  placeholder="人物动作和表演描述"
+                  className="min-h-[60px]"
+                />
+              </div>
+
+              {/* 情绪氛围 */}
+              <div className="space-y-2">
+                <Label htmlFor="gen-emotion">情绪氛围</Label>
+                <Input
+                  id="gen-emotion"
+                  value={imageGenerateFormData.emotion}
+                  onChange={(e) => setImageGenerateFormData({ ...imageGenerateFormData, emotion: e.target.value })}
+                  placeholder="如：紧张、温馨、悲伤"
+                />
+              </div>
+
+              {/* 出场人物选择 */}
+              <div className="space-y-3">
+                <Label className="flex items-center justify-between">
+                  <span>出场人物</span>
+                  <span className="text-xs text-muted-foreground">
+                    已选择 {imageGenerateFormData.characterIds.length} 人
+                  </span>
+                </Label>
+
+                {imageGenerateFormData.characterIds.length === 0 && (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      未选择出场人物，可能影响人物一致性
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex flex-wrap gap-2">
+                  {characters.map((char) => {
+                    const isSelected = imageGenerateFormData.characterIds.includes(char.id)
+                    return (
+                      <label
+                        key={char.id}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                          isSelected
+                            ? "bg-primary/10 border-primary text-primary"
+                            : "bg-secondary hover:bg-secondary/80"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="hidden"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setImageGenerateFormData({
+                                ...imageGenerateFormData,
+                                characterIds: [...imageGenerateFormData.characterIds, char.id]
+                              })
+                            } else {
+                              setImageGenerateFormData({
+                                ...imageGenerateFormData,
+                                characterIds: imageGenerateFormData.characterIds.filter((id: string) => id !== char.id)
+                              })
+                            }
+                          }}
+                        />
+                        <span className="font-medium">{char.name}</span>
+                        {isSelected && <Check className="w-4 h-4" />}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 参考图片预览 */}
+              {imageGenerateFormData.characterIds.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" />
+                    人物参考图
+                    <span className="text-xs text-muted-foreground">
+                      (AI 将根据这些图片保持人物外观一致)
+                    </span>
+                  </Label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {imageGenerateFormData.characterIds.map((charId) => {
+                      const char = characters.find(c => c.id === charId)
+                      if (!char) return null
+
+                      // 获取角色参考图 URL
+                      let imageUrl = null
+                      if (char.id) {
+                        // 这里可以通过 API 获取角色的参考图
+                        // 暂时使用占位符
+                        imageUrl = `/characters/${char.id}?type=front`
+                      }
+
+                      return (
+                        <div key={char.id} className="space-y-1">
+                          <div className="aspect-square rounded-lg bg-secondary/50 overflow-hidden border">
+                            {imageUrl ? (
+                              <img
+                                src={imageUrl}
+                                alt={char.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <span className="text-xs text-muted-foreground">无参考图</span>
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-center text-muted-foreground">{char.name}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setImageGenerateDialogOpen(false)}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={handleConfirmGenerateImage}
+                disabled={imageGenerateFormData.characterIds.length === 0 || !imageGenerateFormData.description.trim()}
+                className="amber-gradient text-white border-0"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                确认生成
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
