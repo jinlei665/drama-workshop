@@ -646,13 +646,37 @@ async function convertImageUrlForVideo(
         contentType: `image/${format}`,
       })
 
-      // 生成预签名 URL
-      const signedUrl = await storage.generatePresignedUrl({
-        key,
-        expireTime: 86400 * 7, // 7天有效
-      })
+      // 生成预签名 URL（使用 AWS SDK）
+      let newUrl: string
+      try {
+        const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3')
+        const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner')
 
-      const newUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url
+        // 创建 S3 客户端
+        const s3Client = new S3Client({
+          region: process.env.S3_REGION || 'oss-cn-chengdu',
+          endpoint: process.env.S3_ENDPOINT,
+          credentials: {
+            accessKeyId: process.env.S3_ACCESS_KEY || '',
+            secretAccessKey: process.env.S3_SECRET_KEY || '',
+          },
+          // 阿里云 OSS 需要配置
+          forcePathStyle: false, // 使用虚拟托管样式
+        })
+
+        // 生成预签名 URL
+        const command = new GetObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: key,
+        })
+
+        newUrl = await getSignedUrl(s3Client, command, { expiresIn: 604800 }) // 7天 = 604800秒
+      } catch (urlError) {
+        console.warn(`[convertImageUrl] 使用 AWS SDK 生成预签名 URL 失败:`, urlError)
+        // 回退：直接使用公共 URL 格式
+        newUrl = `${process.env.S3_PUBLIC_ENDPOINT}/${key}`
+      }
+
       console.log(`[convertImageUrl] 已上传到对象存储: ${newUrl.substring(0, 80)}...`)
 
       // 更新数据库中的 image_url（可选，推荐）
