@@ -65,6 +65,8 @@ interface Character {
   id: string
   name: string
   appearance: string | null
+  frontViewKey?: string | null
+  imageUrl?: string | null
 }
 
 interface ScenesPanelProps {
@@ -562,10 +564,21 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
 
                       // 获取角色参考图 URL
                       let imageUrl = null
-                      if (char.id) {
-                        // 这里可以通过 API 获取角色的参考图
-                        // 暂时使用占位符
-                        imageUrl = `/characters/${char.id}?type=front`
+                      // 优先使用 frontViewKey
+                      if (char.frontViewKey) {
+                        if (char.frontViewKey.startsWith('http')) {
+                          imageUrl = char.frontViewKey
+                        } else {
+                          imageUrl = `/characters/${char.frontViewKey}`
+                        }
+                      }
+                      // 其次使用 imageUrl
+                      if (!imageUrl && char.imageUrl) {
+                        if (char.imageUrl.startsWith('http')) {
+                          imageUrl = char.imageUrl
+                        } else {
+                          imageUrl = `/characters/${char.imageUrl}`
+                        }
                       }
 
                       return (
@@ -577,7 +590,15 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
                                 alt={char.name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
-                                  e.currentTarget.style.display = 'none'
+                                  const target = e.target as HTMLImageElement
+                                  target.style.display = 'none'
+                                  const parent = target.parentElement
+                                  if (parent) {
+                                    const noImageDiv = document.createElement('div')
+                                    noImageDiv.className = 'w-full h-full flex items-center justify-center'
+                                    noImageDiv.innerHTML = '<span class="text-xs text-muted-foreground">无参考图</span>'
+                                    parent.appendChild(noImageDiv)
+                                  }
                                 }}
                               />
                             ) : (
