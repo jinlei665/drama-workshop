@@ -128,5 +128,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ episode })
+  // 如果指定了分镜范围，分配分镜到该剧集
+  let sceneCount = 0
+  if (body.sceneStart !== undefined && body.sceneEnd !== undefined) {
+    const sceneStart = Math.max(1, body.sceneStart)
+    const sceneEnd = Math.max(sceneStart, body.sceneEnd)
+
+    // 获取未分配的分镜（按序号排序）
+    const { data: unassignedScenes } = await client
+      .from("scenes")
+      .select("id")
+      .eq("project_id", parsed.data.projectId)
+      .is("episode_id", null)
+      .order("scene_number", { ascending: true })
+
+    if (unassignedScenes && unassignedScenes.length > 0) {
+      // 提取指定范围的分镜
+      const scenesToAssign = unassignedScenes.slice(sceneStart - 1, sceneEnd)
+      
+      // 更新这些分镜的 episode_id
+      if (scenesToAssign.length > 0) {
+        const sceneIds = scenesToAssign.map((s: any) => s.id)
+        await client
+          .from("scenes")
+          .update({ episode_id: episode.id, updated_at: new Date().toISOString() })
+          .in("id", sceneIds)
+        
+        sceneCount = sceneIds.length
+      }
+    }
+  }
+
+  return NextResponse.json({ episode, sceneCount })
 }

@@ -52,6 +52,13 @@ interface Episode {
   sceneCount?: number
 }
 
+interface UnassignedScene {
+  id: string
+  scene_number: number
+  title: string | null
+  description: string
+}
+
 interface EpisodesPanelProps {
   projectId: string
   onUpdate: () => void
@@ -61,6 +68,7 @@ interface EpisodesPanelProps {
 
 export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEpisodeId }: EpisodesPanelProps) {
   const [episodes, setEpisodes] = useState<Episode[]>([])
+  const [unassignedScenes, setUnassignedScenes] = useState<UnassignedScene[]>([])
   const [loading, setLoading] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -73,6 +81,8 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
     episodeNumber: 1,
     title: "",
     description: "",
+    sceneStart: 1,
+    sceneEnd: 1,
   })
 
   const fetchEpisodes = async () => {
@@ -94,8 +104,20 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
     }
   }
 
+  // 获取未分配的分镜
+  const fetchUnassignedScenes = async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/scenes?unassigned=true`)
+      const data = await res.json()
+      setUnassignedScenes(data.scenes || [])
+    } catch (error) {
+      console.error("获取未分配分镜失败:", error)
+    }
+  }
+
   useEffect(() => {
     fetchEpisodes()
+    fetchUnassignedScenes()
   }, [projectId])
 
   // 按季分组
@@ -148,6 +170,8 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
           episodeNumber: formData.episodeNumber,
           title: formData.title,
           description: formData.description,
+          sceneStart: formData.sceneStart,
+          sceneEnd: formData.sceneEnd,
         }),
       })
 
@@ -156,15 +180,18 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
         throw new Error(data.error || "创建失败")
       }
 
-      toast.success("剧集创建成功")
+      toast.success(`剧集创建成功，已添加 ${data.sceneCount || 0} 个分镜`)
       setCreateDialogOpen(false)
       setFormData({
         seasonNumber: getNextEpisodeNumber().seasonNumber,
         episodeNumber: getNextEpisodeNumber().episodeNumber,
         title: "",
         description: "",
+        sceneStart: 1,
+        sceneEnd: 1,
       })
       fetchEpisodes()
+      fetchUnassignedScenes()
       onUpdate()
     } catch (error) {
       console.error("创建剧集失败:", error)
@@ -279,6 +306,8 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
       episodeNumber: episode.episode_number,
       title: episode.title,
       description: episode.description || "",
+      sceneStart: 1,
+      sceneEnd: 1,
     })
     setEditDialogOpen(true)
   }
@@ -314,10 +343,10 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
               添加剧集
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>添加剧集</DialogTitle>
-              <DialogDescription>创建新的剧集分集</DialogDescription>
+              <DialogDescription>创建新的剧集分集，选择要包含的分镜范围</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 mt-4">
               <div className="grid grid-cols-2 gap-4">
@@ -343,7 +372,7 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
               <div className="space-y-2">
                 <Label>标题 *</Label>
                 <Input
-                  placeholder="如：1.病房惊变"
+                  placeholder="如：第1集 病房惊变"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 />
@@ -356,9 +385,49 @@ export function EpisodesPanel({ projectId, onUpdate, onSelectEpisode, selectedEp
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>分镜范围</Label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground mb-1">起始分镜</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={unassignedScenes.length}
+                      value={formData.sceneStart}
+                      onChange={(e) => setFormData({ ...formData, sceneStart: parseInt(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <span className="self-end pb-2">至</span>
+                  <div className="flex-1">
+                    <Label className="text-xs text-muted-foreground mb-1">结束分镜</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={unassignedScenes.length}
+                      value={formData.sceneEnd}
+                      onChange={(e) => setFormData({ ...formData, sceneEnd: parseInt(e.target.value) || 1 })}
+                    />
+                  </div>
+                </div>
+                {unassignedScenes.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    可用分镜：1-{unassignedScenes.length}（共 {unassignedScenes.length} 个未分配分镜）
+                  </p>
+                )}
+                {unassignedScenes.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-amber-500">
+                    没有未分配的分镜，请先生成分镜
+                  </p>
+                )}
+              </div>
               <div className="flex justify-end gap-3 pt-4">
                 <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>取消</Button>
-                <Button onClick={handleCreate} disabled={creating} className="amber-gradient text-white border-0">
+                <Button 
+                  onClick={handleCreate} 
+                  disabled={creating || unassignedScenes.length === 0} 
+                  className="amber-gradient text-white border-0"
+                >
                   {creating ? "创建中..." : "创建"}
                 </Button>
               </div>

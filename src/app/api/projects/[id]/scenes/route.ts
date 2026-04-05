@@ -9,21 +9,34 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+  const { searchParams } = new URL(request.url)
+  const unassigned = searchParams.get('unassigned') === 'true'
   
   // 尝试从数据库获取
   try {
     const client = getSupabaseClient()
-    const { data, error } = await client
+    
+    let query = client
       .from("scenes")
       .select("*")
       .eq("project_id", id)
-      .order("scene_number", { ascending: true })
+    
+    // 如果请求未分配的分镜
+    if (unassigned) {
+      query = query.is("episode_id", null)
+    }
+    
+    const { data, error } = await query.order("scene_number", { ascending: true })
 
     if (error) {
       console.warn('数据库查询分镜失败，回退到内存存储:', error.message)
       // 回退到内存存储
       const scenes = memoryScenes
-        .filter(s => s.projectId === id)
+        .filter(s => {
+          if (s.projectId !== id) return false
+          if (unassigned) return !s.episodeId
+          return true
+        })
         .sort((a, b) => a.sceneNumber - b.sceneNumber)
       return NextResponse.json({ scenes })
     }
@@ -33,7 +46,11 @@ export async function GET(
     console.warn('数据库连接失败，回退到内存存储:', err)
     // 回退到内存存储
     const scenes = memoryScenes
-      .filter(s => s.projectId === id)
+      .filter(s => {
+        if (s.projectId !== id) return false
+        if (unassigned) return !s.episodeId
+        return true
+      })
       .sort((a, b) => a.sceneNumber - b.sceneNumber)
     return NextResponse.json({ scenes })
   }
