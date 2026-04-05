@@ -77,6 +77,14 @@ interface ScenesPanelProps {
 }
 
 export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesPanelProps) {
+  // 调试：打印人物数据
+  console.log('[ScenesPanel] Characters data:', characters.map(c => ({
+    id: c.id,
+    name: c.name,
+    frontViewKey: c.frontViewKey,
+    imageUrl: c.imageUrl
+  })))
+
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [imageGenerateDialogOpen, setImageGenerateDialogOpen] = useState(false)
@@ -569,7 +577,12 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
                         if (char.frontViewKey.startsWith('http')) {
                           imageUrl = char.frontViewKey
                         } else {
-                          imageUrl = `/characters/${char.frontViewKey}`
+                          // frontViewKey 可能是 "char_xxx/views_xxx.png" 或 "characters/char_xxx/views_xxx.png"
+                          // 需要去除 "characters/" 前缀（如果存在）
+                          const cleanKey = char.frontViewKey.startsWith('characters/')
+                            ? char.frontViewKey.replace('characters/', '')
+                            : char.frontViewKey
+                          imageUrl = `/characters/${cleanKey}`
                         }
                       }
                       // 其次使用 imageUrl
@@ -577,9 +590,20 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
                         if (char.imageUrl.startsWith('http')) {
                           imageUrl = char.imageUrl
                         } else {
-                          imageUrl = `/characters/${char.imageUrl}`
+                          const cleanKey = char.imageUrl.startsWith('characters/')
+                            ? char.imageUrl.replace('characters/', '')
+                            : char.imageUrl
+                          imageUrl = `/characters/${cleanKey}`
                         }
                       }
+
+                      // 调试日志
+                      console.log(`[Scene Image] Character ${char.name}:`, {
+                        id: char.id,
+                        frontViewKey: char.frontViewKey,
+                        imageUrl: char.imageUrl,
+                        finalImageUrl: imageUrl
+                      })
 
                       return (
                         <div key={char.id} className="space-y-1">
@@ -590,6 +614,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
                                 alt={char.name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
+                                  console.error(`[Scene Image] Failed to load image for ${char.name}:`, imageUrl, e)
                                   const target = e.target as HTMLImageElement
                                   target.style.display = 'none'
                                   const parent = target.parentElement
@@ -599,6 +624,9 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
                                     noImageDiv.innerHTML = '<span class="text-xs text-muted-foreground">无参考图</span>'
                                     parent.appendChild(noImageDiv)
                                   }
+                                }}
+                                onLoad={() => {
+                                  console.log(`[Scene Image] Successfully loaded image for ${char.name}:`, imageUrl)
                                 }}
                               />
                             ) : (
