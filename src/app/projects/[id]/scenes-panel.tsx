@@ -105,7 +105,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     dialogue: "",
     action: "",
     emotion: "",
-    lastFrameSceneId: "" as string | null
+    lastFrameSceneId: "" as string | null,
+    ratio: "16:9" as "16:9" | "9:16"
   })
   const [formData, setFormData] = useState({
     sceneNumber: scenes.length + 1,
@@ -304,7 +305,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
       dialogue: scene.dialogue || "",
       action: scene.action || "",
       emotion: scene.emotion || "",
-      lastFrameSceneId: nextSceneWithImage?.id || null
+      lastFrameSceneId: nextSceneWithImage?.id || null,
+      ratio: "16:9" // 默认16:9
     })
     setVideoGenerateDialogOpen(true)
   }
@@ -327,7 +329,8 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
           dialogue: videoGenerateFormData.dialogue,
           action: videoGenerateFormData.action,
           emotion: videoGenerateFormData.emotion,
-          lastFrameSceneId: videoGenerateFormData.lastFrameSceneId
+          lastFrameSceneId: videoGenerateFormData.lastFrameSceneId,
+          ratio: videoGenerateFormData.ratio
         })
       })
 
@@ -854,6 +857,53 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>4秒（快速过渡）</span>
                   <span>12秒（详细场景）</span>
+                </div>
+              </div>
+
+              {/* 比例选择 */}
+              <div className="space-y-2">
+                <Label>视频比例</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label
+                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      videoGenerateFormData.ratio === "16:9"
+                        ? "bg-primary/10 border-primary text-primary"
+                        : "bg-secondary hover:bg-secondary/80 border-border"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="ratio"
+                      className="hidden"
+                      checked={videoGenerateFormData.ratio === "16:9"}
+                      onChange={() => setVideoGenerateFormData({ ...videoGenerateFormData, ratio: "16:9" })}
+                    />
+                    <div className="text-center">
+                      <div className="w-8 h-5 border-2 border-current rounded-sm mb-1 mx-auto" />
+                      <span className="text-sm font-medium">16:9</span>
+                      <div className="text-xs text-muted-foreground">横屏</div>
+                    </div>
+                  </label>
+                  <label
+                    className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      videoGenerateFormData.ratio === "9:16"
+                        ? "bg-primary/10 border-primary text-primary"
+                        : "bg-secondary hover:bg-secondary/80 border-border"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="ratio"
+                      className="hidden"
+                      checked={videoGenerateFormData.ratio === "9:16"}
+                      onChange={() => setVideoGenerateFormData({ ...videoGenerateFormData, ratio: "9:16" })}
+                    />
+                    <div className="text-center">
+                      <div className="w-5 h-8 border-2 border-current rounded-sm mb-1 mx-auto" />
+                      <span className="text-sm font-medium">9:16</span>
+                      <div className="text-xs text-muted-foreground">竖屏</div>
+                    </div>
+                  </label>
                 </div>
               </div>
 

@@ -94,6 +94,7 @@
     "@react-dev-inspector/babel-plugin": "^2.0.1",
     "@react-dev-inspector/middleware": "^2.0.1",
     "@tailwindcss/postcss": "^4",
+    "@types/ali-oss": "^6.23.3",
     "@types/archiver": "^7.0.0",
     "@types/node": "^20",
     "@types/pg": "^8.16.0",

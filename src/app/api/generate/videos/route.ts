@@ -479,12 +479,18 @@ async function generateSequential(
       // 用户选择了无尾帧
       console.log(`[连续模式] 分镜 ${scene.scene_number}: 用户选择无尾帧`);
       lastFrameScene = null;
-    } else if (userLastFrameSceneId && scenesWithImages.length === 1 && scene.id === userLastFrameSceneId) {
+    } else if (userLastFrameSceneId) {
       // 用户指定了特定的尾帧场景
       lastFrameScene = allScenes.find(s => s.id === userLastFrameSceneId);
-      console.log(`[连续模式] 分镜 ${scene.scene_number}: 使用用户指定的尾帧场景 ${userLastFrameSceneId}`);
-    } else {
-      // 使用默认逻辑：下一个分镜
+      if (lastFrameScene) {
+        console.log(`[连续模式] 分镜 ${scene.scene_number}: 使用用户指定的尾帧场景 ${userLastFrameSceneId} (分镜 ${lastFrameScene.scene_number})`);
+      } else {
+        console.warn(`[连续模式] 分镜 ${scene.scene_number}: 未找到指定的尾帧场景 ${userLastFrameSceneId}，尝试使用下一个分镜`);
+      }
+    }
+
+    // 如果没有找到用户指定的尾帧场景，尝试使用下一个分镜
+    if (!lastFrameScene && !isNoLastFrame) {
       const nextSceneNumber = scene.scene_number + 1;
       lastFrameScene = allScenes.find(s => s.scene_number === nextSceneNumber);
       console.log(`[连续模式] 分镜 ${scene.scene_number}: 查找分镜 ${nextSceneNumber}, 结果: ${lastFrameScene ? '找到' : '未找到'}`);
