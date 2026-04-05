@@ -165,6 +165,12 @@ export async function POST(request: NextRequest) {
     // 解析 JSON 响应
     let result
     try {
+      console.log(`[Analyze] Raw response length: ${responseContent.length}`)
+      console.log(`[Analyze] Raw response (first 1000 chars): ${responseContent.substring(0, 1000)}`)
+      if (responseContent.length > 1000) {
+        console.log(`[Analyze] Raw response (last 500 chars): ${responseContent.substring(responseContent.length - 500)}`)
+      }
+      
       result = parseLLMJson<{
         characters: Array<{
           name: string
@@ -192,8 +198,15 @@ export async function POST(request: NextRequest) {
       }
     } catch (parseError) {
       console.error("Failed to parse LLM response:", responseContent)
+      console.error("Parse error:", parseError)
       return NextResponse.json(
-        { error: "解析结果失败，请重试" },
+        { 
+          error: "解析结果失败，请重试",
+          debug: {
+            responseLength: responseContent.length,
+            responsePreview: responseContent.substring(0, 500)
+          }
+        },
         { status: 500 }
       )
     }

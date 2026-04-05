@@ -2947,22 +2947,63 @@ export async function generateVideoFromFrames(
  * 解析 LLM 返回的 JSON
  */
 export function parseLLMJson<T>(content: string): T {
+  logger.info(`[parseLLMJson] Content length: ${content.length}`)
+  
   // 尝试提取 JSON 代码块
   const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
   const jsonStr = jsonMatch ? jsonMatch[1] : content.trim()
+  
+  logger.info(`[parseLLMJson] Extracted JSON length: ${jsonStr.length}`)
 
   try {
     return JSON.parse(jsonStr) as T
-  } catch {
+  } catch (parseError) {
+    logger.warn(`[parseLLMJson] First parse attempt failed, trying to fix...`)
+    
+    // 检查 JSON 是否被截断（缺少结尾括号）
+    const openBraces = (jsonStr.match(/{/g) || []).length
+    const closeBraces = (jsonStr.match(/}/g) || []).length
+    const openBrackets = (jsonStr.match(/\[/g) || []).length
+    const closeBrackets = (jsonStr.match(/\]/g) || []).length
+    
+    let fixed = jsonStr
+    let braceDiff = openBraces - closeBraces
+    let bracketDiff = openBrackets - closeBrackets
+    
+    // 如果括号不匹配，说明 JSON 被截断
+    if (braceDiff > 0 || bracketDiff > 0) {
+      logger.warn(`[parseLLMJson] JSON appears truncated: {${openBraces}/${closeBraces}}, [${openBrackets}/${closeBrackets}]`)
+      
+      // 尝试补全缺失的括号
+      for (let i = 0; i < bracketDiff; i++) {
+        fixed += ']'
+      }
+      for (let i = 0; i < braceDiff; i++) {
+        fixed += '}'
+      }
+      
+      // 如果引号未闭合，补上引号
+      const openQuotes = (fixed.match(/"/g) || []).length
+      if (openQuotes % 2 !== 0) {
+        logger.warn(`[parseLLMJson] Unclosed quote detected, adding closing quote`)
+        fixed += '"'
+      }
+    }
+    
     // 尝试修复常见的 JSON 格式问题
-    const fixed = jsonStr
+    fixed = fixed
       .replace(/,\s*}/g, '}')
       .replace(/,\s*]/g, ']')
       .replace(/'/g, '"')
 
     try {
-      return JSON.parse(fixed) as T
-    } catch {
+      const result = JSON.parse(fixed) as T
+      logger.info(`[parseLLMJson] Successfully parsed fixed JSON`)
+      return result
+    } catch (finalError) {
+      logger.error(`[parseLLMJson] Failed to parse JSON after fixes`)
+      logger.error(`[parseLLMJson] JSON content (first 500 chars): ${jsonStr.substring(0, 500)}`)
+      logger.error(`[parseLLMJson] JSON content (last 100 chars): ${jsonStr.substring(Math.max(0, jsonStr.length - 100))}`)
       throw Errors.AIResponseInvalid('LLM')
     }
   }
