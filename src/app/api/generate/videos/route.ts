@@ -654,42 +654,34 @@ async function convertImageUrlForVideo(
         contentType: `image/${format}`,
       })
 
-      // 生成预签名 URL（使用 AWS SDK）
+      // 生成预签名 URL（使用阿里云 OSS SDK）
       let newUrl: string
       try {
-        const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3')
-        const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner')
+        const OSS = await import('ali-oss')
 
         console.log(`[convertImageUrl] 开始生成预签名 URL...`)
-        console.log(`[convertImageUrl] S3 Endpoint: ${process.env.S3_ENDPOINT}`)
-        console.log(`[convertImageUrl] S3 Bucket: ${process.env.S3_BUCKET}`)
-        console.log(`[convertImageUrl] S3 Region: ${process.env.S3_REGION}`)
+        console.log(`[convertImageUrl] OSS Bucket: ${process.env.S3_BUCKET}`)
+        console.log(`[convertImageUrl] OSS Region: ${process.env.S3_REGION}`)
         console.log(`[convertImageUrl] Object Key: ${key}`)
         console.log(`[convertImageUrl] Access Key: ${process.env.S3_ACCESS_KEY?.substring(0, 10)}...`)
 
-        // 创建 S3 客户端
-        const s3Client = new S3Client({
+        // 创建 OSS 客户端
+        const client = new OSS.default({
           region: process.env.S3_REGION || 'oss-cn-chengdu',
-          endpoint: process.env.S3_ENDPOINT,
-          credentials: {
-            accessKeyId: process.env.S3_ACCESS_KEY || '',
-            secretAccessKey: process.env.S3_SECRET_KEY || '',
-          },
-          // 阿里云 OSS 需要配置
-          forcePathStyle: false, // 使用虚拟托管样式
-          signatureVersion: 'v4', // 使用 v4 签名
+          bucket: process.env.S3_BUCKET || 'drama-studio',
+          accessKeyId: process.env.S3_ACCESS_KEY || '',
+          accessKeySecret: process.env.S3_SECRET_KEY || '',
+          secure: true, // 使用 HTTPS
         })
 
         // 生成预签名 URL
-        const command = new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: key,
+        newUrl = client.signatureUrl(key, {
+          expires: 604800, // 7天 = 604800秒
+          method: 'GET',
         })
-
-        newUrl = await getSignedUrl(s3Client, command, { expiresIn: 604800 }) // 7天 = 604800秒
         console.log(`[convertImageUrl] 预签名 URL 生成成功`)
       } catch (urlError) {
-        console.error(`[convertImageUrl] 使用 AWS SDK 生成预签名 URL 失败:`, urlError)
+        console.error(`[convertImageUrl] 使用阿里云 OSS SDK 生成预签名 URL 失败:`, urlError)
         // 抛出错误，不使用回退方案
         throw new Error(`生成预签名 URL 失败: ${urlError instanceof Error ? urlError.message : String(urlError)}`)
       }
