@@ -608,11 +608,79 @@ async function convertImageUrlForVideo(
   
   // 处理本地存储的图片 URL（以 /scenes/ 或 /characters/ 开头）
   if (imageUrl.startsWith('/scenes/') || imageUrl.startsWith('/characters/')) {
-    // 构造完整的 URL
-    const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
-    const fullUrl = `${domain}${imageUrl}`
-    console.log(`[convertImageUrl] 本地图片，转换为完整 URL: ${fullUrl}`)
-    return fullUrl
+    console.log(`[convertImageUrl] 检测到本地图片，尝试上传到对象存储...`);
+
+    try {
+      // 构造完整的 URL
+      const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+      const fullUrl = `${domain}${imageUrl}`
+      console.log(`[convertImageUrl] 下载本地图片: ${fullUrl}`)
+
+      // 下载图片
+      const response = await fetch(fullUrl)
+      if (!response.ok) {
+        console.warn(`[convertImageUrl] 本地图片下载失败: ${response.status}`)
+        return fullUrl
+      }
+
+      const arrayBuffer = await response.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+
+      // 检测图片格式
+      let format = 'png'
+      if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+        format = 'jpg'
+      } else if (buffer[0] === 0x89 && buffer[1] === 0x50) {
+        format = 'png'
+      } else if (buffer[0] === 0x52 && buffer[1] === 0x49) {
+        format = 'webp'
+      }
+
+      console.log(`[convertImageUrl] 本地图片格式: ${format}, 大小: ${(buffer.length / 1024).toFixed(2)} KB`)
+
+      // 上传到对象存储
+      const key = `scenes/${sceneId}/image_${Date.now()}.${format}`
+      await storage.uploadFile({
+        fileContent: buffer,
+        fileName: key,
+        contentType: `image/${format}`,
+      })
+
+      // 生成预签名 URL
+      const signedUrl = await storage.generatePresignedUrl({
+        key,
+        expireTime: 86400 * 7, // 7天有效
+      })
+
+      const newUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url
+      console.log(`[convertImageUrl] 已上传到对象存储: ${newUrl.substring(0, 80)}...`)
+
+      // 更新数据库中的 image_url（可选，推荐）
+      try {
+        const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+        if (isDatabaseConfigured()) {
+          const supabase = getSupabaseClient()
+          await supabase
+            .from('scenes')
+            .update({
+              image_url: newUrl,
+              image_key: key,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', sceneId)
+          console.log(`[convertImageUrl] 已更新数据库中的图片 URL`)
+        }
+      } catch (dbError) {
+        console.warn(`[convertImageUrl] 更新数据库失败:`, dbError)
+      }
+
+      return newUrl
+    } catch (error) {
+      console.error(`[convertImageUrl] 上传本地图片到对象存储失败:`, error)
+      // 失败后回退到 localhost URL
+      const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+      return `${domain}${imageUrl}`
+    }
   }
   
   // 检查 URL 是否已经是支持的格式
