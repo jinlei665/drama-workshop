@@ -338,11 +338,11 @@ export async function POST(request: NextRequest) {
 
     // 初始化对象存储（用于获取图片URL）
     const storage = new S3Storage({
-      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-      accessKey: '',
-      secretKey: '',
-      bucketName: process.env.COZE_BUCKET_NAME,
-      region: 'cn-beijing',
+      endpointUrl: process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL,
+      accessKey: process.env.S3_ACCESS_KEY || '',
+      secretKey: process.env.S3_SECRET_KEY || '',
+      bucketName: process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME,
+      region: process.env.S3_REGION || 'us-east-1',
     });
 
     // 获取项目风格并生成视频风格提示词
