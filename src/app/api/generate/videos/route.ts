@@ -647,10 +647,12 @@ async function convertImageUrlForVideo(
       console.log(`[convertImageUrl] 本地图片格式: ${format}, 大小: ${(buffer.length / 1024).toFixed(2)} KB`)
 
       // 上传到对象存储
-      // 确保使用正斜杠作为路径分隔符
-      const key = `scenes/${sceneId}/image_${Date.now()}.${format}`.replace(/\\/g, '/')
+      // 确保使用正斜杠作为路径分隔符，并清理所有反斜杠
+      const cleanedSceneId = sceneId.replace(/\\/g, '/')
+      const key = `scenes/${cleanedSceneId}/image_${Date.now()}.${format}`.replace(/\\/g, '/')
       console.log(`[convertImageUrl] 上传到 OSS，key: ${key}`)
-      console.log(`[convertImageUrl] sceneId: ${sceneId}`)
+      console.log(`[convertImageUrl] 原始 sceneId: ${sceneId}`)
+      console.log(`[convertImageUrl] 清理后 sceneId: ${cleanedSceneId}`)
       const uploadResult = await storage.uploadFile({
         fileContent: buffer,
         fileName: key,
@@ -687,6 +689,21 @@ async function convertImageUrlForVideo(
         newUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${key}`
         console.log(`[convertImageUrl] 公网 URL 生成成功`)
         console.log(`[convertImageUrl] 完整 URL: ${newUrl}`)
+
+        // 验证 URL 是否可访问
+        console.log(`[convertImageUrl] 验证 URL 是否可访问...`)
+        try {
+          const testResponse = await fetch(newUrl, { method: 'HEAD' })
+          if (testResponse.ok) {
+            console.log(`[convertImageUrl] URL 验证成功，HTTP ${testResponse.status}`)
+          } else {
+            console.warn(`[convertImageUrl] URL 验证失败，HTTP ${testResponse.status}`)
+            throw new Error(`URL 不可访问: HTTP ${testResponse.status}`)
+          }
+        } catch (fetchError) {
+          console.error(`[convertImageUrl] URL 验证失败:`, fetchError)
+          throw new Error(`URL 验证失败: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
+        }
       } catch (urlError) {
         console.error(`[convertImageUrl] 使用阿里云 OSS SDK 生成预签名 URL 失败:`, urlError)
         // 抛出错误，不使用回退方案
