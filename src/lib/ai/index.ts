@@ -2986,66 +2986,114 @@ export async function generateVideoFromFrames(
 
 /**
  * 解析 LLM 返回的 JSON
+ * 增强版：支持多种 JSON 格式和自动修复
  */
 export function parseLLMJson<T>(content: string): T {
   logger.info(`[parseLLMJson] Content length: ${content.length}`)
+  logger.info(`[parseLLMJson] Content preview (first 200 chars): ${content.substring(0, 200)}`)
   
-  // 尝试提取 JSON 代码块
-  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
-  const jsonStr = jsonMatch ? jsonMatch[1] : content.trim()
+  // 策略1：尝试提取 JSON 代码块（支持 ```json 或 ```）
+  let jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+  let jsonStr = jsonMatch ? jsonMatch[1] : content.trim()
+  
+  // 策略2：如果没找到代码块，尝试查找第一个 { 和最后一个 } 之间的内容
+  if (!jsonMatch) {
+    const firstBrace = jsonStr.indexOf('{')
+    const lastBrace = jsonStr.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1)
+      logger.info(`[parseLLMJson] Extracted JSON from brace boundaries`)
+    }
+  }
   
   logger.info(`[parseLLMJson] Extracted JSON length: ${jsonStr.length}`)
+  logger.info(`[parseLLMJson] Extracted JSON preview (first 200 chars): ${jsonStr.substring(0, 200)}`)
 
   try {
-    return JSON.parse(jsonStr) as T
+    const result = JSON.parse(jsonStr) as T
+    logger.info(`[parseLLMJson] Successfully parsed JSON on first attempt`)
+    return result
   } catch (parseError) {
     logger.warn(`[parseLLMJson] First parse attempt failed, trying to fix...`)
-    
-    // 检查 JSON 是否被截断（缺少结尾括号）
-    const openBraces = (jsonStr.match(/{/g) || []).length
-    const closeBraces = (jsonStr.match(/}/g) || []).length
-    const openBrackets = (jsonStr.match(/\[/g) || []).length
-    const closeBrackets = (jsonStr.match(/\]/g) || []).length
+    logger.warn(`[parseLLMJson] Parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
     
     let fixed = jsonStr
-    let braceDiff = openBraces - closeBraces
-    let bracketDiff = openBrackets - closeBrackets
     
-    // 如果括号不匹配，说明 JSON 被截断
-    if (braceDiff > 0 || bracketDiff > 0) {
-      logger.warn(`[parseLLMJson] JSON appears truncated: {${openBraces}/${closeBraces}}, [${openBrackets}/${closeBrackets}]`)
-      
-      // 尝试补全缺失的括号
-      for (let i = 0; i < bracketDiff; i++) {
-        fixed += ']'
-      }
-      for (let i = 0; i < braceDiff; i++) {
-        fixed += '}'
-      }
-      
-      // 如果引号未闭合，补上引号
-      const openQuotes = (fixed.match(/"/g) || []).length
-      if (openQuotes % 2 !== 0) {
-        logger.warn(`[parseLLMJson] Unclosed quote detected, adding closing quote`)
-        fixed += '"'
-      }
-    }
+    // 修复策略1：处理尾随的逗号
+    fixed = fixed.replace(/,\s*}/g, '}')
+    fixed = fixed.replace(/,\s*]/g, ']')
+    logger.info(`[parseLLMJson] Applied trailing comma fix`)
     
-    // 尝试修复常见的 JSON 格式问题
-    fixed = fixed
-      .replace(/,\s*}/g, '}')
-      .replace(/,\s*]/g, ']')
-      .replace(/'/g, '"')
-
+    // 修复策略2：将单引号替换为双引号（但在字符串内部的除外）
+    // 简单处理：直接替换所有单引号为双引号
+    fixed = fixed.replace(/'/g, '"')
+    logger.info(`[parseLLMJson] Applied quote normalization`)
+    
     try {
       const result = JSON.parse(fixed) as T
-      logger.info(`[parseLLMJson] Successfully parsed fixed JSON`)
+      logger.info(`[parseLLMJson] Successfully parsed JSON after quote/comma fixes`)
       return result
-    } catch (finalError) {
-      logger.error(`[parseLLMJson] Failed to parse JSON after fixes`)
-      logger.error(`[parseLLMJson] JSON content (first 500 chars): ${jsonStr.substring(0, 500)}`)
-      logger.error(`[parseLLMJson] JSON content (last 100 chars): ${jsonStr.substring(Math.max(0, jsonStr.length - 100))}`)
-      throw Errors.AIResponseInvalid('LLM')
+    } catch (secondError) {
+      logger.warn(`[parseLLMJson] Second parse attempt failed, trying bracket completion...`)
+      
+      // 修复策略3：检查 JSON 是否被截断（缺少结尾括号）
+      const openBraces = (fixed.match(/{/g) || []).length
+      const closeBraces = (fixed.match(/}/g) || []).length
+      const openBrackets = (fixed.match(/\[/g) || []).length
+      const closeBrackets = (fixed.match(/\]/g) || []).length
+      
+      let braceDiff = openBraces - closeBraces
+      let bracketDiff = openBrackets - closeBrackets
+      
+      // 如果括号不匹配，说明 JSON 被截断
+      if (braceDiff > 0 || bracketDiff > 0) {
+        logger.warn(`[parseLLMJson] JSON appears truncated: {${openBraces}/${closeBraces}}, [${openBrackets}/${closeBrackets}]`)
+        
+        // 补全缺失的括号
+        // 先补全方括号
+        for (let i = 0; i < bracketDiff; i++) {
+          fixed += ']'
+        }
+        // 再补全花括号
+        for (let i = 0; i < braceDiff; i++) {
+          fixed += '}'
+        }
+        
+        logger.info(`[parseLLMJson] Added ${bracketDiff} ] and ${braceDiff} } brackets`)
+      }
+      
+      // 修复策略4：检查引号是否闭合
+      const openQuotes = (fixed.match(/"/g) || []).length
+      if (openQuotes % 2 !== 0) {
+        logger.warn(`[parseLLMJson] Unclosed quote detected (${openQuotes} quotes), adding closing quote`)
+        fixed += '"'
+      }
+      
+      logger.info(`[parseLLMJson] Fixed JSON preview (first 200 chars): ${fixed.substring(0, 200)}`)
+      logger.info(`[parseLLMJson] Fixed JSON preview (last 100 chars): ${fixed.substring(Math.max(0, fixed.length - 100))}`)
+      
+      try {
+        const result = JSON.parse(fixed) as T
+        logger.info(`[parseLLMJson] Successfully parsed JSON after bracket completion`)
+        return result
+      } catch (thirdError) {
+        logger.error(`[parseLLMJson] All parse attempts failed`)
+        logger.error(`[parseLLMJson] Original JSON (first 500 chars): ${jsonStr.substring(0, 500)}`)
+        logger.error(`[parseLLMJson] Original JSON (last 200 chars): ${jsonStr.substring(Math.max(0, jsonStr.length - 200))}`)
+        logger.error(`[parseLLMJson] Fixed JSON (first 500 chars): ${fixed.substring(0, 500)}`)
+        logger.error(`[parseLLMJson] Fixed JSON (last 200 chars): ${fixed.substring(Math.max(0, fixed.length - 200))}`)
+        logger.error(`[parseLLMJson] Parse errors:`, {
+          first: parseError instanceof Error ? parseError.message : String(parseError),
+          second: secondError instanceof Error ? secondError.message : String(secondError),
+          third: thirdError instanceof Error ? thirdError.message : String(thirdError),
+        })
+        
+        // 抛出更详细的错误
+        const error = new Error(`JSON 解析失败。响应可能不完整或格式错误。内容长度：${jsonStr.length} 字符，包含 ${openBraces} 个 {，${closeBraces} 个 }，${openBrackets} 个 [，${closeBrackets} 个 ]。`)
+        ;(error as any).code = 'AI_RESPONSE_INVALID'
+        ;(error as any).originalContent = jsonStr
+        throw error
+      }
     }
   }
 }

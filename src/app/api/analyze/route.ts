@@ -197,15 +197,29 @@ export async function POST(request: NextRequest) {
         console.log(`[Analyze] Character names:`, result.characters.map(c => c.name).join(', '))
       }
     } catch (parseError) {
-      console.error("Failed to parse LLM response:", responseContent)
-      console.error("Parse error:", parseError)
+      console.error("[Analyze] Failed to parse LLM response:")
+      console.error(`[Analyze] Response length: ${responseContent.length}`)
+      console.error(`[Analyze] Response preview (first 500 chars): ${responseContent.substring(0, 500)}`)
+      console.error(`[Analyze] Response preview (last 200 chars): ${responseContent.substring(Math.max(0, responseContent.length - 200))}`)
+      console.error(`[Analyze] Parse error:`, parseError instanceof Error ? parseError.message : String(parseError))
+      
+      // 检查是否有更详细的错误信息
+      const detailedError = parseError as any
+      const debugInfo: Record<string, unknown> = {
+        responseLength: responseContent.length,
+        responsePreview: responseContent.substring(0, 500),
+      }
+      
+      // 如果错误包含原始内容，添加到调试信息
+      if (detailedError.originalContent) {
+        debugInfo.extractedJson = detailedError.originalContent.substring(0, 500)
+      }
+      
       return NextResponse.json(
         { 
           error: "解析结果失败，请重试",
-          debug: {
-            responseLength: responseContent.length,
-            responsePreview: responseContent.substring(0, 500)
-          }
+          message: parseError instanceof Error ? parseError.message : "未知错误",
+          debug: debugInfo
         },
         { status: 500 }
       )
