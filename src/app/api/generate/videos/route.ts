@@ -648,11 +648,13 @@ async function convertImageUrlForVideo(
 
       // 上传到对象存储
       const key = `scenes/${sceneId}/image_${Date.now()}.${format}`
+      console.log(`[convertImageUrl] 上传到 OSS，key: ${key}`)
       await storage.uploadFile({
         fileContent: buffer,
         fileName: key,
         contentType: `image/${format}`,
       })
+      console.log(`[convertImageUrl] 上传成功`)
 
       // 生成预签名 URL（使用阿里云 OSS SDK）
       let newUrl: string
@@ -674,12 +676,15 @@ async function convertImageUrlForVideo(
           secure: true, // 使用 HTTPS
         })
 
-        // 生成预签名 URL
-        newUrl = client.signatureUrl(key, {
-          expires: 604800, // 7天 = 604800秒
-          method: 'GET',
-        })
-        console.log(`[convertImageUrl] 预签名 URL 生成成功`)
+        // 设置图片为公开读取
+        console.log(`[convertImageUrl] 设置图片为公开读取...`)
+        await client.putACL(key, 'public-read')
+        console.log(`[convertImageUrl] 图片已设置为公开读取`)
+
+        // 使用公网 URL（不带签名）
+        newUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${key}`
+        console.log(`[convertImageUrl] 公网 URL 生成成功`)
+        console.log(`[convertImageUrl] 完整 URL: ${newUrl}`)
       } catch (urlError) {
         console.error(`[convertImageUrl] 使用阿里云 OSS SDK 生成预签名 URL 失败:`, urlError)
         // 抛出错误，不使用回退方案
