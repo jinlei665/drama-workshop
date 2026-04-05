@@ -62,34 +62,56 @@ export async function POST(request: NextRequest) {
 
     // 获取人物参考图（用于保持人物一致性）
     let characterReferenceImages: string[] = []
-    
+
     // 如果传入了 characterIds，获取人物的参考图
     if (characterIds && characterIds.length > 0) {
+      console.log(`[Scene Image] Getting reference images for ${characterIds.length} characters:`, characterIds)
+
       if (isDatabaseConfigured()) {
         const supabase = getSupabaseClient()
         const { data: characters } = await supabase
           .from('characters')
-          .select('id, front_view_key, image_url')
+          .select('id, name, front_view_key, image_url')
           .in('id', characterIds)
-        
+
+        console.log(`[Scene Image] Query result:`, characters?.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          hasFrontView: !!c.front_view_key,
+          hasImageUrl: !!c.image_url
+        })))
+
         if (characters) {
           characterReferenceImages = characters
             .map((c: any) => {
               const key = c.front_view_key || c.image_url
-              if (!key) return null
+              if (!key) {
+                console.log(`[Scene Image] Character ${c.name} (${c.id}) has no reference image`)
+                return null
+              }
               // 如果是完整 URL 直接使用
-              if (key.startsWith('http')) return key
+              if (key.startsWith('http')) {
+                console.log(`[Scene Image] Character ${c.name}: using HTTP URL ${key}`)
+                return key
+              }
               // 如果是本地路径，构造完整 URL
               const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
-              return `${domain}/characters/${key}`
+              const url = `${domain}/characters/${key}`
+              console.log(`[Scene Image] Character ${c.name}: using local path ${url}`)
+              return url
             })
             .filter(Boolean)
         }
       } else {
         // 从内存获取
+        console.log(`[Scene Image] Getting characters from memory`)
         characterReferenceImages = characterIds
           .map((id: string) => {
             const char = memoryCharacters.find(c => c.id === id)
+            console.log(`[Scene Image] Character ${char?.name} (${id}):`, {
+              hasFrontView: !!char?.frontViewKey,
+              hasImageUrl: !!char?.imageUrl
+            })
             const key = char?.frontViewKey || char?.imageUrl
             if (!key) return null
             // 如果是完整 URL 直接使用
@@ -100,6 +122,10 @@ export async function POST(request: NextRequest) {
           })
           .filter(Boolean) as string[]
       }
+
+      console.log(`[Scene Image] Final reference images:`, characterReferenceImages)
+    } else {
+      console.log(`[Scene Image] No character IDs provided`)
     }
 
     // 构建分镜提示词

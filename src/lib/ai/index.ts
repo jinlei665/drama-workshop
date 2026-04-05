@@ -1021,16 +1021,58 @@ async function invokeBotForImageGeneration(
     referenceImageCount: referenceImages?.length || 0
   })
   
-  // 构建消息内容
-  let userContent = `请使用图像生成工具生成以下图片：\n${prompt}`
+  // 构建多模态消息
+  // Coze API 支持在消息中传递图片 URL
+  const additionalMessages: Array<{
+    role: string
+    content: string | Array<{
+      type: string
+      text?: string
+      image_url?: {
+        url: string
+      }
+    }>
+    content_type?: string
+  }> = []
   
-  // 如果有参考图片，在提示词中添加参考图片信息
-  // 注意：Coze Bot 的多模态消息格式可能不兼容，这里用文本方式传递
+  // 如果有参考图片，创建多模态消息
   if (referenceImages && referenceImages.length > 0) {
-    userContent += `\n\n参考图片（请保持人物外观一致）：`
-    for (let i = 0; i < referenceImages.length; i++) {
-      userContent += `\n${i + 1}. ${referenceImages[i]}`
+    // 多模态消息格式：包含图片和文本
+    const multimodalContent: Array<{
+      type: string
+      text?: string
+      image_url?: {
+        url: string
+      }
+    }> = []
+    
+    // 先添加参考图片
+    for (const refUrl of referenceImages) {
+      multimodalContent.push({
+        type: 'image_url',
+        image_url: {
+          url: refUrl
+        }
+      })
     }
+    
+    // 然后添加文本提示
+    multimodalContent.push({
+      type: 'text',
+      text: `请参考以上图片生成新图片，保持人物外观一致。新图片要求：${prompt}`
+    })
+    
+    additionalMessages.push({
+      role: 'user',
+      content: multimodalContent,
+    })
+  } else {
+    // 没有参考图片，使用纯文本消息
+    additionalMessages.push({
+      role: 'user',
+      content: `请生成以下图片：\n${prompt}`,
+      content_type: 'text'
+    })
   }
   
   // 调用 Bot API，通过特定 prompt 触发图像生成 Skill
@@ -1046,15 +1088,7 @@ async function invokeBotForImageGeneration(
       user_id: 'drama-workshop-image-gen',
       stream: true,
       auto_save_history: false,
-      additional_messages: [{
-        role: 'user',
-        content: userContent,
-        content_type: 'text'
-      }],
-      // 同时在自定义参数中传递 reference_images（供 Bot Skill 使用）
-      custom_variables: referenceImages && referenceImages.length > 0 ? {
-        reference_images: referenceImages
-      } : undefined,
+      additional_messages: additionalMessages,
     }),
   })
   

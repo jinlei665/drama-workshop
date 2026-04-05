@@ -167,19 +167,32 @@ export async function POST(request: NextRequest) {
       // 获取人物参考图URL（用于保持人物一致性）
       // 优先使用 frontViewKey（三视图），其次是 imageUrl
       const characterReferenceImages = sceneCharacters
-        .map((c: { frontViewKey?: string; imageUrl?: string } | undefined) => {
+        .map((c: { frontViewKey?: string; imageUrl?: string; name?: string } | undefined) => {
           if (c?.frontViewKey) {
             // 如果是完整 URL 直接使用
             if (c.frontViewKey.startsWith('http')) {
+              console.log(`[Scene ${sceneId}] Using frontViewKey (HTTP) for ${c.name}:`, c.frontViewKey)
               return c.frontViewKey
             }
             // 如果是本地路径，构造完整 URL（AI API 需要完整 URL）
             const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
-            return `${domain}/characters/${c.frontViewKey}`
+            const url = `${domain}/characters/${c.frontViewKey}`
+            console.log(`[Scene ${sceneId}] Using frontViewKey (local) for ${c.name}:`, url)
+            return url
           }
-          return c?.imageUrl
+          if (c?.imageUrl) {
+            console.log(`[Scene ${sceneId}] Using imageUrl for ${c.name}:`, c.imageUrl)
+            return c.imageUrl
+          }
+          console.log(`[Scene ${sceneId}] Character ${c?.name} has no reference image (no frontViewKey or imageUrl)`)
+          return undefined
         })
         .filter(Boolean) as string[]
+
+      if (sceneCharacters.length > 0 && characterReferenceImages.length === 0) {
+        console.warn(`[Scene ${sceneId}] Found ${sceneCharacters.length} characters but no reference images. Characters:`,
+          sceneCharacters.map((c: any) => c?.name).join(', '))
+      }
 
       // 构建真人实拍风格提示词
       const description = scene.description

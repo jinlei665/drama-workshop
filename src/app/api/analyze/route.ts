@@ -89,35 +89,52 @@ export async function POST(request: NextRequest) {
     ]
 
     // 调用 LLM - 根据用户配置的 llm_provider 选择
-    let responseContent: string
-    
+    let responseContent: string | undefined = undefined
+
     // 判断是否使用用户配置的 LLM Provider
-    const useCustomLLMProvider = llmConfig.provider && 
-      llmConfig.provider !== 'doubao' && 
-      llmConfig.apiKey
-    
+    // 逻辑：
+    // 1. 如果 provider 不是 doubao（如 deepseek、kimi、openai 等），使用自定义 LLM Provider
+    // 2. 如果 provider 是 doubao，但是模型名是火山引擎模型（以 doubao-seed- 开头），也应该使用自定义 LLM Provider
+    // 3. 如果 provider 是 doubao 且没有配置 API Key，使用 Coze SDK 或 Coze Direct
+    const isVolcengineModel = llmConfig.model?.startsWith('doubao-seed-')
+    const useCustomLLMProvider = llmConfig.provider &&
+      (llmConfig.provider !== 'doubao' || isVolcengineModel)
+
     if (useCustomLLMProvider) {
-      // 使用用户配置的自定义 LLM Provider（DeepSeek、Kimi 等）
-      console.log('[Analyze] Using custom LLM provider:', llmConfig.provider)
-      
-      // 导入 OpenAI 兼容客户端和模型名称映射
-      const { OpenAICompatibleClient, getActualModelName } = await import('@/lib/ai/openai-compatible')
-      
-      // 获取实际的模型名称（将 Coze 平台的模型名映射到各 Provider 的实际模型名）
-      const actualModelName = getActualModelName(llmConfig.provider, llmConfig.model)
-      console.log('[Analyze] Model name mapping:', { 
-        original: llmConfig.model, 
-        actual: actualModelName 
-      })
-      
-      const client = new OpenAICompatibleClient({
-        apiKey: llmConfig.apiKey!,
-        baseUrl: llmConfig.baseUrl || 'https://api.deepseek.com',
-        model: actualModelName,
-      })
-      
-      responseContent = await client.invoke(messages, { temperature: 0.3 })
-    } else {
+      // 使用用户配置的自定义 LLM Provider（DeepSeek、Kimi、火山引擎等）
+      console.log('[Analyze] Using custom LLM provider:', llmConfig.provider, 'model:', llmConfig.model)
+
+      // 如果选择了自定义 Provider 但是没有配置 API Key，回退到 Coze SDK 或 Coze Direct
+      if (!llmConfig.apiKey && !isVolcengineModel) {
+        console.warn('[Analyze] Custom LLM provider selected but no API key configured, falling back to Coze SDK')
+      } else {
+        try {
+          // 导入 OpenAI 兼容客户端和模型名称映射
+          const { OpenAICompatibleClient, getActualModelName } = await import('@/lib/ai/openai-compatible')
+
+          // 获取实际的模型名称（将 Coze 平台的模型名映射到各 Provider 的实际模型名）
+          const actualModelName = getActualModelName(llmConfig.provider, llmConfig.model)
+          console.log('[Analyze] Model name mapping:', {
+            original: llmConfig.model,
+            actual: actualModelName
+          })
+
+          const client = new OpenAICompatibleClient({
+            apiKey: llmConfig.apiKey || '',
+            baseUrl: llmConfig.baseUrl || 'https://api.deepseek.com',
+            model: actualModelName,
+          })
+
+          responseContent = await client.invoke(messages, { temperature: 0.3 })
+        } catch (error) {
+          console.warn('[Analyze] Custom LLM provider failed, falling back to Coze SDK:', error)
+          // 继续到下面的回退逻辑
+        }
+      }
+    }
+
+    // 如果自定义 LLM Provider 调用失败或没有配置，回退到 Coze SDK 或 Coze Direct
+    if (!responseContent) {
       // 使用 Coze/豆包模型
       // 获取 Coze Direct 配置（用于 Bot 调用）
       const cozeDirectConfig = await getCozeDirectConfig()
