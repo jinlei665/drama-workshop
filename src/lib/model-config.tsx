@@ -21,9 +21,9 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   imageApiKey: null,
   imageBaseUrl: null,
   imageSize: '2K',
-  // 视频配置
-  videoProvider: 'doubao',
-  videoModel: 'doubao-seedance-1-5-pro-251215',
+  // 视频配置 - 支持火山引擎
+  videoProvider: 'volcengine', // 默认使用火山引擎
+  videoModel: 'doubao-seedance-2-0', // 使用火山引擎最新视频模型
   videoApiKey: null,
   videoBaseUrl: null,
   videoResolution: '720p',

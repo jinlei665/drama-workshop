@@ -1050,7 +1050,7 @@ async function updateSceneImageUrl(sceneId: string, imageKey: string | null, ima
  * 计算视频时长（基于内容复杂度）
  */
 function calculateDuration(scene: { dialogue?: string | null; action?: string | null; description?: string }): number {
-  let duration = 6; // 基础6秒
+  let duration = 4; // 基础4秒
 
   if (scene.dialogue) {
     const dialogueLength = scene.dialogue.length;
@@ -1065,7 +1065,7 @@ function calculateDuration(scene: { dialogue?: string | null; action?: string | 
 
   if (scene.description && scene.description.length > 100) duration += 1;
 
-  return Math.min(Math.max(duration, 6), 12);
+  return Math.min(Math.max(duration, 4), 15);
 }
 
 /**

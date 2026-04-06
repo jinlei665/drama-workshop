@@ -137,7 +137,7 @@ export const DEFAULT_IMAGE_MODEL = 'doubao-seedream-4-0-250828'
 export const DEFAULT_IMAGE_SIZE = '2K'
 
 /** 系统默认视频模型 */
-export const DEFAULT_VIDEO_MODEL = 'doubao-seedance-1-5-pro-251215'
+export const DEFAULT_VIDEO_MODEL = 'doubao-seedance-2-0'
 
 /** 可用的 LLM 模型列表 */
 export const AVAILABLE_LLM_MODELS = [

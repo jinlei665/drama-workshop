@@ -1027,7 +1027,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                 <Slider
                   id="duration"
                   min={4}
-                  max={12}
+                  max={15}
                   step={1}
                   value={[videoGenerateFormData.duration]}
                   onValueChange={(value) => setVideoGenerateFormData({ ...videoGenerateFormData, duration: value[0] })}
@@ -1035,7 +1035,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>4秒（快速过渡）</span>
-                  <span>12秒（详细场景）</span>
+                  <span>15秒（详细场景）</span>
                 </div>
               </div>
 
@@ -1412,8 +1412,8 @@ function SceneCard({
 
   // 计算预估视频时长（秒）
   const calculateDuration = () => {
-    let duration = 6; // 基础6秒
-    
+    let duration = 4; // 基础4秒
+
     // 根据对白长度计算
     if (scene.dialogue) {
       const len = scene.dialogue.length;
@@ -1422,15 +1422,15 @@ function SceneCard({
       else if (len > 15) duration += 2;
       else if (len > 0) duration += 1;
     }
-    
+
     // 有动作描述增加时长
     if (scene.action && scene.action.length > 20) duration += 2;
     else if (scene.action && scene.action.length > 0) duration += 1;
-    
+
     // 场景描述很长时也增加时长
     if (scene.description && scene.description.length > 100) duration += 1;
-    
-    return Math.min(Math.max(duration, 6), 12);
+
+    return Math.min(Math.max(duration, 4), 15);
   }
 
   const estimatedDuration = calculateDuration();
