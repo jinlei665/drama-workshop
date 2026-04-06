@@ -224,18 +224,21 @@ export function EpisodesPanel({
       }
 
       // 优先使用脚本选择
-      if (scriptAssignment.mode === 'selected' && scriptAssignment.scriptIds.length > 0) {
-        requestBody.scriptIds = scriptAssignment.scriptIds
-      } else if (scriptAssignment.mode === 'all' && scripts.length > 0) {
-        // 选择所有有可用分镜的脚本
+      if (selectedScripts.size > 0) {
+        requestBody.scriptIds = Array.from(selectedScripts)
+      }
+      // 否则如果有脚本，自动选择所有有可用分镜的脚本
+      else if (scripts.length > 0) {
         const availableScriptIds = scripts
           .filter(s => scenes.some(sc => sc.scriptId === s.id && !allAssignedSceneIds.has(sc.id)))
           .map(s => s.id)
         if (availableScriptIds.length > 0) {
           requestBody.scriptIds = availableScriptIds
+          // 记录用户的选择，下次创建时默认使用
+          setSelectedScripts(new Set(availableScriptIds))
         }
       }
-      // 否则使用分镜选择
+      // 最后使用分镜选择
       else if (sceneAssignment.mode === 'selected' && sceneAssignment.sceneIds.length > 0) {
         requestBody.sceneIds = sceneAssignment.sceneIds
       } else if (sceneAssignment.mode === 'range' && sceneRange.start && sceneRange.end) {
@@ -259,8 +262,7 @@ export function EpisodesPanel({
       setFormData({ title: "", description: "" })
       setScriptAssignment({ scriptIds: [], mode: 'all' })
       setSceneAssignment({ sceneIds: [], mode: 'all' })
-      setSelectedScripts(new Set())
-      setSelectedScenes(new Set())
+      // 注意：不重置 selectedScripts，保留用户的选择以便下次使用
       fetchEpisodes()
       onUpdate()
     } catch (error) {
@@ -629,7 +631,7 @@ export function EpisodesPanel({
             </Badge>
           )}
           <Button onClick={() => {
-            setSceneAssignment({ sceneIds: [], mode: 'all' })
+            // 不重置脚本选择，保留用户上次的偏好
             setCreateDialogOpen(true)
           }}>
             <Plus className="w-4 h-4 mr-2" />
@@ -711,7 +713,7 @@ export function EpisodesPanel({
               点击"新建剧集"按钮创建第一个剧集，可以将未分配的分镜添加到剧集中
             </p>
             <Button onClick={() => {
-              setSceneAssignment({ sceneIds: [], mode: 'all' })
+              // 不重置脚本选择，保留用户上次的偏好
               setCreateDialogOpen(true)
             }}>
               <Plus className="w-4 h-4 mr-2" />
@@ -904,81 +906,56 @@ export function EpisodesPanel({
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2">
                     <BookText className="w-4 h-4" />
-                    分配脚本 ({scripts.length} 个可用)
+                    选择脚本（{selectedScripts.size} 个已选）
                   </Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setScriptAssignment({ ...scriptAssignment, mode: 'all' })}
-                      className={cn(scriptAssignment.mode === 'all' && "bg-primary/10")}
-                    >
-                      全部
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setScriptAssignment({ ...scriptAssignment, mode: 'selected' })}
-                      className={cn(scriptAssignment.mode === 'selected' && "bg-primary/10")}
-                    >
-                      选择
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleSelectAllScripts}
+                  >
+                    {selectedScripts.size === scripts.length ? "取消全选" : "全选"}
+                  </Button>
                 </div>
 
-                {scriptAssignment.mode === 'selected' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={toggleSelectAllScripts}
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-background rounded border">
+                  {scripts.map((script) => {
+                    const sceneCount = scenes.filter(s => s.scriptId === script.id && !allAssignedSceneIds.has(s.id)).length
+                    return (
+                      <button
+                        key={script.id}
+                        onClick={() => toggleScriptSelection(script.id)}
+                        disabled={sceneCount === 0}
+                        className={cn(
+                          "p-3 rounded-lg text-left transition-all border-2",
+                          selectedScripts.has(script.id)
+                            ? "bg-primary text-primary-foreground border-primary shadow-md"
+                            : sceneCount === 0
+                            ? "bg-muted/50 text-muted-foreground border-muted cursor-not-allowed"
+                            : "bg-background hover:bg-muted/80 border-border hover:border-muted-foreground/50"
+                        )}
                       >
-                        {selectedScripts.size === scripts.length ? "取消全选" : "全选"}
-                      </Button>
-                      <span className="text-sm text-muted-foreground">
-                        已选择 {selectedScripts.size} 个脚本
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-background rounded border">
-                      {scripts.map((script) => {
-                        const sceneCount = scenes.filter(s => s.scriptId === script.id && !allAssignedSceneIds.has(s.id)).length
-                        return (
-                          <button
-                            key={script.id}
-                            onClick={() => toggleScriptSelection(script.id)}
-                            disabled={sceneCount === 0}
-                            className={cn(
-                              "p-3 rounded text-left transition-colors border",
-                              selectedScripts.has(script.id)
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : sceneCount === 0
-                                ? "bg-muted/50 text-muted-foreground border-muted cursor-not-allowed"
-                                : "bg-background hover:bg-muted/80 border-border"
-                            )}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-medium truncate">{script.title}</span>
-                              {sceneCount > 0 && (
-                                <Badge variant="secondary" className="text-xs">
-                                  {sceneCount} 分镜
-                                </Badge>
-                              )}
-                            </div>
-                            {sceneCount === 0 && (
-                              <span className="text-xs text-muted-foreground">无可用分镜</span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {scriptAssignment.mode === 'all' && (
-                  <p className="text-sm text-muted-foreground">
-                    将所有可用脚本中的分镜添加到此剧集（共 {scripts.reduce((sum, s) => sum + scenes.filter(sc => sc.scriptId === s.id && !allAssignedSceneIds.has(sc.id)).length, 0)} 个分镜）
-                  </p>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium truncate">{script.title}</span>
+                          {sceneCount > 0 && (
+                            <Badge variant={selectedScripts.has(script.id) ? "secondary" : "outline"} className="text-xs">
+                              {sceneCount} 分镜
+                            </Badge>
+                          )}
+                        </div>
+                        {sceneCount === 0 && (
+                          <span className="text-xs opacity-70">无可用分镜</span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                {selectedScripts.size > 0 && (
+                  <Alert>
+                    <Check className="w-4 h-4" />
+                    <AlertDescription>
+                      已选择 {selectedScripts.size} 个脚本，共 {scripts.filter(s => selectedScripts.has(s.id)).reduce((sum, s) => sum + scenes.filter(sc => sc.scriptId === s.id && !allAssignedSceneIds.has(sc.id)).length, 0)} 个分镜
+                    </AlertDescription>
+                  </Alert>
                 )}
               </div>
             )}

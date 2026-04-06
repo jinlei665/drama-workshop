@@ -164,6 +164,7 @@ export async function GET(
               emotion: s.emotion,
               characterIds: s.character_ids || [],
               scriptId: s.script_id,
+              episodeId: s.episode_id,
               imageKey: s.image_key,
               imageUrl: s.image_url,
               videoUrl: s.video_url,
