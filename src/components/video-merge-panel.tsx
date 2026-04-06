@@ -223,7 +223,8 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          description: `合并视频: ${result.url}`
+          mergedVideoUrl: result.url,
+          mergedVideoStatus: 'completed'
         })
       })
 

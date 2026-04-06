@@ -73,13 +73,15 @@ export async function PUT(
   const client = getSupabaseClient()
 
   // 手动解析更新数据
-  // 只更新现有列，避免 schema cache 问题
   const updateData: Record<string, any> = {}
 
   if (body.seasonNumber !== undefined) updateData.season_number = body.seasonNumber
   if (body.episodeNumber !== undefined) updateData.episode_number = body.episodeNumber
   if (body.title !== undefined) updateData.title = body.title
   if (body.description !== undefined) updateData.description = body.description
+  if (body.mergedVideoUrl !== undefined) updateData.merged_video_url = body.mergedVideoUrl
+  if (body.mergedVideoStatus !== undefined) updateData.merged_video_status = body.mergedVideoStatus
+  if (body.mergedVideoKey !== undefined) updateData.merged_video_key = body.mergedVideoKey
 
   if (Object.keys(updateData).length === 0) {
     return NextResponse.json({ error: "No valid fields to update" }, { status: 400 })
