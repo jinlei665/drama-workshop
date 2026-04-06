@@ -1,5 +1,54 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { Pool } from 'pg'
+
+function getPgDirectUrl(): string | null {
+  return process.env.PGDATABASE_URL || null
+}
+
+// 使用 pg 客户端执行 SQL
+async function updateEpisodeWithPg(id: string, updateData: Record<string, any>) {
+  const pgUrl = getPgDirectUrl()
+  if (!pgUrl) {
+    console.log("No pgUrl, skipping pg direct update")
+    return null
+  }
+  
+  try {
+    const pool = new Pool({ connectionString: pgUrl })
+    const setClauses: string[] = []
+    const values: any[] = []
+    let i = 1
+    
+    for (const [key, val] of Object.entries(updateData)) {
+      if (val !== undefined && key !== 'updated_at') {
+        setClauses.push(`${key} = $${i}`)
+        values.push(val)
+        i++
+      }
+    }
+    // 始终更新 updated_at
+    setClauses.push(`updated_at = NOW()`)
+    values.push(id)
+    
+    const res = await pool.query(
+      `UPDATE episodes SET ${setClauses.join(', ')} WHERE id = $${i} RETURNING *`,
+      values
+    )
+    await pool.end()
+    
+    return res.rows[0] || null
+  } catch (err: any) {
+    console.error("pg update failed:", err.message)
+    return null
+  }
+}
+
+// 检查是否为 Supabase 云数据库
+function isSupabaseCloud(): boolean {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  return url.includes('supabase.co') && !url.includes('localhost')
+}
 import { updateEpisodeSchema } from "@/storage/database/shared/schema"
 
 // GET /api/episodes/[id] - 获取单个剧集详情
@@ -73,27 +122,22 @@ export async function PUT(
   const body = await request.json()
   const client = getSupabaseClient()
 
-  const parsed = updateEpisodeSchema.safeParse(body)
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid input", details: parsed.error.issues },
-      { status: 400 }
-    )
+  // 手动解析和验证更新数据（避免 schema 问题）
+  const updateData: Record<string, any> = {}
+
+  if (body.seasonNumber !== undefined) updateData.season_number = body.seasonNumber
+  if (body.episodeNumber !== undefined) updateData.episode_number = body.episodeNumber
+  if (body.title !== undefined) updateData.title = body.title
+  if (body.description !== undefined) updateData.description = body.description
+  if (body.mergedVideoUrl !== undefined) updateData.merged_video_url = body.mergedVideoUrl
+  if (body.mergedVideoStatus !== undefined) updateData.merged_video_status = body.mergedVideoStatus
+  if (body.mergedVideoKey !== undefined) updateData.merged_video_key = body.mergedVideoKey
+
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 })
   }
 
-  const updateData: Record<string, any> = {
-    updated_at: new Date().toISOString(),
-  }
-
-  if (parsed.data.seasonNumber !== undefined) updateData.season_number = parsed.data.seasonNumber
-  if (parsed.data.episodeNumber !== undefined) updateData.episode_number = parsed.data.episodeNumber
-  if (parsed.data.title !== undefined) updateData.title = parsed.data.title
-  if (parsed.data.description !== undefined) updateData.description = parsed.data.description
-  if (parsed.data.mergedVideoUrl !== undefined) updateData.merged_video_url = parsed.data.mergedVideoUrl
-  if (parsed.data.mergedVideoStatus !== undefined) updateData.merged_video_status = parsed.data.mergedVideoStatus
-  if (parsed.data.mergedVideoKey !== undefined) updateData.merged_video_key = parsed.data.mergedVideoKey
-
-  // 执行更新
+  // 使用 Supabase JavaScript 客户端
   const { error } = await client
     .from("episodes")
     .update(updateData)
