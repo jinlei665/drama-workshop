@@ -78,7 +78,7 @@ export async function POST(
   }
 
   // 转换字段名为数据库格式（snake_case）
-  const dbData = {
+  const dbData: Record<string, any> = {
     project_id: parsed.data.projectId,
     scene_number: parsed.data.sceneNumber,
     title: parsed.data.title,
@@ -88,6 +88,11 @@ export async function POST(
     emotion: parsed.data.emotion,
     character_ids: parsed.data.characterIds || [],
     metadata: parsed.data.metadata,
+  }
+
+  // 添加 script_id（如果提供）
+  if (parsed.data.scriptId) {
+    dbData.script_id = parsed.data.scriptId
   }
 
   const { data, error } = await client

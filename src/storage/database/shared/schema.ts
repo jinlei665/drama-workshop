@@ -129,6 +129,7 @@ export const scenes = pgTable(
       .default(sql`gen_random_uuid()`),
     projectId: varchar("project_id", { length: 36 }).notNull(),
     episodeId: varchar("episode_id", { length: 36 }), // 所属剧集ID
+    scriptId: varchar("script_id", { length: 36 }), // 所属脚本ID
     sceneNumber: integer("scene_number").notNull(), // 分镜序号
     // 分镜内容
     title: varchar("title", { length: 255 }), // 分镜标题
@@ -157,6 +158,7 @@ export const scenes = pgTable(
   (table) => [
     index("scenes_project_id_idx").on(table.projectId),
     index("scenes_episode_id_idx").on(table.episodeId),
+    index("scenes_script_id_idx").on(table.scriptId),
     index("scenes_scene_number_idx").on(table.sceneNumber),
     index("scenes_status_idx").on(table.status),
   ]
@@ -220,6 +222,7 @@ export const updateCharacterSchema = createCoercedInsertSchema(characters)
 export const insertSceneSchema = createCoercedInsertSchema(scenes).pick({
   projectId: true,
   episodeId: true,
+  scriptId: true,
   sceneNumber: true,
   title: true,
   description: true,
@@ -240,6 +243,7 @@ export const updateSceneSchema = createCoercedInsertSchema(scenes)
     emotion: true,
     characterIds: true,
     episodeId: true,
+    scriptId: true,
     imageKey: true,
     imageUrl: true,
     videoUrl: true,

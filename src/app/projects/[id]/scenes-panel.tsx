@@ -38,9 +38,12 @@ import {
   Download,
   Check,
   Info,
-  AlertTriangle
+  AlertTriangle,
+  FileText,
+  ListFilter
 } from "lucide-react"
 import { toast } from "sonner"
+import { ScriptDialog } from "@/components/script-dialog"
 
 interface Scene {
   id: string
@@ -51,6 +54,7 @@ interface Scene {
   action: string | null
   emotion: string | null
   characterIds: string[]
+  scriptId: string | null
   imageKey?: string | null
   imageUrl: string | null
   videoUrl: string | null
@@ -70,14 +74,27 @@ interface Character {
   imageUrl?: string | null
 }
 
+interface Script {
+  id: string
+  projectId: string
+  title: string
+  content: string | null
+  description: string | null
+  status: string
+  createdAt: string
+}
+
 interface ScenesPanelProps {
   projectId: string
   scenes: Scene[]
   characters: Character[]
   onUpdate: () => void
+  onScriptSelect?: (scriptId: string | null) => void
+  projectStyle?: string
+  projectDescription?: string
 }
 
-export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesPanelProps) {
+export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptSelect, projectStyle, projectDescription }: ScenesPanelProps) {
   // 调试：打印人物数据
   console.log('[ScenesPanel] Characters data:', characters.map(c => ({
     id: c.id,
@@ -85,6 +102,40 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
     frontViewKey: c.frontViewKey,
     imageUrl: c.imageUrl
   })))
+
+  // 脚本相关状态
+  const [scripts, setScripts] = useState<Script[]>([])
+  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null)
+  const [scriptDialogOpen, setScriptDialogOpen] = useState(false)
+
+  // 获取脚本列表
+  const fetchScripts = async () => {
+    try {
+      const res = await fetch(`/api/scripts?projectId=${projectId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setScripts(data.scripts || [])
+      }
+    } catch (error) {
+      console.error("获取脚本列表失败:", error)
+    }
+  }
+
+  // 初始化和监听项目变化
+  useEffect(() => {
+    fetchScripts()
+  }, [projectId])
+
+  // 处理脚本选择
+  const handleScriptSelect = (scriptId: string | null) => {
+    setSelectedScriptId(scriptId)
+    onScriptSelect?.(scriptId)
+  }
+
+  // 过滤分镜列表
+  const filteredScenes = selectedScriptId
+    ? scenes.filter(s => s.scriptId === selectedScriptId)
+    : scenes
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -140,6 +191,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
           action: formData.action,
           emotion: formData.emotion,
           characterIds: formData.characterIds,
+          scriptId: selectedScriptId,
           metadata: {
             shotType: formData.shotType,
             cameraMovement: formData.cameraMovement,
@@ -415,20 +467,64 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">视频分镜管理</h2>
-          <p className="text-sm text-muted-foreground">
-            管理短剧视频分镜，生成每个分镜的画面和视频
-          </p>
+      {/* 脚本筛选区域 */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ListFilter className="w-4 h-4" />
+            <span>筛选:</span>
+          </div>
+          {/* 全部按钮 */}
+          <button
+            onClick={() => handleScriptSelect(null)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              selectedScriptId === null
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+            }`}
+          >
+            全部 ({scenes.length})
+          </button>
+          {/* 脚本标签 */}
+          {scripts.map(script => {
+            const sceneCount = scenes.filter(s => s.scriptId === script.id).length
+            return (
+              <button
+                key={script.id}
+                onClick={() => handleScriptSelect(script.id)}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                  selectedScriptId === script.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>{script.title}</span>
+                <span className="text-xs opacity-70">({sceneCount})</span>
+              </button>
+            )
+          })}
         </div>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="amber-gradient text-white border-0">
-              <Plus className="w-4 h-4 mr-2" />
-              添加分镜
-            </Button>
-          </DialogTrigger>
+
+        <div className="flex items-center gap-2">
+          {/* 新增脚本按钮 */}
+          <Button
+            variant="outline"
+            onClick={() => setScriptDialogOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <FileText className="w-4 h-4" />
+            新增脚本片段
+          </Button>
+
+          {/* 添加分镜按钮 */}
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="amber-gradient text-white border-0">
+                <Plus className="w-4 h-4 mr-2" />
+                添加分镜
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>添加视频分镜</DialogTitle>
@@ -446,39 +542,70 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
             />
           </DialogContent>
         </Dialog>
+      </div>
 
-        {/* 编辑对话框 */}
-        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>编辑视频分镜</DialogTitle>
-              <DialogDescription>
-                修改分镜信息
-              </DialogDescription>
-            </DialogHeader>
-            <SceneForm
-              formData={formData}
-              setFormData={setFormData}
-              characters={characters}
-              onSubmit={handleUpdate}
-              loading={creating}
-              submitText="保存修改"
-            />
-          </DialogContent>
-        </Dialog>
+      {/* 新增脚本对话框 */}
+      <ScriptDialog
+        open={scriptDialogOpen}
+        onOpenChange={setScriptDialogOpen}
+        projectId={projectId}
+        projectStyle={projectStyle}
+        projectDescription={projectDescription}
+        existingCharacters={characters.map(c => ({
+          id: c.id,
+          name: c.name,
+          appearance: c.appearance || undefined
+        }))}
+        onSuccess={() => {
+          fetchScripts()
+          onUpdate()
+        }}
+      />
 
-        {/* 图片生成确认对话框 */}
-        <Dialog open={imageGenerateDialogOpen} onOpenChange={setImageGenerateDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-500" />
-                确认生成分镜图片
-              </DialogTitle>
-              <DialogDescription>
-                请确认分镜信息，生成图片时会根据以下内容创作
-              </DialogDescription>
-            </DialogHeader>
+      {/* 标题描述 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">视频分镜管理</h2>
+          <p className="text-sm text-muted-foreground">
+            {selectedScriptId
+              ? `正在查看「${scripts.find(s => s.id === selectedScriptId)?.title}」的分镜`
+              : "管理短剧视频分镜，生成每个分镜的画面和视频"}
+          </p>
+        </div>
+      </div>
+
+      {/* 编辑对话框 */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>编辑视频分镜</DialogTitle>
+            <DialogDescription>
+              修改分镜信息
+            </DialogDescription>
+          </DialogHeader>
+          <SceneForm
+            formData={formData}
+            setFormData={setFormData}
+            characters={characters}
+            onSubmit={handleUpdate}
+            loading={creating}
+            submitText="保存修改"
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* 图片生成确认对话框 */}
+      <Dialog open={imageGenerateDialogOpen} onOpenChange={setImageGenerateDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-amber-500" />
+              确认生成分镜图片
+            </DialogTitle>
+            <DialogDescription>
+              请确认分镜信息，生成图片时会根据以下内容创作
+            </DialogDescription>
+          </DialogHeader>
 
             <div className="space-y-6 mt-4">
               {/* 提示信息 */}
@@ -963,16 +1090,20 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate }: ScenesP
         </Dialog>
       </div>
 
-      {scenes.length === 0 ? (
+      {filteredScenes.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
             <Video className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <p className="text-muted-foreground">还没有分镜，点击上方按钮添加</p>
+            <p className="text-muted-foreground">
+              {selectedScriptId
+                ? `「${scripts.find(s => s.id === selectedScriptId)?.title}」还没有分镜，点击上方按钮添加`
+                : "还没有分镜，点击上方按钮添加"}
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {scenes.map((scene) => (
+          {filteredScenes.map((scene) => (
             <SceneCard
               key={scene.id}
               scene={scene}

@@ -89,6 +89,7 @@ interface Scene {
   action: string | null
   emotion: string | null
   characterIds: string[]
+  scriptId: string | null
   imageKey?: string | null
   imageUrl: string | null
   videoUrl: string | null
