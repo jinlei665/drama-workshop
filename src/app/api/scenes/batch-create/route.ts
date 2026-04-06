@@ -5,7 +5,7 @@ import { getSupabaseClient } from "@/storage/database/supabase-client"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { projectId, scriptId, characters, scenes } = body
+    const { projectId, scriptId, characters, scenes, episodeId } = body
 
     if (!projectId) {
       return NextResponse.json({ error: "缺少项目ID" }, { status: 400 })
@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
         id: s.id,
         project_id: projectId,
         script_id: scriptId || null,
+        episode_id: episodeId || null,
         scene_number: s.sceneNumber || (index + 1),
         title: s.title || "",
         description: s.description || "",

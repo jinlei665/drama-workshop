@@ -23,9 +23,20 @@ import {
   Check,
   ChevronRight,
   AlertCircle,
+  Clapperboard,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+
+interface Episode {
+  id: string
+  season_number: number
+  episode_number: number
+  title: string
+  description: string | null
+  merged_video_url: string | null
+  merged_video_status: string
+}
 
 interface ScriptDialogProps {
   open: boolean
@@ -39,6 +50,7 @@ interface ScriptDialogProps {
     description?: string
     appearance?: string
   }>
+  episodes?: Episode[]
   onSuccess: () => void
 }
 
@@ -66,10 +78,12 @@ export function ScriptDialog({
   projectStyle,
   projectDescription,
   existingCharacters,
+  episodes = [],
   onSuccess,
 }: ScriptDialogProps) {
   const [step, setStep] = useState<"input" | "preview">("input")
   const [scriptContent, setScriptContent] = useState("")
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [generatedCharacters, setGeneratedCharacters] = useState<GeneratedCharacter[]>([])
@@ -82,6 +96,7 @@ export function ScriptDialog({
     if (!open) {
       setStep("input")
       setScriptContent("")
+      setSelectedEpisodeId(null)
       setAnalyzing(false)
       setSaving(false)
       setGeneratedCharacters([])
@@ -205,6 +220,7 @@ export function ScriptDialog({
         body: JSON.stringify({
           projectId,
           scriptId,
+          episodeId: selectedEpisodeId,
           characters: generatedCharacters.filter((c) => selectedCharacters.has(c.id)),
           scenes: generatedScenes
             .filter((s) => selectedScenes.has(s.id))
@@ -255,6 +271,32 @@ export function ScriptDialog({
               <div className="p-3 bg-muted/50 rounded-lg">
                 <Label className="text-xs text-muted-foreground">项目剧情简介</Label>
                 <p className="text-sm mt-1">{projectDescription}</p>
+              </div>
+            )}
+
+            {/* 剧集选择 */}
+            {episodes.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="episode-select" className="flex items-center gap-2">
+                  <Clapperboard className="w-4 h-4" />
+                  同步到剧集（可选）
+                </Label>
+                <select
+                  id="episode-select"
+                  className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                  value={selectedEpisodeId || ""}
+                  onChange={(e) => setSelectedEpisodeId(e.target.value || null)}
+                >
+                  <option value="">不同步到剧集（仅创建脚本和分镜）</option>
+                  {episodes.map((ep) => (
+                    <option key={ep.id} value={ep.id}>
+                      第{ep.season_number}季 第{ep.episode_number}集：{ep.title}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  选择剧集后，生成的分镜将自动添加到该剧集中
+                </p>
               </div>
             )}
 

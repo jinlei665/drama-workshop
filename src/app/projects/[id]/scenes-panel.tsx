@@ -84,6 +84,16 @@ interface Script {
   createdAt: string
 }
 
+interface Episode {
+  id: string
+  season_number: number
+  episode_number: number
+  title: string
+  description: string | null
+  merged_video_url: string | null
+  merged_video_status: string
+}
+
 interface ScenesPanelProps {
   projectId: string
   scenes: Scene[]
@@ -92,9 +102,10 @@ interface ScenesPanelProps {
   onScriptSelect?: (scriptId: string | null) => void
   projectStyle?: string
   projectDescription?: string
+  episodes?: Episode[]
 }
 
-export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptSelect, projectStyle, projectDescription }: ScenesPanelProps) {
+export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptSelect, projectStyle, projectDescription, episodes = [] }: ScenesPanelProps) {
   // 调试：打印人物数据
   console.log('[ScenesPanel] Characters data:', characters.map(c => ({
     id: c.id,
@@ -556,6 +567,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
           name: c.name,
           appearance: c.appearance || undefined
         }))}
+        episodes={episodes}
         onSuccess={() => {
           fetchScripts()
           onUpdate()

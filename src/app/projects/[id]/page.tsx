@@ -101,6 +101,16 @@ interface Scene {
   } | null
 }
 
+interface Episode {
+  id: string
+  season_number: number
+  episode_number: number
+  title: string
+  description: string | null
+  merged_video_url: string | null
+  merged_video_status: string
+}
+
 export default function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
@@ -108,6 +118,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [project, setProject] = useState<Project | null>(null)
   const [characters, setCharacters] = useState<Character[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
+  const [episodes, setEpisodes] = useState<Episode[]>([])
   const [generating, setGenerating] = useState(false)
   const [generatingVideos, setGeneratingVideos] = useState(false)
   const [videoProgress, setVideoProgress] = useState(0)
@@ -151,6 +162,17 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setProject(responseData.project)
       setCharacters(responseData.characters || [])
       setScenes(responseData.scenes || [])
+      
+      // 获取剧集列表
+      try {
+        const episodesRes = await fetch(`/api/episodes?projectId=${id}`)
+        if (episodesRes.ok) {
+          const episodesData = await episodesRes.json()
+          setEpisodes(episodesData.episodes || [])
+        }
+      } catch (err) {
+        console.error("获取剧集列表失败:", err)
+      }
     } catch (error) {
       console.error("获取项目失败:", error)
       toast.error(error instanceof Error ? error.message : "获取项目失败")
@@ -639,6 +661,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               scenes={scenes}
               characters={characters}
               onUpdate={fetchData}
+              episodes={episodes}
             />
           </TabsContent>
 
