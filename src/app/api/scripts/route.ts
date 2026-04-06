@@ -14,19 +14,24 @@ export async function GET(request: NextRequest) {
     const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
     
     if (isDatabaseConfigured()) {
-      const supabase = getAdminClient()
-      const { data, error } = await supabase
-        .from("scripts")
-        .select("*")
-        .eq("project_id", projectId)
-        .order("created_at", { ascending: true })
-      
-      if (error) {
-        console.error("[Scripts API] Supabase error:", error)
-        throw error
+      try {
+        const supabase = getAdminClient()
+        const { data, error } = await supabase
+          .from("scripts")
+          .select("*")
+          .eq("project_id", projectId)
+          .order("created_at", { ascending: true })
+        
+        if (!error && data) {
+          return NextResponse.json({ scripts: data || [] })
+        }
+        
+        if (error) {
+          console.warn("[Scripts API] Supabase GET error:", error.message)
+        }
+      } catch (supabaseError: any) {
+        console.warn("[Scripts API] Supabase GET failed, falling back to pg:", supabaseError.message)
       }
-      
-      return NextResponse.json({ scripts: data || [] })
     }
     
     // Fallback to pg
@@ -38,9 +43,9 @@ export async function GET(request: NextRequest) {
     )
 
     return NextResponse.json({ scripts: result.rows || [] })
-  } catch (err) {
+  } catch (err: any) {
     console.error("获取脚本异常:", err)
-    return NextResponse.json({ error: "获取脚本失败" }, { status: 500 })
+    return NextResponse.json({ error: err.message || "获取脚本失败" }, { status: 500 })
   }
 }
 
@@ -59,42 +64,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const id = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
     // 优先使用 Supabase
     const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
     
     if (isDatabaseConfigured()) {
-      const supabase = getAdminClient()
-      const id = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      
-      console.log('[Scripts API] Inserting script via Supabase:', { id, projectId, title })
-      
-      const { data, error } = await supabase
-        .from("scripts")
-        .insert({
-          id,
-          project_id: projectId,
-          title,
-          content,
-          description: description || "",
-          status: "active",
-        })
-        .select()
-        .single()
-      
-      if (error) {
-        console.error("[Scripts API] Supabase insert error:", error)
-        throw error
+      try {
+        const supabase = getAdminClient()
+        console.log('[Scripts API] Inserting script via Supabase:', { id, projectId, title })
+        
+        const { data, error } = await supabase
+          .from("scripts")
+          .insert({
+            id,
+            project_id: projectId,
+            title,
+            content,
+            description: description || "",
+            status: "active",
+          })
+          .select()
+          .single()
+        
+        if (!error && data) {
+          console.log('[Scripts API] Insert success via Supabase:', { scriptId: data.id })
+          return NextResponse.json({ script: data })
+        }
+        
+        if (error) {
+          console.warn("[Scripts API] Supabase insert error:", error.message)
+        }
+      } catch (supabaseError: any) {
+        console.warn("[Scripts API] Supabase insert failed, falling back to pg:", supabaseError.message)
       }
-      
-      console.log('[Scripts API] Insert success:', { scriptId: data.id })
-      
-      return NextResponse.json({ script: data })
     }
     
     // Fallback to pg
     const { getPool } = await import("@/storage/database/pg-client")
     const pool = await getPool()
-    const id = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     console.log('[Scripts API] Inserting script via PG:', { id, projectId, title })
 
@@ -105,7 +113,7 @@ export async function POST(request: NextRequest) {
       [id, projectId, title, content, description || "", "active"]
     )
 
-    console.log('[Scripts API] Insert result:', { rowCount: result.rowCount, rows: result.rows })
+    console.log('[Scripts API] Insert success via PG:', { rowCount: result.rowCount, scriptId: result.rows[0]?.id })
 
     return NextResponse.json({ script: result.rows[0] })
   } catch (err: any) {

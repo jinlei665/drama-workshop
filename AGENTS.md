@@ -16,6 +16,24 @@
 
 ## 核心功能模块
 
+### 0. 脚本管理 (Scripts)
+- **路径**: `src/app/api/scripts/`
+- **数据库表**: `scripts`
+- **功能**: 创建脚本、编辑脚本、删除脚本、查看脚本列表
+- **数据结构**:
+  - `id`: 唯一标识符
+  - `project_id`: 项目ID
+  - `title`: 脚本标题
+  - `content`: 脚本内容
+  - `description`: 脚本描述
+  - `status`: 状态（active/inactive）
+  - `created_at`: 创建时间
+  - `updated_at`: 更新时间
+- **AI 分析**: `/api/scripts/analyze` - 根据 AI 分析生成角色和分镜，直接插入数据库
+- **注意事项**:
+  - Supabase PostgREST schema cache 需要手动刷新（在 SQL Editor 中执行 `NOTIFY pgrst, 'reload';`）
+  - 沙箱环境无法连接到 Supabase 的 IPv6 数据库，已实现自动 fallback 机制
+
 ### 1. 项目管理 (Projects)
 - **路径**: `src/app/api/projects/`
 - **数据库表**: `projects`
