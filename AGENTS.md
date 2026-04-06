@@ -78,6 +78,36 @@
 - **功能**: 根据场景描述生成场景图片
 - **存储**: 自动上传到阿里云 OSS，设置公开读取权限
 
+#### 4.1.1 人物库图片生成
+- **路径**: `src/app/api/generate/character-image/`
+- **SDK**: coze-coding-dev-sdk (image-generation)
+- **功能**: 根据人物描述生成人物图像（文生图）
+- **存储**: 自动上传到阿里云 OSS，设置公开读取权限
+
+#### 4.1.2 人物库三视图生成
+- **路径**: `src/app/api/generate/character-triple-views/`
+- **SDK**: coze-coding-dev-sdk (image-generation)
+- **功能**: 根据参考图片生成三视图（图生图）
+- **存储**: 自动上传到阿里云 OSS，设置公开读取权限
+
+#### 4.1.3 项目角色视图生成
+- **路径**: `src/app/api/generate/character-views/`
+- **SDK**: coze-coding-dev-sdk (image-generation)
+- **功能**: 生成角色的正面视图
+- **存储**: 自动上传到阿里云 OSS，设置公开读取权限
+
+#### 4.1.4 项目人物形象生成（文生图）
+- **路径**: `src/app/api/generate/appearance-from-text/`
+- **SDK**: coze-coding-dev-sdk (image-generation)
+- **功能**: 根据文字描述生成人物形象
+- **存储**: 自动上传到阿里云 OSS，设置公开读取权限
+
+#### 4.1.5 项目人物形象生成（图生图）
+- **路径**: `src/app/api/generate/appearance-from-image/`
+- **SDK**: coze-coding-dev-sdk (image-generation)
+- **功能**: 根据参考图片生成新的人物形象
+- **存储**: 自动上传到阿里云 OSS，设置公开读取权限
+
 #### 4.2 视频生成
 - **路径**: `src/app/api/generate/videos/`
 - **SDK**: coze-coding-dev-sdk (video-generation)
