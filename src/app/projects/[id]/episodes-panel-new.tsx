@@ -437,6 +437,13 @@ export function EpisodesPanel({
 
   // 从剧集中移除分镜
   const handleRemoveSceneFromEpisode = async (sceneId: string) => {
+    if (!selectedEpisode) {
+      toast.error("移除失败：未选择剧集")
+      return
+    }
+
+    console.log("移除分镜:", { episodeId: selectedEpisode.id, sceneId })
+
     try {
       const res = await fetch(`/api/scenes/${sceneId}`, {
         method: "PUT",
@@ -444,22 +451,34 @@ export function EpisodesPanel({
         body: JSON.stringify({ episodeId: null }),
       })
 
+      const data = await res.json()
+      console.log("移除结果:", data)
+
       if (!res.ok) {
-        throw new Error("移除失败")
+        throw new Error(data.error || "移除失败")
       }
 
       toast.success("分镜已从剧集中移除")
+      
+      // 重新获取剧集详情以更新显示
+      await refreshEpisodeDetail(selectedEpisode.id)
       fetchEpisodes()
       onUpdate()
     } catch (error) {
       console.error("移除分镜失败:", error)
-      toast.error("移除分镜失败")
+      toast.error(error instanceof Error ? error.message : "移除分镜失败")
     }
   }
 
   // 将分镜添加到剧集
   const handleAddScenesToEpisode = async (sceneIds: string[]) => {
-    if (!selectedEpisode || sceneIds.length === 0) return
+    if (!selectedEpisode || sceneIds.length === 0) {
+      console.warn("无法添加分镜: selectedEpisode 为空或 sceneIds 为空", { selectedEpisode, sceneIds })
+      toast.error("添加失败：数据不完整")
+      return
+    }
+
+    console.log("添加分镜:", { episodeId: selectedEpisode.id, sceneIds })
 
     try {
       const res = await fetch(`/api/scenes/batch-update`, {
@@ -471,16 +490,39 @@ export function EpisodesPanel({
         }),
       })
 
+      const data = await res.json()
+      console.log("添加结果:", data)
+
       if (!res.ok) {
-        throw new Error("添加失败")
+        throw new Error(data.error || "添加失败")
       }
 
       toast.success(`已添加 ${sceneIds.length} 个分镜到剧集`)
+      
+      // 重新获取剧集详情以更新显示
+      await refreshEpisodeDetail(selectedEpisode.id)
       fetchEpisodes()
       onUpdate()
     } catch (error) {
       console.error("添加分镜失败:", error)
-      toast.error("添加分镜失败")
+      toast.error(error instanceof Error ? error.message : "添加分镜失败")
+    }
+  }
+
+  // 刷新剧集详情
+  const refreshEpisodeDetail = async (episodeId: string) => {
+    try {
+      const res = await fetch(`/api/episodes/${episodeId}`)
+      const data = await res.json()
+      
+      if (data.episode) {
+        setSelectedEpisode({ 
+          ...data.episode,
+          scenes: data.episode.scenes || [],
+        })
+      }
+    } catch (error) {
+      console.error("刷新剧集详情失败:", error)
     }
   }
 
@@ -1053,7 +1095,7 @@ export function EpisodesPanel({
                       onClick={() => handleAddScenesToEpisode([scene.id])}
                       className="p-2 rounded bg-muted hover:bg-primary hover:text-primary-foreground text-sm font-medium transition-colors"
                     >
-                      {scene.sceneNumber}
+                      {scene.sceneNumber || scene.scene_number}
                     </button>
                   ))}
                 </div>
