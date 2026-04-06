@@ -58,36 +58,32 @@ export async function POST(request: NextRequest) {
     // 下载图片
     const imageBuffer = await downloadFile(imageUrl)
 
-    // 尝试上传到对象存储
+    // 尝试上传到对象存储（使用阿里云 OSS）
     let fileKey: string | null = null
     let viewUrl: string = imageUrl
 
     try {
-      const { S3Storage } = await import("coze-coding-dev-sdk")
-      const storage = new S3Storage({
-        endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-        accessKey: "",
-        secretKey: "",
-        bucketName: process.env.COZE_BUCKET_NAME,
-        region: "cn-beijing",
+      const OSS = await import('ali-oss')
+      const ossClient = new OSS.default({
+        region: process.env.ALIYUN_OSS_REGION!,
+        accessKeyId: process.env.ALIYUN_OSS_ACCESS_KEY_ID!,
+        accessKeySecret: process.env.ALIYUN_OSS_ACCESS_KEY_SECRET!,
+        bucket: process.env.ALIYUN_OSS_BUCKET!,
       })
 
-      // 上传到对象存储
-      fileKey = await storage.uploadFile({
-        fileContent: imageBuffer,
-        fileName: `characters/${characterId}/triple-views_${Date.now()}.png`,
-        contentType: "image/png",
-      })
+      // 上传到 OSS
+      fileKey = `character-library/${characterId}/triple-views_${Date.now()}.png`
+      await ossClient.put(fileKey, imageBuffer)
 
-      // 生成访问 URL
-      viewUrl = await storage.generatePresignedUrl({
-        key: fileKey,
-        expireTime: 86400 * 7, // 7天有效
-      })
+      // 设置为公开读取
+      await ossClient.putACL(fileKey, 'public-read')
 
-      console.log("Image uploaded to storage:", fileKey)
-    } catch (storageError) {
-      console.warn("Failed to upload to storage, saving to local:", storageError)
+      // 生成公网 URL
+      viewUrl = ossClient.signatureUrl(fileKey, { expires: 86400 * 7 }) // 7天有效
+
+      console.log("Image uploaded to OSS:", fileKey)
+    } catch (ossError) {
+      console.warn("Failed to upload to OSS, saving to local:", ossError)
 
       // 对象存储不可用，保存到本地 public 目录
       try {
