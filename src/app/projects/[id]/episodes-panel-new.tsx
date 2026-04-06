@@ -505,26 +505,17 @@ export function EpisodesPanel({
 
       toast.success(`已添加 ${sceneIds.length} 个分镜到剧集`)
       
-      // 直接更新本地状态：添加分镜到列表
-      const addedScenes = scenes.filter(s => sceneIds.includes(s.id))
-      console.log("找到要添加的分镜:", addedScenes.length, addedScenes.map(s => s.id))
-      
-      const newScenes = [...(selectedEpisode.scenes || []), ...addedScenes.map(s => ({
-        ...s,
-        episode_id: selectedEpisode.id,
-        episodeId: selectedEpisode.id,
-      }))]
+      // 直接更新本地状态：添加分镜到列表（去重）
+      const existingSceneIds = new Set((selectedEpisode.scenes || []).map(s => s.id))
+      const newScenes = [
+        ...(selectedEpisode.scenes || []),
+        ...scenes
+          .filter(s => sceneIds.includes(s.id) && !existingSceneIds.has(s.id))
+          .map(s => ({ ...s, episode_id: selectedEpisode.id, episodeId: selectedEpisode.id }))
+      ]
       console.log("新的分镜列表长度:", newScenes.length)
       
-      setSelectedEpisode(prev => {
-        console.log("setSelectedEpisode 回调, prev:", prev?.scenes?.length)
-        return prev ? {
-          ...prev,
-          scenes: newScenes,
-        } : null
-      })
-      
-      console.log("setSelectedEpisode 已调用")
+      setSelectedEpisode(prev => prev ? { ...prev, scenes: newScenes } : null)
       fetchEpisodes()
       onUpdate()
     } catch (error) {
