@@ -173,8 +173,9 @@ export function EpisodesPanel({
     return maxEpisode + 1
   }
 
-  // 获取未分配的分镜（同时兼容 camelCase 和 snake_case）
-  const unassignedScenes = scenes.filter(s => !s.episodeId && !s.episode_id)
+  // 获取未分配的分镜：通过项目总分镜数减去当前剧集的分镜数
+  const assignedSceneIds = new Set((selectedEpisode?.scenes || []).map(s => s.id))
+  const unassignedScenes = scenes.filter(s => !assignedSceneIds.has(s.id))
 
   const handleCreate = async () => {
     if (!formData.title.trim()) {
