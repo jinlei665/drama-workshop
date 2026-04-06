@@ -27,7 +27,8 @@ import {
   Settings,
   ChevronDown,
   ChevronUp,
-  Play
+  Play,
+  Plus
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -37,6 +38,16 @@ interface Scene {
   title: string | null
   videoUrl: string | null
   videoStatus?: string | null
+}
+
+interface Episode {
+  id: string
+  season_number: number
+  episode_number: number
+  title: string
+  description: string | null
+  merged_video_url: string | null
+  sceneCount?: number
 }
 
 interface FFmpegStatus {
@@ -49,9 +60,10 @@ interface FFmpegStatus {
 interface VideoMergePanelProps {
   projectId: string
   scenes: Scene[]
+  onVideoAddedToEpisode?: () => void
 }
 
-export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
+export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: VideoMergePanelProps) {
   const [ffmpegStatus, setFfmpegStatus] = useState<FFmpegStatus | null>(null)
   const [checkingFfmpeg, setCheckingFfmpeg] = useState(true)
   const [selectedScenes, setSelectedScenes] = useState<Set<string>>(new Set())
@@ -65,9 +77,31 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
   const [expanded, setExpanded] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [episodes, setEpisodes] = useState<Episode[]>([])
+  const [addToEpisodeOpen, setAddToEpisodeOpen] = useState(false)
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null)
+  const [addingToEpisode, setAddingToEpisode] = useState(false)
 
   // 获取有视频的分镜
   const videoScenes = scenes.filter(s => s.videoStatus === 'completed' && s.videoUrl)
+
+  // 获取剧集列表
+  useEffect(() => {
+    const fetchEpisodes = async () => {
+      try {
+        const res = await fetch(`/api/episodes?projectId=${projectId}`)
+        const data = await res.json()
+        if (data.episodes) {
+          setEpisodes(data.episodes)
+        }
+      } catch (error) {
+        console.error('获取剧集列表失败:', error)
+      }
+    }
+    if (projectId) {
+      fetchEpisodes()
+    }
+  }, [projectId])
   
   // 检测 FFmpeg
   useEffect(() => {
@@ -176,6 +210,44 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
       window.URL.revokeObjectURL(url)
     } catch {
       toast.error('下载失败')
+    }
+  }
+
+  // 添加至剧集
+  const handleAddToEpisode = async () => {
+    if (!selectedEpisodeId || !result?.url) return
+
+    setAddingToEpisode(true)
+    try {
+      const res = await fetch(`/api/episodes/${selectedEpisodeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mergedVideoUrl: result.url,
+          mergedVideoStatus: 'completed'
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || '添加失败')
+      }
+
+      toast.success('已添加到剧集')
+      setAddToEpisodeOpen(false)
+      setSelectedEpisodeId(null)
+      // 刷新剧集列表
+      const episodesRes = await fetch(`/api/episodes?projectId=${projectId}`)
+      const episodesData = await episodesRes.json()
+      if (episodesData.episodes) {
+        setEpisodes(episodesData.episodes)
+      }
+      onVideoAddedToEpisode?.()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '添加失败')
+    } finally {
+      setAddingToEpisode(false)
     }
   }
 
@@ -426,12 +498,90 @@ export function VideoMergePanel({ projectId, scenes }: VideoMergePanelProps) {
             )}
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
-              关闭
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setAddToEpisodeOpen(true)
+              }}
+              disabled={episodes.length === 0}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              添加至剧集
             </Button>
             <Button onClick={handleDownload}>
               <Download className="w-4 h-4 mr-2" />
               下载视频
+            </Button>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+              关闭
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 添加至剧集对话框 */}
+      <Dialog open={addToEpisodeOpen} onOpenChange={setAddToEpisodeOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>添加至剧集</DialogTitle>
+            <DialogDescription>
+              选择要将视频添加到的剧集
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-2 max-h-64 overflow-y-auto">
+            {episodes.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                暂无剧集，请先创建剧集
+              </p>
+            ) : (
+              episodes.map((episode) => (
+                <button
+                  key={episode.id}
+                  onClick={() => setSelectedEpisodeId(episode.id)}
+                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                    selectedEpisodeId === episode.id
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        第 {episode.season_number} 季 第 {episode.episode_number} 集
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {episode.title || '未命名剧集'}
+                      </p>
+                    </div>
+                    {episode.merged_video_url && (
+                      <Badge variant="outline" className="text-green-500 border-green-500/30">
+                        已有视频
+                      </Badge>
+                    )}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAddToEpisodeOpen(false)}>
+              取消
+            </Button>
+            <Button 
+              onClick={handleAddToEpisode} 
+              disabled={!selectedEpisodeId || addingToEpisode}
+            >
+              {addingToEpisode ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  添加中...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  确认添加
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>
