@@ -70,9 +70,11 @@ export async function POST(request: NextRequest) {
       })
 
       // 上传到对象存储
+      const timestamp = Date.now()
+      const fileName = `character-appearances/${characterId}/appearance_${timestamp}.png`
       fileKey = await storage.uploadFile({
         fileContent: imageBuffer,
-        fileName: `character-appearances/${characterId}/appearance_${Date.now()}.png`,
+        fileName: fileName,
         contentType: "image/png",
       })
 
@@ -98,18 +100,25 @@ export async function POST(request: NextRequest) {
         }
 
         // 保存图片
-        const localFileName = `appearance_${Date.now()}.png`
+        const timestamp = Date.now()
+        const localFileName = `appearance_${timestamp}.png`
         const localFilePath = path.join(publicDir, localFileName)
         fs.writeFileSync(localFilePath, imageBuffer)
 
         // 使用本地相对路径作为 URL
-        fileKey = `${characterId}/${localFileName}`
-        viewUrl = `/character-appearances/${fileKey}`
+        fileKey = `character-appearances/${characterId}/${localFileName}`
+        viewUrl = `/character-appearances/${characterId}/${localFileName}`
 
         console.log("Image saved to local:", localFilePath)
       } catch (localError) {
         console.warn("Failed to save to local:", localError)
       }
+    }
+
+    // 如果 fileKey 仍然为 null，使用原始 URL 作为 fallback
+    if (!fileKey) {
+      fileKey = imageUrl
+      console.warn("Using original URL as fileKey fallback")
     }
 
     return NextResponse.json({

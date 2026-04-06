@@ -1,10 +1,17 @@
 /**
  * 人物形象管理 API
  * 支持添加、删除、列表、设置主形象
+ * 使用 pg 直连，避免 Supabase schema cache 问题
  */
 
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON } from '@/lib/api/response'
+import { Pool } from 'pg'
+
+// PostgreSQL 连接配置
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+})
 
 /**
  * GET /api/characters/[id]/appearances
@@ -17,41 +24,32 @@ export async function GET(
   try {
     const { id: characterId } = await params
 
-    // 尝试从数据库获取
     try {
-      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      const result = await pool.query(
+        `SELECT * FROM character_appearances
+         WHERE character_id = $1
+         ORDER BY created_at DESC`,
+        [characterId]
+      )
 
-      if (isDatabaseConfigured()) {
-        const db = getSupabaseClient()
+      const appearances = result.rows.map((row) => ({
+        id: row.id,
+        characterId: row.character_id,
+        name: row.name,
+        imageKey: row.image_key,
+        imageUrl: row.image_url,
+        isPrimary: row.is_primary,
+        description: row.description,
+        tags: row.tags || [],
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }))
 
-        const { data, error } = await db
-          .from('character_appearances')
-          .select('*')
-          .eq('character_id', characterId)
-          .order('created_at', { ascending: false })
-
-        if (!error && data) {
-          const appearances = data.map((app: any) => ({
-            id: app.id,
-            characterId: app.character_id,
-            name: app.name,
-            imageKey: app.image_key,
-            imageUrl: app.image_url,
-            isPrimary: app.is_primary,
-            description: app.description,
-            tags: app.tags || [],
-            createdAt: app.created_at,
-            updatedAt: app.updated_at,
-          }))
-
-          return successResponse({ appearances })
-        }
-      }
+      return successResponse({ appearances })
     } catch (dbError) {
-      console.warn('Database not available:', dbError)
+      console.error('Database query error:', dbError)
+      return errorResponse('数据库查询失败', 500)
     }
-
-    return successResponse({ appearances: [] })
   } catch (error) {
     return errorResponse(error)
   }
@@ -65,6 +63,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const client = await pool.connect()
   try {
     const { id: characterId } = await params
     const body = await getJSON<{
@@ -75,63 +74,65 @@ export async function POST(
       tags?: string[]
     }>(request)
 
+    console.log('[Add Appearance] Request body:', JSON.stringify(body, null, 2))
+
     if (!body.imageKey) {
+      console.error('[Add Appearance] imageKey is empty')
       return errorResponse('imageKey 不能为空', 400)
     }
 
     try {
-      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      // 检查是否是第一个形象，如果是则设为主形象
+      const existingResult = await client.query(
+        'SELECT COUNT(*) as count FROM character_appearances WHERE character_id = $1',
+        [characterId]
+      )
+      const count = parseInt(existingResult.rows[0].count)
+      const isFirst = count === 0
 
-      if (isDatabaseConfigured()) {
-        const db = getSupabaseClient()
+      // 插入新形象
+      const insertResult = await client.query(
+        `INSERT INTO character_appearances
+         (character_id, name, image_key, image_url, is_primary, description, tags, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+         RETURNING *`,
+        [
+          characterId,
+          body.name || '默认形象',
+          body.imageKey,
+          body.imageUrl || null,
+          isFirst,
+          body.description || null,
+          body.tags || [],
+        ]
+      )
 
-        // 检查是否是第一个形象，如果是则设为主形象
-        const { data: existing } = await db
-          .from('character_appearances')
-          .select('id')
-          .eq('character_id', characterId)
+      const data = insertResult.rows[0]
 
-        const isFirst = !existing || existing.length === 0
+      console.log('[Add Appearance] Insert success:', data.id)
 
-        const { data, error } = await db
-          .from('character_appearances')
-          .insert({
-            character_id: characterId,
-            name: body.name || '默认形象',
-            image_key: body.imageKey,
-            image_url: body.imageUrl,
-            is_primary: isFirst,
-            description: body.description,
-            tags: body.tags || [],
-          })
-          .select()
-          .single()
-
-        if (!error && data) {
-          return successResponse({
-            appearance: {
-              id: data.id,
-              characterId: data.character_id,
-              name: data.name,
-              imageKey: data.image_key,
-              imageUrl: data.image_url,
-              isPrimary: data.is_primary,
-              description: data.description,
-              tags: data.tags || [],
-              createdAt: data.created_at,
-              updatedAt: data.updated_at,
-            }
-          }, 201)
+      return successResponse({
+        appearance: {
+          id: data.id,
+          characterId: data.character_id,
+          name: data.name,
+          imageKey: data.image_key,
+          imageUrl: data.image_url,
+          isPrimary: data.is_primary,
+          description: data.description,
+          tags: data.tags || [],
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
         }
-
-        return errorResponse(error?.message || '添加失败', 500)
-      }
+      }, 201)
     } catch (dbError) {
-      console.warn('Database not available:', dbError)
+      console.error('[Add Appearance] Database error:', dbError)
+      return errorResponse(dbError instanceof Error ? dbError.message : '添加失败', 500)
     }
-
-    return errorResponse('数据库不可用', 500)
   } catch (error) {
+    console.error('[Add Appearance] Error:', error)
     return errorResponse(error)
+  } finally {
+    client.release()
   }
 }

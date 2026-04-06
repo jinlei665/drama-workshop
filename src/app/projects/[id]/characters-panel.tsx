@@ -408,6 +408,13 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
     setGeneratingAppearance(true)
     try {
+      console.log('[Generate Appearance] Request payload:', {
+        characterId: selectedCharacterForAppearances.id,
+        characterName: selectedCharacterForAppearances.name,
+        appearance: selectedCharacterForAppearances.appearance,
+        changeDescription
+      })
+
       const res = await fetch('/api/generate/appearance-from-text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -421,10 +428,12 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
       if (!res.ok) {
         const data = await res.json()
+        console.error('[Generate Appearance] API error:', data)
         throw new Error(data.error || '生成失败')
       }
 
       const data = await res.json()
+      console.log('[Generate Appearance] API response:', data)
 
       // 添加生成的形象
       const addRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`, {
@@ -440,6 +449,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
       if (!addRes.ok) {
         const errorData = await addRes.json()
+        console.error('[Add Appearance] API error:', errorData)
         throw new Error(errorData.error || '添加形象失败')
       }
 
@@ -458,7 +468,16 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       setAppearanceDescription('')
     } catch (error) {
       console.error('生成新形象失败:', error)
-      toast.error(error instanceof Error ? error.message : '生成新形象失败')
+      // 改进错误消息显示
+      let errorMessage = '生成新形象失败'
+      if (error instanceof Error) {
+        errorMessage = error.message
+      } else if (typeof error === 'string') {
+        errorMessage = error
+      } else if (error && typeof error === 'object') {
+        errorMessage = JSON.stringify(error)
+      }
+      toast.error(errorMessage)
     } finally {
       setGeneratingAppearance(false)
     }
