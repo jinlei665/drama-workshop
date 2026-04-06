@@ -93,17 +93,17 @@ export async function PUT(
   if (parsed.data.mergedVideoStatus !== undefined) updateData.merged_video_status = parsed.data.mergedVideoStatus
   if (parsed.data.mergedVideoKey !== undefined) updateData.merged_video_key = parsed.data.mergedVideoKey
 
-  const { data: episode, error } = await client
+  const { data: episodes, error } = await client
     .from("episodes")
     .update(updateData)
     .eq("id", id)
     .select()
-    .single()
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  const episode = episodes?.[0] || null
   return NextResponse.json({ episode })
 }
 
