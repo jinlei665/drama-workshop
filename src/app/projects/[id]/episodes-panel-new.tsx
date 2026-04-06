@@ -1072,18 +1072,18 @@ export function EpisodesPanel({
                   {selectedEpisode.scenes
                     .sort((a, b) => (a.scene_number || a.sceneNumber || 0) - (b.scene_number || b.sceneNumber || 0))
                     .map((scene, index) => (
-                      <div 
+                      <div
                         key={scene.id}
                         className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg"
                       >
                         <div className="flex items-center justify-center w-8 h-8 rounded bg-muted font-medium text-sm">
-                          {scene.scene_number || scene.sceneNumber}
+                          {index + 1}
                         </div>
                         {scene.image_url || scene.imageUrl ? (
                           <div className="w-20 h-14 rounded overflow-hidden bg-muted flex-shrink-0">
-                            <img 
-                              src={(scene.image_url || scene.imageUrl) || ''} 
-                              alt={`分镜 ${scene.scene_number || scene.sceneNumber}`}
+                            <img
+                              src={(scene.image_url || scene.imageUrl) || ''}
+                              alt={`分镜 ${index + 1}`}
                               className="w-full h-full object-cover"
                             />
                           </div>
@@ -1093,7 +1093,7 @@ export function EpisodesPanel({
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{scene.title || `分镜 ${scene.scene_number || scene.sceneNumber}`}</p>
+                          <p className="font-medium truncate">{scene.title || `分镜 ${index + 1}`}</p>
                           <p className="text-xs text-muted-foreground truncate">{scene.description}</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1131,13 +1131,13 @@ export function EpisodesPanel({
                   添加分镜 ({unassignedScenes.length} 个可用)
                 </h4>
                 <div className="grid grid-cols-8 gap-2 max-h-32 overflow-y-auto p-2 bg-background rounded border">
-                  {unassignedScenes.map((scene) => (
+                  {unassignedScenes.map((scene, index) => (
                     <button
                       key={scene.id}
                       onClick={() => handleAddScenesToEpisode([scene.id])}
                       className="p-2 rounded bg-muted hover:bg-primary hover:text-primary-foreground text-sm font-medium transition-colors"
                     >
-                      {scene.sceneNumber || scene.scene_number}
+                      {index + 1}
                     </button>
                   ))}
                 </div>

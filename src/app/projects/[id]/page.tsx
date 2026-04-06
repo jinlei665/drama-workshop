@@ -1091,7 +1091,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
     }
   }
 
-  const handleDownload = async (scene: Scene) => {
+  const handleDownload = async (scene: Scene, index: number) => {
     const url = imageUrls[scene.id]
     if (!url) return
 
@@ -1101,7 +1101,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
       const blobUrl = window.URL.createObjectURL(blob)
       const link = document.createElement("a")
       link.href = blobUrl
-      link.download = `分镜${scene.sceneNumber}_${scene.title || 'scene'}.png`
+      link.download = `分镜${index + 1}_${scene.title || 'scene'}.png`
       link.click()
       window.URL.revokeObjectURL(blobUrl)
       toast.success("下载成功")
@@ -1115,16 +1115,16 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
     <>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {scenes.map((scene, index) => (
-          <Card 
-            key={scene.id} 
+          <Card
+            key={scene.id}
             className="group cursor-pointer hover:shadow-lg transition-all overflow-hidden"
             onClick={() => setSelectedIndex(index)}
           >
             <div className="aspect-video bg-secondary/50 relative">
               {imageUrls[scene.id] ? (
-                <img 
-                  src={imageUrls[scene.id]} 
-                  alt={scene.title || `分镜 ${scene.sceneNumber}`}
+                <img
+                  src={imageUrls[scene.id]}
+                  alt={scene.title || `分镜 ${index + 1}`}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -1141,10 +1141,10 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                   </Badge>
                 </div>
               )}
-              {/* 分镜序号 */}
+              {/* 分镜序号 - 使用索引+1作为连续序号 */}
               <div className="absolute top-2 left-2">
                 <Badge variant="secondary" className="bg-black/60 text-white text-xs">
-                  {scene.sceneNumber}
+                  {index + 1}
                 </Badge>
               </div>
             </div>
@@ -1164,7 +1164,7 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
             <>
               <DialogHeader className="sr-only">
                 <DialogTitle>
-                  {scenes[selectedIndex].title || `分镜 ${scenes[selectedIndex].sceneNumber}`}
+                  {scenes[selectedIndex].title || `分镜 ${selectedIndex + 1}`}
                 </DialogTitle>
               </DialogHeader>
               <div className="relative w-full h-full flex">
@@ -1180,9 +1180,9 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                       }}
                     />
                   ) : imageUrls[scenes[selectedIndex].id] ? (
-                    <img 
-                      src={imageUrls[scenes[selectedIndex].id]} 
-                      alt={scenes[selectedIndex].title || `分镜 ${scenes[selectedIndex].sceneNumber}`}
+                    <img
+                      src={imageUrls[scenes[selectedIndex].id]}
+                      alt={scenes[selectedIndex].title || `分镜 ${selectedIndex + 1}`}
                       className="max-w-full max-h-full object-contain"
                     />
                   ) : (
@@ -1265,9 +1265,9 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                       </div>
                     )}
                     
-                    <Button 
+                    <Button
                       className="w-full amber-gradient text-white border-0"
-                      onClick={() => handleDownload(scenes[selectedIndex])}
+                      onClick={() => handleDownload(scenes[selectedIndex], selectedIndex)}
                     >
                       <Download className="w-4 h-4 mr-2" />
                       下载图片
