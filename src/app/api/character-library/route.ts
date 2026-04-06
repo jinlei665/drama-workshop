@@ -194,6 +194,100 @@ export async function POST(request: NextRequest) {
 }
 
 /**
+ * PUT /api/character-library?id=xxx
+ * 更新人物库中的人物
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('id')
+    
+    if (!id) {
+      return errorResponse('缺少人物ID', 400)
+    }
+
+    const body = await getJSON<{
+      name?: string
+      description?: string
+      appearance?: string
+      personality?: string
+      tags?: string[]
+      imageUrl?: string
+      frontViewKey?: string
+      style?: string
+    }>(request)
+    
+    if (!body.name?.trim()) {
+      return errorResponse('人物名称不能为空', 400)
+    }
+    
+    // 尝试更新数据库
+    try {
+      const db = getCharacterLibraryClient()
+      const { data, error } = await db
+        .from('character_library')
+        .update({
+          name: body.name,
+          description: body.description,
+          appearance: body.appearance,
+          personality: body.personality,
+          tags: body.tags,
+          image_url: body.imageUrl,
+          front_view_key: body.frontViewKey,
+          style: body.style,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single()
+      
+      if (error) {
+        console.warn('[Character Library] Database update error:', error)
+      } else if (data) {
+        console.log('[Character Library] Updated in database:', data)
+        const character = {
+          id: data.id,
+          name: data.name,
+          description: data.description,
+          appearance: data.appearance,
+          personality: data.personality,
+          tags: data.tags || [],
+          imageUrl: data.image_url,
+          frontViewKey: data.front_view_key,
+          style: data.style,
+          createdAt: data.created_at,
+        }
+        return successResponse({ character })
+      }
+    } catch (dbError) {
+      console.warn('[Character Library] Failed to update in database:', dbError)
+    }
+    
+    // 更新内存存储
+    const index = memoryCharacterLibrary.findIndex(c => c.id === id)
+    if (index !== -1) {
+      const updated = {
+        ...memoryCharacterLibrary[index],
+        name: body.name,
+        description: body.description,
+        appearance: body.appearance,
+        personality: body.personality,
+        tags: body.tags || [],
+        imageUrl: body.imageUrl,
+        frontViewKey: body.frontViewKey,
+        style: body.style,
+      }
+      memoryCharacterLibrary[index] = updated
+      return successResponse({ character: updated })
+    }
+    
+    return errorResponse('人物不存在', 404)
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
+/**
  * DELETE /api/character-library?id=xxx
  * 从人物库删除人物
  */

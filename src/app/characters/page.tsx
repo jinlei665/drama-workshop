@@ -49,6 +49,8 @@ export default function CharactersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editingCharacter, setEditingCharacter] = useState<Character | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -142,6 +144,67 @@ export default function CharactersPage() {
     } catch (error) {
       console.error('删除人物失败:', error)
       toast.error('删除人物失败')
+    }
+  }
+
+  const handleEdit = (character: Character) => {
+    setEditingCharacter(character)
+    setFormData({
+      name: character.name,
+      description: character.description || '',
+      appearance: character.appearance || '',
+      personality: character.personality || '',
+      gender: character.tags?.find(t => ['male', 'female', 'other'].includes(t)) || '',
+      age: character.tags?.find(t => !['male', 'female', 'other'].includes(t)) || '',
+      style: 'realistic'
+    })
+    setEditing(true)
+  }
+
+  const handleUpdate = async () => {
+    if (!editingCharacter || !formData.name.trim()) {
+      toast.error('请输入人物名称')
+      return
+    }
+
+    setCreating(true)
+    try {
+      const res = await fetch(`/api/character-library?id=${editingCharacter.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description,
+          appearance: formData.appearance,
+          personality: formData.personality,
+          tags: formData.gender ? [formData.gender, formData.age].filter(Boolean) : (formData.age ? [formData.age] : []),
+          style: formData.style
+        })
+      })
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error?.message || result.error || '更新失败')
+      }
+
+      toast.success('人物更新成功')
+      setEditing(false)
+      setEditingCharacter(null)
+      setFormData({
+        name: '',
+        description: '',
+        appearance: '',
+        personality: '',
+        gender: '',
+        age: '',
+        style: 'realistic'
+      })
+      fetchCharacters()
+    } catch (error) {
+      console.error('更新人物失败:', error)
+      toast.error(error instanceof Error ? error.message : '更新人物失败')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -328,6 +391,121 @@ export default function CharactersPage() {
                   </div>
                 </DialogContent>
               </Dialog>
+
+              {/* 编辑对话框 */}
+              <Dialog open={editing} onOpenChange={setEditing}>
+                <DialogContent className="max-w-xl">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Users className="w-5 h-5 text-green-500" />
+                      编辑人物
+                    </DialogTitle>
+                    <DialogDescription>
+                      更新人物信息
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-name">人物名称 *</Label>
+                        <Input
+                          id="edit-name"
+                          placeholder="输入人物名称"
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-gender">性别</Label>
+                        <Select
+                          value={formData.gender}
+                          onValueChange={(v) => setFormData({ ...formData, gender: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择性别" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">男</SelectItem>
+                            <SelectItem value="female">女</SelectItem>
+                            <SelectItem value="other">其他</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-age">年龄</Label>
+                        <Input
+                          id="edit-age"
+                          placeholder="如：25岁"
+                          value={formData.age}
+                          onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-style">图像风格</Label>
+                        <Select
+                          value={formData.style}
+                          onValueChange={(v) => setFormData({ ...formData, style: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="选择风格" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="realistic">写实风格</SelectItem>
+                            <SelectItem value="anime">动漫风格</SelectItem>
+                            <SelectItem value="cartoon">卡通风格</SelectItem>
+                            <SelectItem value="oil_painting">油画风格</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-appearance">外貌描述</Label>
+                      <Textarea
+                        id="edit-appearance"
+                        placeholder="描述人物的外貌特征，如：高挑身材，长发披肩，眼神锐利..."
+                        className="h-20"
+                        value={formData.appearance}
+                        onChange={(e) => setFormData({ ...formData, appearance: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-personality">性格特点</Label>
+                      <Textarea
+                        id="edit-personality"
+                        placeholder="描述人物的性格，如：性格开朗，善于交际..."
+                        className="h-20"
+                        value={formData.personality}
+                        onChange={(e) => setFormData({ ...formData, personality: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-description">人物简介</Label>
+                      <Textarea
+                        id="edit-description"
+                        placeholder="人物背景故事或简介"
+                        className="h-20"
+                        value={formData.description}
+                        onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-3 pt-4">
+                      <Button variant="outline" onClick={() => setEditing(false)}>
+                        取消
+                      </Button>
+                      <Button onClick={handleUpdate} disabled={creating}>
+                        {creating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                            更新中...
+                          </>
+                        ) : '保存更改'}
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
         </header>
@@ -404,7 +582,12 @@ export default function CharactersPage() {
                       </p>
                     )}
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="flex-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleEdit(character)}
+                      >
                         <Edit2 className="w-3 h-3 mr-1" />
                         编辑
                       </Button>
