@@ -108,8 +108,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
   const [appearanceName, setAppearanceName] = useState("")
   const [appearanceDescription, setAppearanceDescription] = useState("")
   const [loadingAppearances, setLoadingAppearances] = useState(false)
-  const [generateMode, setGenerateMode] = useState<'upload' | 'ai'>('upload')
-  const [referenceImage, setReferenceImage] = useState<{ url: string } | null>(null)
+  const [generateMode, setGenerateMode] = useState<'upload' | 'text'>('upload')
   const [changeDescription, setChangeDescription] = useState("")
   const [generatingAppearance, setGeneratingAppearance] = useState(false)
 
@@ -341,7 +340,6 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
     // 重置表单状态
     setGenerateMode('upload')
     setUploadedImage(null)
-    setReferenceImage(null)
     setChangeDescription('')
     setAppearanceName('')
     setAppearanceDescription('')
@@ -391,40 +389,10 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
     }
   }
 
-  // 上传参考图（AI 生成模式）
-  const handleReferenceImageUpload = async (file: File) => {
-    setUploadingImage(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const res = await fetch('/api/upload/character-image', {
-        method: 'POST',
-        body: formData
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || '上传失败')
-      }
-
-      const data = await res.json()
-      setReferenceImage({
-        url: data.url
-      })
-      toast.success('参考图片上传成功')
-    } catch (error) {
-      console.error('上传参考图片失败:', error)
-      toast.error('上传参考图片失败')
-    } finally {
-      setUploadingImage(false)
-    }
-  }
-
-  // 根据参考图生成新形象
+  // 根据文字描述生成新形象
   const handleGenerateAppearance = async () => {
-    if (!referenceImage || !selectedCharacterForAppearances) {
-      toast.error('请先上传参考图片')
+    if (!selectedCharacterForAppearances) {
+      toast.error('未选择人物')
       return
     }
 
@@ -440,11 +408,10 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
     setGeneratingAppearance(true)
     try {
-      const res = await fetch('/api/generate/appearance-from-image', {
+      const res = await fetch('/api/generate/appearance-from-text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          referenceImageUrl: referenceImage.url,
           characterId: selectedCharacterForAppearances.id,
           characterName: selectedCharacterForAppearances.name,
           appearance: selectedCharacterForAppearances.appearance,
@@ -484,7 +451,6 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       }
 
       // 清空表单
-      setReferenceImage(null)
       setChangeDescription('')
       setAppearanceName('')
       setAppearanceDescription('')
@@ -804,10 +770,10 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                   {/* 生成模式选择 */}
                   <div className="flex items-center gap-4">
                     <Label>生成方式</Label>
-                    <Tabs value={generateMode} onValueChange={(v) => setGenerateMode(v as 'upload' | 'ai')} className="flex-1">
+                    <Tabs value={generateMode} onValueChange={(v) => setGenerateMode(v as 'upload' | 'text')} className="flex-1">
                       <TabsList className="grid w-full grid-cols-2">
                         <TabsTrigger value="upload">直接上传</TabsTrigger>
-                        <TabsTrigger value="ai">AI 生成</TabsTrigger>
+                        <TabsTrigger value="text">文字生成</TabsTrigger>
                       </TabsList>
                     </Tabs>
                   </div>
@@ -849,41 +815,9 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                     </>
                   )}
 
-                  {/* AI 生成模式 */}
-                  {generateMode === 'ai' && (
+                  {/* 文字生成模式 */}
+                  {generateMode === 'text' && (
                     <>
-                      <div className="space-y-2">
-                        <Label>参考图片 *</Label>
-                        <div className="flex items-center gap-4">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0]
-                              if (file) handleReferenceImageUpload(file)
-                            }}
-                            className="hidden"
-                            id="reference-image-upload"
-                          />
-                          <label htmlFor="reference-image-upload">
-                            <Button variant="outline" asChild disabled={uploadingImage}>
-                              <span>
-                                <Upload className="w-4 h-4 mr-2" />
-                                {uploadingImage ? '上传中...' : '上传参考图'}
-                              </span>
-                            </Button>
-                          </label>
-                          {referenceImage && (
-                            <div className="flex items-center gap-2">
-                              <img src={referenceImage.url} alt="参考图" className="w-16 h-16 rounded object-cover" />
-                              <Button variant="ghost" size="sm" onClick={() => setReferenceImage(null)}>
-                                重新选择
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
                       <div className="space-y-2">
                         <Label htmlFor="change-description">变更描述 *</Label>
                         <Textarea
@@ -898,7 +832,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                       <div className="bg-muted/50 rounded-lg p-3 space-y-1">
                         <p className="text-sm font-medium">生成说明</p>
                         <p className="text-xs text-muted-foreground">
-                          AI 将根据参考图片和你的变更描述，生成一张新的人物形象图片，保持人物面部特征一致。
+                          AI 将根据文字描述生成一张新的人物形象图片，保持人物面部特征一致。
                         </p>
                       </div>
                     </>
@@ -946,7 +880,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                   ) : (
                     <Button
                       onClick={handleGenerateAppearance}
-                      disabled={!referenceImage || !appearanceName || !changeDescription || generatingAppearance}
+                      disabled={!appearanceName || !changeDescription || generatingAppearance}
                       className="amber-gradient text-white border-0"
                     >
                       {generatingAppearance ? (
