@@ -85,26 +85,44 @@ export async function POST(
     // 读取合并后的视频
     const mergedVideo = await fs.readFile(outputPath)
 
-    // 上传到对象存储
-    const storage = new S3Storage({
-      endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-      accessKey: "",
-      secretKey: "",
-      bucketName: process.env.COZE_BUCKET_NAME,
-      region: "cn-beijing",
-    })
+    // 上传视频
+    let viewUrl: string
+    let fileKey: string | null = null
+    try {
+      // 优先尝试对象存储
+      if (process.env.COZE_BUCKET_ENDPOINT_URL && process.env.COZE_BUCKET_NAME) {
+        const storage = new S3Storage({
+          endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
+          accessKey: "",
+          secretKey: "",
+          bucketName: process.env.COZE_BUCKET_NAME,
+          region: "cn-beijing",
+        })
 
-    const fileKey = await storage.uploadFile({
-      fileContent: mergedVideo,
-      fileName: `episodes/${id}/merged_${Date.now()}.mp4`,
-      contentType: "video/mp4",
-    })
+        fileKey = await storage.uploadFile({
+          fileContent: mergedVideo,
+          fileName: `episodes/${id}/merged_${Date.now()}.mp4`,
+          contentType: "video/mp4",
+        })
 
-    // 生成访问 URL
-    const viewUrl = await storage.generatePresignedUrl({
-      key: fileKey,
-      expireTime: 86400 * 30, // 30天有效
-    })
+        // 生成访问 URL
+        viewUrl = await storage.generatePresignedUrl({
+          key: fileKey,
+          expireTime: 86400 * 30, // 30天有效
+        })
+      } else {
+        // 对象存储未配置，保存到本地 public 目录
+        const publicDir = path.join(process.cwd(), 'public', 'episodes')
+        await fs.mkdir(publicDir, { recursive: true })
+        const localPath = path.join(publicDir, `${id}_merged_${Date.now()}.mp4`)
+        await fs.writeFile(localPath, mergedVideo)
+        viewUrl = `/episodes/${path.basename(localPath)}`
+        fileKey = null
+      }
+    } catch (uploadError) {
+      console.error("上传视频失败:", uploadError)
+      throw new Error("视频上传失败")
+    }
 
     // 更新数据库
     const { error: updateError } = await client

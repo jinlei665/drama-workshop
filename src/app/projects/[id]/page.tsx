@@ -51,7 +51,7 @@ import {
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
 import { ScenesPanel } from "./scenes-panel"
-import { EpisodesPanel } from "./episodes-panel"
+import { EpisodesPanel } from "./episodes-panel-new"
 import { VideoGenerationProgress } from "@/components/video-generation-progress"
 import { VideoMergePanel } from "@/components/video-merge-panel"
 
