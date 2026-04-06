@@ -44,6 +44,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { ScriptDialog } from "@/components/script-dialog"
+import { useModelConfig } from "@/lib/model-config"
 
 interface Scene {
   id: string
@@ -118,6 +119,19 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
   const [scripts, setScripts] = useState<Script[]>([])
   const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null)
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false)
+
+  // 获取模型配置
+  const { config: modelConfig, isLoading: configLoading } = useModelConfig()
+
+  // 根据视频模型计算最大时长
+  const getMaxVideoDuration = () => {
+    if (modelConfig.videoModel === 'doubao-seedance-2-0') {
+      return 15  // Seedance 2.0 支持 4-15 秒
+    }
+    return 12  // 其他模型（如 1.5pro）支持 4-12 秒
+  }
+
+  const maxVideoDuration = getMaxVideoDuration()
 
   // 获取脚本列表
   const fetchScripts = async () => {
@@ -1027,7 +1041,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                 <Slider
                   id="duration"
                   min={4}
-                  max={15}
+                  max={maxVideoDuration}
                   step={1}
                   value={[videoGenerateFormData.duration]}
                   onValueChange={(value) => setVideoGenerateFormData({ ...videoGenerateFormData, duration: value[0] })}
@@ -1035,7 +1049,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>4秒（快速过渡）</span>
-                  <span>15秒（详细场景）</span>
+                  <span>{maxVideoDuration}秒（详细场景）</span>
                 </div>
               </div>
 
@@ -1162,6 +1176,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
               characters={characters}
               generatingImage={generatingImage === scene.id}
               generatingVideo={generatingVideo === scene.id}
+              maxVideoDuration={maxVideoDuration}
               onEdit={() => openEditDialog(scene)}
               onDelete={() => handleDelete(scene.id)}
               onGenerateImage={() => handleGenerateImage(scene)}
@@ -1353,6 +1368,7 @@ function SceneCard({
   characters,
   generatingImage,
   generatingVideo,
+  maxVideoDuration,
   onEdit,
   onDelete,
   onGenerateImage,
@@ -1364,6 +1380,7 @@ function SceneCard({
   characters: Character[]
   generatingImage: boolean
   generatingVideo: boolean
+  maxVideoDuration: number
   onEdit: () => void
   onDelete: () => void
   onGenerateImage: () => void
@@ -1430,7 +1447,7 @@ function SceneCard({
     // 场景描述很长时也增加时长
     if (scene.description && scene.description.length > 100) duration += 1;
 
-    return Math.min(Math.max(duration, 4), 15);
+    return Math.min(Math.max(duration, 4), maxVideoDuration);
   }
 
   const estimatedDuration = calculateDuration();

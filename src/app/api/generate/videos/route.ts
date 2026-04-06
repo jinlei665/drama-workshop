@@ -531,7 +531,7 @@ async function generateSequential(
         emotion: userEmotion !== undefined ? userEmotion : scene.emotion
       };
       const videoPrompt = `${stylePrompt}，${buildVideoPrompt(modifiedScene)}`;
-      const duration = userDuration !== undefined ? userDuration : calculateDuration(scene);
+      const duration = userDuration !== undefined ? userDuration : calculateDuration(scene, videoModel);
 
       console.log(`开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒，${lastFrameUrl ? '有尾帧' : '无尾帧'}`);
 
@@ -1049,7 +1049,10 @@ async function updateSceneImageUrl(sceneId: string, imageKey: string | null, ima
 /**
  * 计算视频时长（基于内容复杂度）
  */
-function calculateDuration(scene: { dialogue?: string | null; action?: string | null; description?: string }): number {
+function calculateDuration(
+  scene: { dialogue?: string | null; action?: string | null; description?: string },
+  videoModel: string = DEFAULT_VIDEO_MODEL
+): number {
   let duration = 4; // 基础4秒
 
   if (scene.dialogue) {
@@ -1065,7 +1068,9 @@ function calculateDuration(scene: { dialogue?: string | null; action?: string | 
 
   if (scene.description && scene.description.length > 100) duration += 1;
 
-  return Math.min(Math.max(duration, 4), 15);
+  // 根据视频模型确定最大时长
+  const maxDuration = videoModel === 'doubao-seedance-2-0' ? 15 : 12;
+  return Math.min(Math.max(duration, 4), maxDuration);
 }
 
 /**
@@ -1142,7 +1147,7 @@ async function generateFast(
         emotion: userEmotion !== undefined ? userEmotion : scene.emotion
       };
       const videoPrompt = `${stylePrompt}，${buildVideoPrompt(modifiedScene)}`;
-      const duration = userDuration !== undefined ? userDuration : calculateDuration(scene);
+      const duration = userDuration !== undefined ? userDuration : calculateDuration(scene, videoModel);
 
       console.log(`[快速模式] 开始生成分镜 ${scene.scene_number} 视频，时长: ${duration}秒`);
 
