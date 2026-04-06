@@ -69,6 +69,7 @@ ${existingCharacters?.length > 0
 - description: 分镜描述（具体场景、动作、画面）
 - dialogue: 对话内容（如有）
 - emotion: 情绪氛围（如：紧张、温馨、悲伤）
+- characterNames: 出现的角色名称列表（从上方角色列表中选择，使用角色名）
 
 请用 JSON 格式输出：
 {
@@ -85,7 +86,8 @@ ${existingCharacters?.length > 0
       "title": "分镜标题",
       "description": "分镜描述",
       "dialogue": "对话（可选）",
-      "emotion": "情绪氛围"
+      "emotion": "情绪氛围",
+      "characterNames": ["角色名1", "角色名2"]
     }
   ]
 }
@@ -122,36 +124,127 @@ ${existingCharacters?.length > 0
       }, { status: 500 })
     }
 
-    // 生成角色和分镜 ID
-    const timestamp = Date.now()
-    const characters = (analysisResult.newCharacters || []).map((c: any, index: number) => ({
-      id: `char_${timestamp}_${index}_${Math.random().toString(36).substr(2, 6)}`,
-      name: c.name,
-      description: c.description || "",
-      gender: c.gender || "other",
-      age: c.age || "",
-      appearance: c.description || "",
-      projectId,
-      tags: [],
-      status: "pending",
-    }))
+    // 获取人物名称到ID的映射（用于关联分镜）
+    const characterNameToId = new Map<string, string>()
+    
+    // 从数据库获取已有角色
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+      
+      if (isDatabaseConfigured()) {
+        const supabase = getSupabaseClient()
+        const { data: existingChars } = await supabase
+          .from("characters")
+          .select("id, name")
+          .eq("project_id", projectId)
+        
+        if (existingChars) {
+          existingChars.forEach((c: { id: string; name: string }) => 
+            characterNameToId.set(c.name, c.id)
+          )
+        }
+      }
+    } catch (dbError) {
+      console.warn("Failed to fetch characters from database:", dbError)
+    }
 
-    const scenes = (analysisResult.scenes || []).map((s: any, index: number) => ({
-      id: `scene_${timestamp}_${index}_${Math.random().toString(36).substr(2, 6)}`,
-      projectId,
-      scriptId,
-      sceneNumber: index + 1,
-      title: s.title,
-      description: s.description || "",
-      dialogue: s.dialogue || "",
-      emotion: s.emotion || "",
-      status: "pending",
-    }))
+    const savedCharacterIds: string[] = []
+    
+    // 直接插入新角色到数据库（按照项目创建时的逻辑）
+    if (analysisResult.newCharacters && analysisResult.newCharacters.length > 0) {
+      for (const char of analysisResult.newCharacters) {
+        const characterId = `char_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+        
+        // 保存到数据库
+        try {
+          const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+          
+          if (isDatabaseConfigured()) {
+            const supabase = getAdminClient()
+            const insertData = {
+              id: characterId,
+              project_id: projectId,
+              name: char.name,
+              description: char.description || "",
+              appearance: char.description || "",
+              personality: char.personality || "",
+              tags: char.tags || [],
+              status: 'pending',
+            }
+            
+            const { error } = await supabase
+              .from("characters")
+              .insert(insertData)
+            
+            if (error) {
+              console.error(`Failed to save character "${char.name}" to database:`, error.message)
+            } else {
+              console.log(`Saved character "${char.name}" to database: ${characterId}`)
+              savedCharacterIds.push(characterId)
+              characterNameToId.set(char.name, characterId)
+            }
+          }
+        } catch (dbError) {
+          console.error(`Exception saving character "${char.name}" to database:`, dbError)
+        }
+      }
+    }
+
+    // 直接插入分镜到数据库（按照项目创建时的逻辑）
+    if (analysisResult.scenes && analysisResult.scenes.length > 0) {
+      for (let index = 0; index < analysisResult.scenes.length; index++) {
+        const scene = analysisResult.scenes[index]
+        const sceneId = `scene_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 6)}`
+        
+        // 获取人物ID
+        const characterIds: string[] = (scene.characterNames || [])
+          .map((name: string) => characterNameToId.get(name))
+          .filter((id: string | undefined): id is string => id !== undefined)
+        
+        // 保存到数据库
+        try {
+          const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+          
+          if (isDatabaseConfigured()) {
+            const supabase = getAdminClient()
+            const insertData = {
+              id: sceneId,
+              project_id: projectId,
+              script_id: scriptId,
+              scene_number: index + 1,
+              title: scene.title,
+              description: scene.description,
+              dialogue: scene.dialogue || "",
+              action: scene.action || "",
+              emotion: scene.emotion,
+              character_ids: characterIds,
+              metadata: {
+                shotType: scene.shotType || "",
+                cameraMovement: scene.cameraMovement || "",
+              },
+              status: 'pending',
+            }
+            
+            const { error } = await supabase
+              .from("scenes")
+              .insert(insertData)
+            
+            if (error) {
+              console.error(`Failed to save scene "${scene.title}" to database:`, error.message)
+            } else {
+              console.log(`Saved scene "${scene.title}" to database: ${sceneId}`)
+            }
+          }
+        } catch (dbError) {
+          console.error(`Exception saving scene "${scene.title}" to database:`, dbError)
+        }
+      }
+    }
 
     return NextResponse.json({
-      characters,
-      scenes,
-      analysisText: analysisResult,
+      success: true,
+      charactersCount: savedCharacterIds.length,
+      scenesCount: analysisResult.scenes?.length || 0,
     })
   } catch (err: any) {
     console.error("脚本分析异常:", err)

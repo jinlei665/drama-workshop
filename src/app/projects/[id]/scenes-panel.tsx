@@ -608,7 +608,6 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
           name: c.name,
           appearance: c.appearance || undefined
         }))}
-        episodes={episodes}
         onSuccess={() => {
           fetchScripts()
           onUpdate()
