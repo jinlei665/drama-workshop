@@ -260,8 +260,8 @@ export async function POST(request: NextRequest) {
     
     // 创建合并列表文件
     const listFilePath = join(tmpDir, `list_${Date.now()}.txt`)
-    // 使用相对路径避免 Windows 路径问题
-    const listContent = videoPaths.map(p => `file '${basename(p)}'`).join('\n')
+    // 使用绝对路径（Windows 兼容）
+    const listContent = videoPaths.map(p => `file '${p.replace(/\\/g, '/')}'`).join('\n')
     writeFileSync(listFilePath, listContent)
 
     // 输出文件名
@@ -270,18 +270,19 @@ export async function POST(request: NextRequest) {
 
     // 构建 FFmpeg 命令
     // 使用 concat demuxer 合并视频
-    // 切换到临时目录执行，避免路径问题
-    let ffmpegCmd = `cd "${tmpDir}" && "${ffmpegPaths.ffmpeg}" -y -f concat -safe 0 -i "${basename(listFilePath)}" -c copy "${outputFilename}"`
-    
+    // 使用绝对路径并指定工作目录
+    let ffmpegCmd = `"${ffmpegPaths.ffmpeg}" -y -f concat -safe 0 -i "${listFilePath.replace(/\\/g, '/')}" -c copy "${outputPath.replace(/\\/g, '/')}"`
+
     console.log(`[VideoMerge] 执行命令: ${ffmpegCmd}`)
-    
+
     // 执行合并
     try {
       const { stdout, stderr } = await execAsync(ffmpegCmd, {
+        cwd: tmpDir, // 指定工作目录
         timeout: 300000, // 5分钟超时
         maxBuffer: 50 * 1024 * 1024 // 50MB buffer
       })
-      
+
       console.log('[VideoMerge] FFmpeg stdout:', stdout)
       if (stderr) console.log('[VideoMerge] FFmpeg stderr:', stderr)
     } catch (execError) {
