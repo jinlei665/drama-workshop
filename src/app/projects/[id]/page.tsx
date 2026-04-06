@@ -118,6 +118,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [project, setProject] = useState<Project | null>(null)
   const [characters, setCharacters] = useState<Character[]>([])
   const [scenes, setScenes] = useState<Scene[]>([])
+  const [scripts, setScripts] = useState<any[]>([])
+  const [selectedPreviewScriptId, setSelectedPreviewScriptId] = useState<string | null>(null)
   const [episodes, setEpisodes] = useState<Episode[]>([])
   const [generating, setGenerating] = useState(false)
   const [generatingVideos, setGeneratingVideos] = useState(false)
@@ -151,8 +153,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
       if (!res.ok) {
         // 正确处理错误对象
-        const errorMsg = typeof data.error === 'string' 
-          ? data.error 
+        const errorMsg = typeof data.error === 'string'
+          ? data.error
           : (data.error?.message || "获取项目失败")
         throw new Error(errorMsg)
       }
@@ -162,7 +164,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
       setProject(responseData.project)
       setCharacters(responseData.characters || [])
       setScenes(responseData.scenes || [])
-      
+
       // 获取剧集列表
       try {
         const episodesRes = await fetch(`/api/episodes?projectId=${id}`)
@@ -172,6 +174,27 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         }
       } catch (err) {
         console.error("获取剧集列表失败:", err)
+      }
+
+      // 获取脚本列表
+      try {
+        const scriptsRes = await fetch(`/api/scripts?projectId=${id}`)
+        if (scriptsRes.ok) {
+          const scriptsData = await scriptsRes.json()
+          setScripts(scriptsData.scripts || [])
+
+          // 默认选择"默认脚本"
+          if (!selectedPreviewScriptId && scriptsData.scripts && scriptsData.scripts.length > 0) {
+            const defaultScript = scriptsData.scripts.find((s: any) => s.title === '默认脚本')
+            if (defaultScript) {
+              setSelectedPreviewScriptId(defaultScript.id)
+            } else {
+              setSelectedPreviewScriptId(scriptsData.scripts[0].id)
+            }
+          }
+        }
+      } catch (err) {
+        console.error("获取脚本列表失败:", err)
       }
     } catch (error) {
       console.error("获取项目失败:", error)
@@ -388,10 +411,12 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
     return null
   }
 
-  // 获取已完成图片的分镜
-  const completedScenes = scenes.filter(s => s.status === "completed")
-  // 获取已完成视频的分镜
+  // 获取已完成图片的分镜（根据选中的脚本过滤）
+  const completedScenes = scenes
+    .filter(s => s.status === "completed")
+    .filter(s => !selectedPreviewScriptId || s.scriptId === selectedPreviewScriptId)
   completedScenes.sort((a, b) => a.sceneNumber - b.sceneNumber)
+  // 获取已完成视频的分镜
   const videoScenes = completedScenes.filter(s => s.videoStatus === "completed")
   const pendingVideoScenes = completedScenes.filter(s => s.videoStatus === "pending" || s.videoStatus === "failed")
 
@@ -644,6 +669,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               onSelectEpisode={setSelectedEpisodeId}
               selectedEpisodeId={selectedEpisodeId}
               scenes={scenes}
+              scripts={scripts}
             />
           </TabsContent>
 
@@ -751,8 +777,29 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               {/* 分镜预览 */}
               <Card>
                 <CardHeader>
-                  <CardTitle>分镜预览</CardTitle>
-                  <CardDescription>查看所有生成的分镜图片</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>分镜预览</CardTitle>
+                      <CardDescription>查看所有生成的分镜图片</CardDescription>
+                    </div>
+                    {scripts.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">筛选:</span>
+                        <select
+                          value={selectedPreviewScriptId || ''}
+                          onChange={(e) => setSelectedPreviewScriptId(e.target.value || null)}
+                          className="px-3 py-1.5 rounded-md border bg-background text-sm"
+                        >
+                          <option value="">全部</option>
+                          {scripts.map(script => (
+                            <option key={script.id} value={script.id}>
+                              {script.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {completedScenes.length === 0 ? (

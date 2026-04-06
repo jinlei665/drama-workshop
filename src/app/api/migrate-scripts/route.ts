@@ -41,7 +41,7 @@ export async function POST() {
       }
 
       // 去重获取所有有未关联分镜的项目 ID
-      projectIds = Array.from(new Set(unassignedScenes.map(s => s.project_id)))
+      projectIds = Array.from(new Set(unassignedScenes.map((s: any) => s.project_id)))
       console.log(`[Migrate Scripts] Found ${projectIds.length} projects with unassigned scenes (via Supabase):`, projectIds)
     }
 
@@ -106,7 +106,7 @@ export async function POST() {
             `UPDATE scenes SET script_id = $1 WHERE project_id = $2 AND script_id IS NULL RETURNING id`,
             [defaultScriptId, projectId]
           )
-          updateCount = updateResult.rowCount
+          updateCount = updateResult.rowCount || 0
           console.log(`[Migrate Scripts] Updated ${updateCount} scenes for project ${projectId} (via pg)`)
         } catch (pgError) {
           console.warn(`[Migrate Scripts] PG update failed for project ${projectId}, falling back to Supabase:`, pgError)

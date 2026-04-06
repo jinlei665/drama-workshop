@@ -56,6 +56,8 @@ import {
   ListFilter,
   SplitSquareHorizontal,
   Scissors,
+  FileText,
+  BookText,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -76,6 +78,19 @@ interface Scene {
   status: string
   episodeId?: string | null
   episode_id?: string | null
+  scriptId?: string | null
+  script_id?: string | null
+}
+
+interface Script {
+  id: string
+  projectId: string
+  title: string
+  content: string
+  description?: string
+  status: string
+  createdAt: string
+  updatedAt: string
 }
 
 interface Episode {
@@ -97,14 +112,16 @@ interface EpisodesPanelProps {
   onSelectEpisode: (episodeId: string | null) => void
   selectedEpisodeId: string | null
   scenes: Scene[]
+  scripts: Script[]
 }
 
-export function EpisodesPanel({ 
-  projectId, 
-  onUpdate, 
-  onSelectEpisode, 
+export function EpisodesPanel({
+  projectId,
+  onUpdate,
+  onSelectEpisode,
   selectedEpisodeId,
-  scenes = [] 
+  scenes = [],
+  scripts = []
 }: EpisodesPanelProps) {
   const [episodes, setEpisodes] = useState<Episode[]>([])
   const [loading, setLoading] = useState(true)
@@ -121,6 +138,14 @@ export function EpisodesPanel({
     title: "",
     description: "",
   })
+  const [scriptAssignment, setScriptAssignment] = useState<{
+    scriptIds: string[]
+    mode: 'all' | 'selected'
+  }>({
+    scriptIds: [],
+    mode: 'all'
+  })
+  const [selectedScripts, setSelectedScripts] = useState<Set<string>>(new Set())
   const [sceneAssignment, setSceneAssignment] = useState<{
     sceneIds: string[]
     mode: 'all' | 'selected' | 'range'
@@ -193,8 +218,20 @@ export function EpisodesPanel({
         description: formData.description,
       }
 
-      // 根据模式分配分镜
-      if (sceneAssignment.mode === 'selected' && sceneAssignment.sceneIds.length > 0) {
+      // 优先使用脚本选择
+      if (scriptAssignment.mode === 'selected' && scriptAssignment.scriptIds.length > 0) {
+        requestBody.scriptIds = scriptAssignment.scriptIds
+      } else if (scriptAssignment.mode === 'all' && scripts.length > 0) {
+        // 选择所有有可用分镜的脚本
+        const availableScriptIds = scripts
+          .filter(s => scenes.some(sc => sc.scriptId === s.id && !assignedSceneIds.has(sc.id)))
+          .map(s => s.id)
+        if (availableScriptIds.length > 0) {
+          requestBody.scriptIds = availableScriptIds
+        }
+      }
+      // 否则使用分镜选择
+      else if (sceneAssignment.mode === 'selected' && sceneAssignment.sceneIds.length > 0) {
         requestBody.sceneIds = sceneAssignment.sceneIds
       } else if (sceneAssignment.mode === 'range' && sceneRange.start && sceneRange.end) {
         requestBody.sceneStart = sceneRange.start
@@ -215,7 +252,10 @@ export function EpisodesPanel({
       toast.success(`剧集 "${formData.title}" 创建成功`)
       setCreateDialogOpen(false)
       setFormData({ title: "", description: "" })
+      setScriptAssignment({ scriptIds: [], mode: 'all' })
       setSceneAssignment({ sceneIds: [], mode: 'all' })
+      setSelectedScripts(new Set())
+      setSelectedScenes(new Set())
       fetchEpisodes()
       onUpdate()
     } catch (error) {
@@ -433,6 +473,29 @@ export function EpisodesPanel({
     } else {
       setSelectedScenes(new Set(unassignedScenes.map(s => s.id)))
       setSceneAssignment({ sceneIds: unassignedScenes.map(s => s.id), mode: 'selected' })
+    }
+  }
+
+  // 切换脚本选中
+  const toggleScriptSelection = (scriptId: string) => {
+    const newSelected = new Set(selectedScripts)
+    if (newSelected.has(scriptId)) {
+      newSelected.delete(scriptId)
+    } else {
+      newSelected.add(scriptId)
+    }
+    setSelectedScripts(newSelected)
+    setScriptAssignment({ scriptIds: Array.from(newSelected), mode: 'selected' })
+  }
+
+  // 全选/取消全选脚本
+  const toggleSelectAllScripts = () => {
+    if (selectedScripts.size === scripts.length) {
+      setSelectedScripts(new Set())
+      setScriptAssignment({ scriptIds: [], mode: 'all' })
+    } else {
+      setSelectedScripts(new Set(scripts.map(s => s.id)))
+      setScriptAssignment({ scriptIds: scripts.map(s => s.id), mode: 'selected' })
     }
   }
 
@@ -830,9 +893,99 @@ export function EpisodesPanel({
               />
             </div>
 
-            {/* 分镜分配 */}
-            {unassignedScenes.length > 0 && (
+            {/* 脚本分配 */}
+            {scripts.length > 0 && (
               <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <BookText className="w-4 h-4" />
+                    分配脚本 ({scripts.length} 个可用)
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setScriptAssignment({ ...scriptAssignment, mode: 'all' })}
+                      className={cn(scriptAssignment.mode === 'all' && "bg-primary/10")}
+                    >
+                      全部
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setScriptAssignment({ ...scriptAssignment, mode: 'selected' })}
+                      className={cn(scriptAssignment.mode === 'selected' && "bg-primary/10")}
+                    >
+                      选择
+                    </Button>
+                  </div>
+                </div>
+
+                {scriptAssignment.mode === 'selected' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={toggleSelectAllScripts}
+                      >
+                        {selectedScripts.size === scripts.length ? "取消全选" : "全选"}
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        已选择 {selectedScripts.size} 个脚本
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-background rounded border">
+                      {scripts.map((script) => {
+                        const sceneCount = scenes.filter(s => s.scriptId === script.id && !assignedSceneIds.has(s.id)).length
+                        return (
+                          <button
+                            key={script.id}
+                            onClick={() => toggleScriptSelection(script.id)}
+                            disabled={sceneCount === 0}
+                            className={cn(
+                              "p-3 rounded text-left transition-colors border",
+                              selectedScripts.has(script.id)
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : sceneCount === 0
+                                ? "bg-muted/50 text-muted-foreground border-muted cursor-not-allowed"
+                                : "bg-background hover:bg-muted/80 border-border"
+                            )}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium truncate">{script.title}</span>
+                              {sceneCount > 0 && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {sceneCount} 分镜
+                                </Badge>
+                              )}
+                            </div>
+                            {sceneCount === 0 && (
+                              <span className="text-xs text-muted-foreground">无可用分镜</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {scriptAssignment.mode === 'all' && (
+                  <p className="text-sm text-muted-foreground">
+                    将所有可用脚本中的分镜添加到此剧集（共 {scripts.reduce((sum, s) => sum + scenes.filter(sc => sc.scriptId === s.id && !assignedSceneIds.has(sc.id)).length, 0)} 个分镜）
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 分镜分配（可选，用于更精细的控制） */}
+            {unassignedScenes.length > 0 && (
+              <details className="space-y-3">
+                <summary className="flex items-center gap-2 cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+                  <ChevronRight className="w-4 h-4 transition-transform" />
+                  高级：按分镜选择
+                </summary>
+                <div className="p-4 bg-muted/30 rounded-lg border mt-2">
                 <div className="flex items-center justify-between">
                   <Label className="flex items-center gap-2">
                     <Layers className="w-4 h-4" />
@@ -934,7 +1087,8 @@ export function EpisodesPanel({
                     将所有未分配的分镜 ({unassignedScenes.length} 个) 添加到此剧集
                   </p>
                 )}
-              </div>
+                </div>
+              </details>
             )}
           </div>
           <DialogFooter>

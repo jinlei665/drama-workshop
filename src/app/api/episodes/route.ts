@@ -128,9 +128,50 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // 如果指定了分镜范围，分配分镜到该剧集
+  // 如果指定了脚本ID，将属于该脚本的分镜分配到该剧集
   let sceneCount = 0
-  if (body.sceneStart !== undefined && body.sceneEnd !== undefined) {
+  if (body.scriptIds && Array.isArray(body.scriptIds) && body.scriptIds.length > 0) {
+    // 获取属于指定脚本的未分配分镜
+    const { data: unassignedScenes } = await client
+      .from("scenes")
+      .select("id, scene_number, script_id")
+      .eq("project_id", parsed.data.projectId)
+      .in("script_id", body.scriptIds)
+      .is("episode_id", null)
+      .order("script_id", { ascending: true })
+      .order("scene_number", { ascending: true })
+
+    if (unassignedScenes && unassignedScenes.length > 0) {
+      const sceneIds = unassignedScenes.map((s: any) => s.id)
+      await client
+        .from("scenes")
+        .update({ episode_id: episode.id, updated_at: new Date().toISOString() })
+        .in("id", sceneIds)
+      
+      sceneCount = sceneIds.length
+    }
+  }
+  // 如果指定了分镜ID，分配这些分镜到该剧集
+  else if (body.sceneIds && Array.isArray(body.sceneIds) && body.sceneIds.length > 0) {
+    // 直接使用传入的分镜ID
+    const { data: scenesData } = await client
+      .from("scenes")
+      .select("id")
+      .eq("project_id", parsed.data.projectId)
+      .in("id", body.sceneIds)
+
+    if (scenesData && scenesData.length > 0) {
+      const sceneIds = scenesData.map((s: any) => s.id)
+      await client
+        .from("scenes")
+        .update({ episode_id: episode.id, updated_at: new Date().toISOString() })
+        .in("id", sceneIds)
+      
+      sceneCount = sceneIds.length
+    }
+  }
+  // 如果指定了分镜范围，分配分镜到该剧集
+  else if (body.sceneStart !== undefined && body.sceneEnd !== undefined) {
     const sceneStart = Math.max(1, body.sceneStart)
     const sceneEnd = Math.max(sceneStart, body.sceneEnd)
 
