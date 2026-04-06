@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { getPool } from "@/storage/database/pg-client"
 
 // POST /api/scenes/batch-create - 批量创建角色和分镜
 export async function POST(request: NextRequest) {
@@ -11,64 +11,74 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "缺少项目ID" }, { status: 400 })
     }
 
-    const client = getSupabaseClient()
+    const pool = await getPool()
     const results: { characters: any[], scenes: any[] } = { characters: [], scenes: [] }
 
     // 批量创建角色
     if (characters && characters.length > 0) {
-      const charactersToInsert = characters.map((c: any) => ({
-        id: c.id,
-        project_id: projectId,
-        name: c.name,
-        description: c.description || "",
-        appearance: c.appearance || c.description || "",
-        gender: c.gender || "other",
-        age: c.age || "",
-        tags: c.tags || [],
-        status: c.status || "pending",
-        created_at: new Date().toISOString(),
-      }))
+      const values: any[] = []
+      const placeholders: string[] = []
+      
+      characters.forEach((c: any, index: number) => {
+        const offset = index * 8
+        placeholders.push(
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`
+        )
+        values.push(
+          c.id,
+          projectId,
+          c.name,
+          c.description || "",
+          c.appearance || c.description || "",
+          c.gender || "other",
+          c.age || "",
+          JSON.stringify(c.tags || [])
+        )
+      })
 
-      const { data: createdCharacters, error: charactersError } = await client
-        .from("characters")
-        .insert(charactersToInsert)
-        .select()
+      const result = await pool.query(
+        `INSERT INTO characters (id, project_id, name, description, appearance, gender, age, tags)
+         VALUES ${placeholders.join(", ")}
+         RETURNING *`,
+        values
+      )
 
-      if (charactersError) {
-        console.error("批量创建角色失败:", charactersError)
-      } else {
-        results.characters = createdCharacters || []
-      }
+      results.characters = result.rows || []
     }
 
     // 批量创建分镜
     if (scenes && scenes.length > 0) {
-      const scenesToInsert = scenes.map((s: any, index: number) => ({
-        id: s.id,
-        project_id: projectId,
-        script_id: scriptId || null,
-        episode_id: episodeId || null,
-        scene_number: s.sceneNumber || (index + 1),
-        title: s.title || "",
-        description: s.description || "",
-        dialogue: s.dialogue || "",
-        action: s.action || "",
-        emotion: s.emotion || "",
-        status: s.status || "pending",
-        created_at: new Date().toISOString(),
-      }))
+      const values: any[] = []
+      const placeholders: string[] = []
+      
+      scenes.forEach((s: any, index: number) => {
+        const offset = index * 11
+        placeholders.push(
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`
+        )
+        values.push(
+          s.id,
+          projectId,
+          scriptId || null,
+          episodeId || null,
+          s.sceneNumber || (index + 1),
+          s.title || "",
+          s.description || "",
+          s.dialogue || "",
+          s.action || "",
+          s.emotion || "",
+          s.status || "pending"
+        )
+      })
 
-      const { data: createdScenes, error: scenesError } = await client
-        .from("scenes")
-        .insert(scenesToInsert)
-        .select()
+      const result = await pool.query(
+        `INSERT INTO scenes (id, project_id, script_id, episode_id, scene_number, title, description, dialogue, action, emotion, status)
+         VALUES ${placeholders.join(", ")}
+         RETURNING *`,
+        values
+      )
 
-      if (scenesError) {
-        console.error("批量创建分镜失败:", scenesError)
-        return NextResponse.json({ error: scenesError.message }, { status: 500 })
-      } else {
-        results.scenes = createdScenes || []
-      }
+      results.scenes = result.rows || []
     }
 
     return NextResponse.json({
