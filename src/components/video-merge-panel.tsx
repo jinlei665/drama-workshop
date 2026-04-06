@@ -487,12 +487,15 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
           <div className="aspect-video bg-black rounded-lg overflow-hidden">
             {result?.url && (
               <video
-                src={result.url}
+                src={result?.url || ''}
                 controls
                 autoPlay
                 className="w-full h-full object-contain"
-                onError={(e) => {
-                  console.error('Merged video playback error:', result?.url?.substring(0, 50))
+                onError={() => {
+                  console.warn('视频播放错误')
+                }}
+                onAbort={() => {
+                  // 视频播放被中断，正常情况，不需要处理
                 }}
               />
             )}

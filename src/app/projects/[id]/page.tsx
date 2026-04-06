@@ -872,16 +872,8 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
                 onEnded={handleVideoEnd}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
-                onError={(e) => {
-                  console.error('Video playback error:', currentScene?.videoUrl)
-                  // 尝试重新加载视频
-                  const video = e.currentTarget
-                  if (video && video.networkState === 3) { // NETWORK_NO_SOURCE
-                    console.log('No supported source, attempting reload...')
-                  }
-                }}
-                onCanPlay={() => {
-                  console.log('Video can play:', currentScene?.videoUrl?.substring(0, 50))
+                onError={() => {
+                  console.warn('Video playback error')
                 }}
               />
             ) : (
@@ -966,11 +958,11 @@ function VideoPlayer({ scenes }: { scenes: Scene[] }) {
                 >
                   {scene.videoUrl ? (
                     <video
-                      src={scene.videoUrl}
+                      src={scene.videoUrl || ''}
                       className="w-full h-full object-cover"
                       muted
-                      onError={(e) => {
-                        console.error('Thumbnail video error:', scene.id)
+                      onError={() => {
+                        // 视频加载失败，正常情况
                       }}
                     />
                   ) : (
@@ -1109,11 +1101,11 @@ function ScenePreviewGallery({ scenes }: { scenes: Scene[] }) {
                 <div className="flex-1 relative bg-black flex items-center justify-center">
                   {scenes[selectedIndex].videoUrl ? (
                     <video
-                      src={scenes[selectedIndex].videoUrl}
+                      src={scenes[selectedIndex].videoUrl || ''}
                       controls
                       className="max-w-full max-h-full"
-                      onError={(e) => {
-                        console.error('Preview video error:', scenes[selectedIndex].id, scenes[selectedIndex].videoUrl?.substring(0, 50))
+                      onError={() => {
+                        // 视频加载失败，正常情况
                       }}
                     />
                   ) : imageUrls[scenes[selectedIndex].id] ? (

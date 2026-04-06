@@ -1269,17 +1269,20 @@ function SceneCard({
           {hasVideo && !videoError ? (
             // 显示视频
             <video 
-              src={scene.videoUrl!} 
+              src={scene.videoUrl || ''} 
               className="w-full h-full object-cover"
               muted
               loop
-              onMouseEnter={(e) => e.currentTarget.play()}
+              onMouseEnter={(e) => {
+                e.currentTarget.play().catch(() => {
+                  // 播放被中断或失败，正常情况
+                })
+              }}
               onMouseLeave={(e) => {
                 e.currentTarget.pause()
                 e.currentTarget.currentTime = 0
               }}
-              onError={(e) => {
-                console.error('Scene card video error:', scene.id, scene.videoUrl?.substring(0, 50))
+              onError={() => {
                 setVideoError(true)
               }}
             />
