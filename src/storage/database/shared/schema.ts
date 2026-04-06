@@ -120,11 +120,11 @@ export const characters = pgTable(
     description: text("description"), // 人物描述
     appearance: text("appearance"), // 外貌特征
     personality: text("personality"), // 性格特点
-    // 角色造型图
+    // 角色造型图（保留向后兼容）
     frontViewKey: text("front_view_key"), // 正面图 key
     sideViewKey: text("side_view_key"), // 侧面图 key
     backViewKey: text("back_view_key"), // 背面图 key
-    referenceImageKey: text("reference_image_key"),
+    referenceImageKey: text("reference_image_key"), // 参考图 key
     // 人物配音
     voiceId: varchar("voice_id", { length: 100 }), // 语音ID
     voiceUrl: text("voice_url"), // 配音样本URL
@@ -139,6 +139,34 @@ export const characters = pgTable(
   (table) => [
     index("characters_project_id_idx").on(table.projectId),
     index("characters_name_idx").on(table.name),
+  ]
+)
+
+/**
+ * 人物形象表 - 存储角色的多个形象
+ * 支持一个角色拥有多套服装、多个角度的形象
+ */
+export const characterAppearances = pgTable(
+  "character_appearances",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    characterId: varchar("character_id", { length: 36 }).notNull(), // 关联的人物ID
+    name: varchar("name", { length: 100 }).notNull().default("默认形象"), // 形象名称
+    imageKey: text("image_key").notNull(), // 图片存储key
+    imageUrl: text("image_url"), // 图片URL
+    isPrimary: boolean("is_primary").default(false), // 是否主形象
+    description: text("description"), // 形象描述
+    tags: jsonb("tags").default([]), // 形象标签
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("character_appearances_character_id_idx").on(table.characterId),
+    index("character_appearances_is_primary_idx").on(table.characterId, table.isPrimary),
   ]
 )
 
@@ -242,6 +270,27 @@ export const updateCharacterSchema = createCoercedInsertSchema(characters)
   })
   .partial()
 
+// CharacterAppearance schemas
+export const insertCharacterAppearanceSchema = createCoercedInsertSchema(characterAppearances).pick({
+  characterId: true,
+  name: true,
+  imageKey: true,
+  imageUrl: true,
+  isPrimary: true,
+  description: true,
+  tags: true,
+})
+
+export const updateCharacterAppearanceSchema = createCoercedInsertSchema(characterAppearances)
+  .pick({
+    name: true,
+    imageUrl: true,
+    isPrimary: true,
+    description: true,
+    tags: true,
+  })
+  .partial()
+
 // Scene schemas
 export const insertSceneSchema = createCoercedInsertSchema(scenes).pick({
   projectId: true,
@@ -309,6 +358,10 @@ export type UpdateProject = z.infer<typeof updateProjectSchema>
 export type Character = typeof characters.$inferSelect
 export type InsertCharacter = z.infer<typeof insertCharacterSchema>
 export type UpdateCharacter = z.infer<typeof updateCharacterSchema>
+
+export type CharacterAppearance = typeof characterAppearances.$inferSelect
+export type InsertCharacterAppearance = z.infer<typeof insertCharacterAppearanceSchema>
+export type UpdateCharacterAppearance = z.infer<typeof updateCharacterAppearanceSchema>
 
 export type Scene = typeof scenes.$inferSelect
 export type InsertScene = z.infer<typeof insertSceneSchema>

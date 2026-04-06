@@ -24,21 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { 
-  Plus, 
-  MoreVertical, 
-  Trash2, 
-  Edit, 
-  Sparkles, 
-  Loader2,
-  User,
-  Image as ImageIcon,
-  BookmarkPlus,
-  Library,
-  Search,
-  Check,
-  Download
-} from "lucide-react"
+
 import { toast } from "sonner"
 
 interface Character {
@@ -55,34 +41,25 @@ interface Character {
   imageUrl?: string
 }
 
+interface CharacterAppearance {
+  id: string
+  characterId: string
+  name: string
+  imageKey: string
+  imageUrl: string | null
+  isPrimary: boolean
+  description: string | null
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
 interface CharactersPanelProps {
   projectId: string
   characters: Character[]
   onUpdate: () => void
 }
 
-export function CharactersPanel({ projectId, characters, onUpdate }: CharactersPanelProps) {
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false)
-  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [generating, setGenerating] = useState<string | null>(null)
-  const [addingToLibrary, setAddingToLibrary] = useState<string | null>(null)
-  
-  // 人物库相关状态
-  const [libraryCharacters, setLibraryCharacters] = useState<Character[]>([])
-  const [libraryLoading, setLibraryLoading] = useState(false)
-  const [librarySearch, setLibrarySearch] = useState('')
-  const [importingFromLibrary, setImportingFromLibrary] = useState<string | null>(null)
-  
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    appearance: "",
-    personality: "",
-    tags: [] as string[]
-  })
 
   // 加载人物库
   const loadLibrary = async () => {
@@ -442,9 +419,6 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
               loading={creating}
               submitText="保存修改"
             />
-          </DialogContent>
-        </Dialog>
-      </div>
 
       {characters.length === 0 ? (
         <Card className="border-dashed">
@@ -454,20 +428,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {characters.map((character) => (
-            <CharacterCard
-              key={character.id}
-              character={character}
-              generating={generating === character.id}
-              addingToLibrary={addingToLibrary === character.id}
-              onEdit={() => openEditDialog(character)}
-              onDelete={() => handleDelete(character.id)}
-              onGenerateViews={() => handleGenerateViews(character)}
-              onAddToLibrary={(imageUrl) => handleAddToLibrary(character, imageUrl)}
-            />
-          ))}
-        </div>
+
       )}
     </div>
   )
@@ -552,24 +513,7 @@ function CharacterForm({
   )
 }
 
-// 人物卡片组件
-function CharacterCard({
-  character,
-  generating,
-  addingToLibrary,
-  onEdit,
-  onDelete,
-  onGenerateViews,
-  onAddToLibrary
-}: {
-  character: Character
-  generating: boolean
-  addingToLibrary: boolean
-  onEdit: () => void
-  onDelete: () => void
-  onGenerateViews: () => void
-  onAddToLibrary: (imageUrl: string | null) => void
-}) {
+
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   // 获取图片 URL
@@ -609,26 +553,7 @@ function CharacterCard({
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={onEdit}>
-                <Edit className="w-4 h-4 mr-2" />
-                编辑
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={onGenerateViews} disabled={generating}>
-                <Sparkles className="w-4 h-4 mr-2" />
-                生成角色造型图
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onAddToLibrary(imageUrl)} disabled={addingToLibrary}>
-                <BookmarkPlus className="w-4 h-4 mr-2" />
-                {addingToLibrary ? '添加中...' : '添加到人物库'}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive" onClick={onDelete}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                删除
-              </DropdownMenuItem>
-            </DropdownMenuContent>
+
           </DropdownMenu>
         </div>
       </CardHeader>
