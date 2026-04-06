@@ -63,13 +63,18 @@ import { cn } from "@/lib/utils"
 interface Scene {
   id: string
   sceneNumber: number
+  scene_number?: number
   title: string | null
   description: string
   dialogue: string | null
   imageUrl: string | null
+  image_url?: string | null
   videoUrl: string | null
+  video_url?: string | null
   videoStatus?: string
+  video_status?: string
   status: string
+  episodeId?: string | null
   episode_id?: string | null
 }
 
@@ -168,8 +173,8 @@ export function EpisodesPanel({
     return maxEpisode + 1
   }
 
-  // 获取未分配的分镜
-  const unassignedScenes = scenes.filter(s => !s.episode_id)
+  // 获取未分配的分镜（同时兼容 camelCase 和 snake_case）
+  const unassignedScenes = scenes.filter(s => !s.episodeId && !s.episode_id)
 
   const handleCreate = async () => {
     if (!formData.title.trim()) {
@@ -981,20 +986,20 @@ export function EpisodesPanel({
               {selectedEpisode?.scenes && selectedEpisode.scenes.length > 0 ? (
                 <div className="space-y-2">
                   {selectedEpisode.scenes
-                    .sort((a, b) => a.sceneNumber - b.sceneNumber)
+                    .sort((a, b) => (a.scene_number || a.sceneNumber || 0) - (b.scene_number || b.sceneNumber || 0))
                     .map((scene, index) => (
                       <div 
                         key={scene.id}
                         className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg"
                       >
                         <div className="flex items-center justify-center w-8 h-8 rounded bg-muted font-medium text-sm">
-                          {scene.sceneNumber}
+                          {scene.scene_number || scene.sceneNumber}
                         </div>
-                        {scene.imageUrl ? (
+                        {scene.image_url || scene.imageUrl ? (
                           <div className="w-20 h-14 rounded overflow-hidden bg-muted flex-shrink-0">
                             <img 
-                              src={scene.imageUrl} 
-                              alt={`分镜 ${scene.sceneNumber}`}
+                              src={(scene.image_url || scene.imageUrl) || ''} 
+                              alt={`分镜 ${scene.scene_number || scene.sceneNumber}`}
                               className="w-full h-full object-cover"
                             />
                           </div>
@@ -1004,13 +1009,13 @@ export function EpisodesPanel({
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{scene.title || `分镜 ${scene.sceneNumber}`}</p>
+                          <p className="font-medium truncate">{scene.title || `分镜 ${scene.scene_number || scene.sceneNumber}`}</p>
                           <p className="text-xs text-muted-foreground truncate">{scene.description}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {scene.videoUrl ? (
+                          {(scene.video_url || scene.videoUrl) ? (
                             <Badge variant="default" className="bg-green-500">已生成</Badge>
-                          ) : scene.videoStatus === 'generating' ? (
+                          ) : scene.video_status === 'generating' || scene.videoStatus === 'generating' ? (
                             <Badge variant="default" className="bg-blue-500">生成中</Badge>
                           ) : (
                             <Badge variant="outline">待生成</Badge>
