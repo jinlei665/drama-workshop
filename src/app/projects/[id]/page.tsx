@@ -54,6 +54,7 @@ import { ScenesPanel } from "./scenes-panel"
 import { EpisodesPanel } from "./episodes-panel-new"
 import { VideoGenerationProgress } from "@/components/video-generation-progress"
 import { VideoMergePanel } from "@/components/video-merge-panel"
+import { ModelConfigProvider } from "@/lib/model-config"
 
 interface Project {
   id: string
@@ -421,7 +422,8 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const pendingVideoScenes = completedScenes.filter(s => s.videoStatus === "pending" || s.videoStatus === "failed")
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
+    <ModelConfigProvider>
+      <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       {/* 头部 */}
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -903,6 +905,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
         </DialogContent>
       </Dialog>
     </div>
+    </ModelConfigProvider>
   )
 }
 
