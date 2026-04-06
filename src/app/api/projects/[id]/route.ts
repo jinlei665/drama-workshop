@@ -68,25 +68,55 @@ export async function GET(
           
           if (charError) console.warn('[Project API] Failed to fetch characters:', charError.message)
           
-          // 获取分镜
-          const { data: scenes, error: sceneError } = await db
-            .from('scenes')
-            .select('*')
-            .eq('project_id', id)
-            .order('scene_number', { ascending: true })
+          // 获取分镜和剧集 - 使用 pg 直连绕过 Supabase PostgREST schema cache 问题
+          let scenes: any[] = []
+          let episodes: any[] = []
           
-          console.log(`[Project API] Scenes query:`, {
-            count: scenes?.length,
-            error: sceneError?.message
-          })
-          
-          // 获取剧集
-          const { data: episodes, error: epError } = await db
-            .from('episodes')
-            .select('*')
-            .eq('project_id', id)
-          
-          if (epError) console.warn('Failed to fetch episodes:', epError.message)
+          try {
+            const { getPool } = await import('@/storage/database/pg-client')
+            const pool = await getPool()
+            
+            // 使用 pg 直连查询分镜（确保返回所有记录，包括新创建的）
+            const scenesResult = await pool.query(
+              `SELECT * FROM scenes WHERE project_id = $1 ORDER BY scene_number ASC`,
+              [id]
+            )
+            scenes = scenesResult.rows
+            console.log(`[Project API] PG query scenes: ${scenes.length} records`)
+            
+            // 使用 pg 直连查询剧集
+            const episodesResult = await pool.query(
+              `SELECT * FROM episodes WHERE project_id = $1`,
+              [id]
+            )
+            episodes = episodesResult.rows
+            console.log(`[Project API] PG query episodes: ${episodes.length} records`)
+          } catch (pgError) {
+            console.warn('[Project API] PG query failed, falling back to Supabase:', pgError)
+            // 回退到 Supabase 查询
+            const { data: supabaseScenes, error: sceneError } = await db
+              .from('scenes')
+              .select('*')
+              .eq('project_id', id)
+              .order('scene_number', { ascending: true })
+            
+            console.log(`[Project API] Supabase scenes fallback:`, {
+              count: supabaseScenes?.length,
+              error: sceneError?.message
+            })
+            
+            if (sceneError) console.warn('[Project API] Failed to fetch scenes:', sceneError?.message)
+            else scenes = supabaseScenes || []
+            
+            // 获取剧集
+            const { data: supabaseEpisodes, error: epError } = await db
+              .from('episodes')
+              .select('*')
+              .eq('project_id', id)
+            
+            if (epError) console.warn('Failed to fetch episodes:', epError?.message)
+            else episodes = supabaseEpisodes || []
+          }
           
           return successResponse({
             project: {
@@ -138,6 +168,7 @@ export async function GET(
               createdAt: s.created_at,
             })),
             episodes: episodes || [],
+            scripts: [], // Scripts 通过独立 API 获取
           })
         }
       }
