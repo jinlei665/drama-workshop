@@ -36,9 +36,11 @@ import {
   Search,
   Library,
   User,
-  Check
+  Check,
+  GripVertical
 } from "lucide-react"
 import { toast } from "sonner"
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd"
 
 interface Character {
   id: string
@@ -481,6 +483,47 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
     }
   }
 
+  // 处理拖拽结束
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination || !selectedCharacterForAppearances) return
+
+    const newAppearances = Array.from(appearances)
+    const [reorderedItem] = newAppearances.splice(result.source.index, 1)
+    newAppearances.splice(result.destination.index, 0, reorderedItem)
+
+    // 更新本地状态
+    setAppearances(newAppearances)
+
+    // 更新数据库
+    try {
+      const res = await fetch('/api/character-appearances/reorder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterId: selectedCharacterForAppearances.id,
+          appearanceIds: newAppearances.map(a => a.id)
+        })
+      })
+
+      if (!res.ok) {
+        throw new Error('排序更新失败')
+      }
+
+      toast.success('排序已更新')
+    } catch (error) {
+      console.error('更新排序失败:', error)
+      toast.error('更新排序失败')
+      // 重新加载列表
+      if (selectedCharacterForAppearances) {
+        const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
+        if (listRes.ok) {
+          const listData = await listRes.json()
+          setAppearances(listData.appearances || [])
+        }
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -722,52 +765,78 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {appearances.map((appearance) => (
-                        <div
-                          key={appearance.id}
-                          className={`relative group border rounded-lg overflow-hidden ${
-                            appearance.isPrimary ? 'ring-2 ring-primary' : ''
-                          }`}
-                        >
-                          {appearance.isPrimary && (
-                            <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-0.5 rounded">
-                              主形象
-                            </div>
-                          )}
-                          <img
-                            src={appearance.imageUrl || ''}
-                            alt={appearance.name}
-                            className="w-full aspect-square object-cover"
-                          />
-                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                            {!appearance.isPrimary && (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => handleSetPrimary(appearance.id)}
+                    <DragDropContext onDragEnd={handleDragEnd}>
+                      <Droppable droppableId="appearances">
+                        {(provided) => (
+                          <div
+                            {...provided.droppableProps}
+                            ref={provided.innerRef}
+                            className="grid grid-cols-2 md:grid-cols-3 gap-4"
+                          >
+                            {appearances.map((appearance, index) => (
+                              <Draggable
+                                key={appearance.id}
+                                draggableId={appearance.id}
+                                index={index}
                               >
-                                <Check className="w-4 h-4 mr-1" />
-                                设为主形象
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteAppearance(appearance.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                                {(provided, snapshot) => (
+                                  <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    className={`relative group border rounded-lg overflow-hidden ${
+                                      appearance.isPrimary ? 'ring-2 ring-primary' : ''
+                                    } ${snapshot.isDragging ? 'shadow-lg' : ''}`}
+                                  >
+                                    <div
+                                      {...provided.dragHandleProps}
+                                      className="absolute top-2 left-2 z-20 bg-black/50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-move"
+                                    >
+                                      <GripVertical className="w-4 h-4" />
+                                    </div>
+                                    {appearance.isPrimary && (
+                                      <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-0.5 rounded">
+                                        主形象
+                                      </div>
+                                    )}
+                                    <img
+                                      src={appearance.imageUrl || ''}
+                                      alt={appearance.name}
+                                      className="w-full aspect-square object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                      {!appearance.isPrimary && (
+                                        <Button
+                                          size="sm"
+                                          variant="secondary"
+                                          onClick={() => handleSetPrimary(appearance.id)}
+                                        >
+                                          <Check className="w-4 h-4 mr-1" />
+                                          设为主形象
+                                        </Button>
+                                      )}
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        onClick={() => handleDeleteAppearance(appearance.id)}
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                                      <p className="text-white text-sm font-medium">{appearance.name}</p>
+                                      {appearance.description && (
+                                        <p className="text-white/70 text-xs line-clamp-1">{appearance.description}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </Draggable>
+                            ))}
+                            {provided.placeholder}
                           </div>
-                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-                            <p className="text-white text-sm font-medium">{appearance.name}</p>
-                            {appearance.description && (
-                              <p className="text-white/70 text-xs line-clamp-1">{appearance.description}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        )}
+                      </Droppable>
+                    </DragDropContext>
                   </CardContent>
                 </Card>
               )}

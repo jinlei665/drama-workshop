@@ -8,7 +8,7 @@ import { downloadFile } from "@/lib/utils"
 
 // POST /api/generate/scene-image - 生成分镜图片（短剧视频分镜）
 export async function POST(request: NextRequest) {
-  const { sceneId, description, emotion, characterDescriptions, characterIds } = await request.json()
+  const { sceneId, description, emotion, characterAppearances, characterIds } = await request.json()
 
   if (!sceneId || !description) {
     return NextResponse.json(
@@ -63,26 +63,61 @@ export async function POST(request: NextRequest) {
     // 获取人物参考图（用于保持人物一致性）
     let characterReferenceImages: string[] = []
 
-    // 如果传入了 characterIds，获取人物的参考图
-    if (characterIds && characterIds.length > 0) {
-      console.log(`[Scene Image] Getting reference images for ${characterIds.length} characters:`, characterIds)
+    // 如果传入了 characterAppearances，使用选中的形象
+    if (characterAppearances && characterAppearances.length > 0) {
+      console.log(`[Scene Image] Getting reference images for ${characterAppearances.length} characters using selected appearances`)
+
+      // 使用 Promise.all 等待所有异步操作完成
+      const appearancePromises = characterAppearances.map(async (charApp: any) => {
+        if (charApp.selectedAppearance && charApp.selectedAppearance.imageUrl) {
+          console.log(`[Scene Image] Character ${charApp.characterName}: using selected appearance image`)
+          return charApp.selectedAppearance.imageUrl
+        } else if (charApp.appearanceDescription) {
+          console.log(`[Scene Image] Character ${charApp.characterName}: using character front view`)
+          // 如果没有选中的形象，使用角色的正面视图
+          if (isDatabaseConfigured()) {
+            // 从数据库获取角色的正面视图
+            const { data } = await getSupabaseClient()
+              .from('characters')
+              .select('front_view_key, image_url')
+              .eq('id', charApp.characterId)
+              .single()
+            
+            if (data) {
+              const key = (data as any).front_view_key || (data as any).image_url
+              if (key) {
+                const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+                const url = key.startsWith('http') ? key : `${domain}/characters/${key}`
+                return url
+              }
+            }
+          }
+        }
+        return null
+      })
+
+      const results = await Promise.all(appearancePromises)
+      characterReferenceImages = results.filter(Boolean) as string[]
+    } else if (characterIds && characterIds.length > 0) {
+      // 兼容旧的逻辑：使用 characterIds
+      console.log(`[Scene Image] Getting reference images for ${characterIds.length} characters using characterIds (legacy)`)
 
       if (isDatabaseConfigured()) {
         const supabase = getSupabaseClient()
-        const { data: characters } = await supabase
+        const { data: chars } = await supabase
           .from('characters')
           .select('id, name, front_view_key, image_url')
           .in('id', characterIds)
 
-        console.log(`[Scene Image] Query result:`, characters?.map((c: any) => ({
+        console.log(`[Scene Image] Query result:`, chars?.map((c: any) => ({
           id: c.id,
           name: c.name,
           hasFrontView: !!c.front_view_key,
           hasImageUrl: !!c.image_url
         })))
 
-        if (characters) {
-          characterReferenceImages = characters
+        if (chars) {
+          characterReferenceImages = chars
             .map((c: any) => {
               const key = c.front_view_key || c.image_url
               if (!key) {
@@ -107,7 +142,7 @@ export async function POST(request: NextRequest) {
         console.log(`[Scene Image] Getting characters from memory`)
         characterReferenceImages = characterIds
           .map((id: string) => {
-            const char = memoryCharacters.find(c => c.id === id)
+            const char = memoryCharacters.find((c: any) => c.id === id)
             console.log(`[Scene Image] Character ${char?.name} (${id}):`, {
               hasFrontView: !!char?.frontViewKey,
               hasImageUrl: !!char?.imageUrl
@@ -125,7 +160,7 @@ export async function POST(request: NextRequest) {
 
       console.log(`[Scene Image] Final reference images:`, characterReferenceImages)
     } else {
-      console.log(`[Scene Image] No character IDs provided`)
+      console.log(`[Scene Image] No character information provided`)
     }
 
     // 构建分镜提示词
@@ -135,9 +170,22 @@ export async function POST(request: NextRequest) {
       prompt += `，${emotion}的氛围`
     }
 
-    // 添加人物描述
-    if (characterDescriptions && characterDescriptions.length > 0) {
-      prompt += `，画面中的角色：${characterDescriptions.join("、")}`
+    // 添加人物描述（兼容旧逻辑）
+    if (characterAppearances && characterAppearances.length > 0) {
+      const charDescriptions = characterAppearances
+        .map((c: any) => c.appearanceDescription)
+        .filter(Boolean)
+      if (charDescriptions.length > 0) {
+        prompt += `，画面中的角色：${charDescriptions.join("、")}`
+      }
+    } else if (characterIds && characterIds.length > 0) {
+      // 旧逻辑
+      const charDescriptions = characterIds
+        .map((id: string) => memoryCharacters.find((c: any) => c.id === id)?.appearance)
+        .filter(Boolean)
+      if (charDescriptions.length > 0) {
+        prompt += `，画面中的角色：${charDescriptions.join("、")}`
+      }
     }
 
     prompt += "，4K画质，细节丰富"

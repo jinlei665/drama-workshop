@@ -201,11 +201,17 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
   const [creating, setCreating] = useState(false)
   const [generatingImage, setGeneratingImage] = useState<string | null>(null)
   const [generatingVideo, setGeneratingVideo] = useState<string | null>(null)
+  
+  // 角色形象列表
+  const [characterAppearancesMap, setCharacterAppearancesMap] = useState<Record<string, any[]>>({})
+  const [loadingAppearances, setLoadingAppearances] = useState<Record<string, boolean>>({})
+
   const [imageGenerateFormData, setImageGenerateFormData] = useState({
     description: "",
     action: "",
     emotion: "",
-    characterIds: [] as string[]
+    characterIds: [] as string[],
+    characterAppearances: {} as Record<string, string> // characterId -> appearanceId
   })
   const [videoGenerateFormData, setVideoGenerateFormData] = useState({
     duration: 6,
@@ -339,18 +345,48 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
   }
 
   // 生成分镜图片 - 打开确认对话框
-  const handleGenerateImage = (scene: Scene) => {
+  const handleGenerateImage = async (scene: Scene) => {
     if (!scene.description) {
       toast.error("请先填写场景描述")
       return
     }
 
     setSelectedScene(scene)
+    
+    // 获取角色的形象列表
+    const characterIds = scene.characterIds || []
+    const newCharacterAppearancesMap: Record<string, string> = {}
+    
+    for (const charId of characterIds) {
+      try {
+        setLoadingAppearances(prev => ({ ...prev, [charId]: true }))
+        const res = await fetch(`/api/characters/${charId}/appearances`)
+        if (res.ok) {
+          const data = await res.json()
+          setCharacterAppearancesMap(prev => ({
+            ...prev,
+            [charId]: data.appearances || []
+          }))
+          
+          // 默认选择主形象
+          const primaryAppearance = (data.appearances || []).find((a: any) => a.is_primary)
+          if (primaryAppearance) {
+            newCharacterAppearancesMap[charId] = primaryAppearance.id
+          }
+        }
+      } catch (error) {
+        console.error(`获取角色 ${charId} 的形象列表失败:`, error)
+      } finally {
+        setLoadingAppearances(prev => ({ ...prev, [charId]: false }))
+      }
+    }
+
     setImageGenerateFormData({
       description: scene.description,
       action: scene.action || "",
       emotion: scene.emotion || "",
-      characterIds: scene.characterIds || []
+      characterIds: characterIds,
+      characterAppearances: newCharacterAppearancesMap
     })
     setImageGenerateDialogOpen(true)
   }
@@ -363,10 +399,24 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
     setImageGenerateDialogOpen(false)
 
     try {
-      // 获取出场人物的外貌描述
-      const charDescriptions = imageGenerateFormData.characterIds
-        .map(id => characters.find(c => c.id === id)?.appearance)
-        .filter(Boolean)
+      // 获取出场人物的外貌描述和选中的形象
+      const characterAppearances: any[] = []
+      
+      imageGenerateFormData.characterIds.forEach(charId => {
+        const char = characters.find(c => c.id === charId)
+        if (char) {
+          const appearanceId = imageGenerateFormData.characterAppearances[charId]
+          const appearances = characterAppearancesMap[charId] || []
+          const selectedAppearance = appearances.find((a: any) => a.id === appearanceId)
+          
+          characterAppearances.push({
+            characterId: charId,
+            characterName: char.name,
+            appearanceDescription: char.appearance,
+            selectedAppearance: selectedAppearance || null
+          })
+        }
+      })
 
       const res = await fetch("/api/generate/scene-image", {
         method: "POST",
@@ -375,7 +425,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
           sceneId: selectedScene.id,
           description: imageGenerateFormData.description,
           emotion: imageGenerateFormData.emotion,
-          characterDescriptions: charDescriptions,
+          characterAppearances,
           characterIds: imageGenerateFormData.characterIds
         })
       })
@@ -793,7 +843,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                     <ImageIcon className="w-4 h-4" />
                     人物参考图
                     <span className="text-xs text-muted-foreground">
-                      (AI 将根据这些图片保持人物外观一致)
+                      (AI 将根据这些图片保持人物外观一致，可选择不同形象)
                     </span>
                   </Label>
                   <div className="grid grid-cols-3 gap-3">
@@ -801,64 +851,50 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                       const char = characters.find(c => c.id === charId)
                       if (!char) return null
 
-                      // 获取角色参考图 URL
-                      let imageUrl = null
-                      // 优先使用 frontViewKey
-                      if (char.frontViewKey) {
-                        if (char.frontViewKey.startsWith('http')) {
-                          imageUrl = char.frontViewKey
-                        } else {
-                          // frontViewKey 可能是 "char_xxx/views_xxx.png" 或 "characters/char_xxx/views_xxx.png"
-                          // 需要去除 "characters/" 前缀（如果存在）
-                          const cleanKey = char.frontViewKey.startsWith('characters/')
-                            ? char.frontViewKey.replace('characters/', '')
-                            : char.frontViewKey
-                          imageUrl = `/characters/${cleanKey}`
-                        }
-                      }
-                      // 其次使用 imageUrl
-                      if (!imageUrl && char.imageUrl) {
-                        if (char.imageUrl.startsWith('http')) {
-                          imageUrl = char.imageUrl
-                        } else {
-                          const cleanKey = char.imageUrl.startsWith('characters/')
-                            ? char.imageUrl.replace('characters/', '')
-                            : char.imageUrl
-                          imageUrl = `/characters/${cleanKey}`
-                        }
-                      }
+                      const appearances = characterAppearancesMap[charId] || []
+                      const selectedAppearanceId = imageGenerateFormData.characterAppearances[charId]
+                      const selectedAppearance = appearances.find((a: any) => a.id === selectedAppearanceId)
+                      const isLoading = loadingAppearances[charId]
 
-                      // 调试日志
-                      console.log(`[Scene Image] Character ${char.name}:`, {
-                        id: char.id,
-                        frontViewKey: char.frontViewKey,
-                        imageUrl: char.imageUrl,
-                        finalImageUrl: imageUrl
-                      })
+                      // 获取显示的图片 URL
+                      let imageUrl = selectedAppearance?.imageUrl || null
+                      
+                      // 如果没有选中的形象，尝试使用角色的正面视图
+                      if (!imageUrl) {
+                        if (char.frontViewKey) {
+                          if (char.frontViewKey.startsWith('http')) {
+                            imageUrl = char.frontViewKey
+                          } else {
+                            const cleanKey = char.frontViewKey.startsWith('characters/')
+                              ? char.frontViewKey.replace('characters/', '')
+                              : char.frontViewKey
+                            imageUrl = `/characters/${cleanKey}`
+                          }
+                        }
+                        if (!imageUrl && char.imageUrl) {
+                          if (char.imageUrl.startsWith('http')) {
+                            imageUrl = char.imageUrl
+                          } else {
+                            const cleanKey = char.imageUrl.startsWith('characters/')
+                              ? char.imageUrl.replace('characters/', '')
+                              : char.imageUrl
+                            imageUrl = `/characters/${cleanKey}`
+                          }
+                        }
+                      }
 
                       return (
-                        <div key={char.id} className="space-y-1">
-                          <div className="aspect-square rounded-lg bg-secondary/50 overflow-hidden border">
-                            {imageUrl ? (
+                        <div key={char.id} className="space-y-2">
+                          <div className="aspect-square rounded-lg bg-secondary/50 overflow-hidden border relative">
+                            {isLoading ? (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                              </div>
+                            ) : imageUrl ? (
                               <img
                                 src={imageUrl}
                                 alt={char.name}
                                 className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  console.error(`[Scene Image] Failed to load image for ${char.name}:`, imageUrl, e)
-                                  const target = e.target as HTMLImageElement
-                                  target.style.display = 'none'
-                                  const parent = target.parentElement
-                                  if (parent) {
-                                    const noImageDiv = document.createElement('div')
-                                    noImageDiv.className = 'w-full h-full flex items-center justify-center'
-                                    noImageDiv.innerHTML = '<span class="text-xs text-muted-foreground">无参考图</span>'
-                                    parent.appendChild(noImageDiv)
-                                  }
-                                }}
-                                onLoad={() => {
-                                  console.log(`[Scene Image] Successfully loaded image for ${char.name}:`, imageUrl)
-                                }}
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center">
@@ -866,7 +902,35 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                               </div>
                             )}
                           </div>
-                          <p className="text-xs text-center text-muted-foreground">{char.name}</p>
+                          
+                          {/* 角色名称和形象选择 */}
+                          <div className="space-y-1">
+                            <p className="text-xs text-center font-medium">{char.name}</p>
+                            
+                            {/* 形象选择下拉菜单 */}
+                            {appearances.length > 0 && (
+                              <select
+                                value={selectedAppearanceId || ''}
+                                onChange={(e) => {
+                                  setImageGenerateFormData({
+                                    ...imageGenerateFormData,
+                                    characterAppearances: {
+                                      ...imageGenerateFormData.characterAppearances,
+                                      [charId]: e.target.value
+                                    }
+                                  })
+                                }}
+                                className="w-full text-xs px-2 py-1 rounded border bg-background"
+                              >
+                                {appearances.map((app: any) => (
+                                  <option key={app.id} value={app.id}>
+                                    {app.name}
+                                    {app.is_primary ? ' (默认)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         </div>
                       )
                     })}

@@ -9,7 +9,7 @@ export async function POST() {
   try {
     const { getPool } = await import('@/storage/database/pg-client')
 
-    const pool = getPool()
+    const pool = await getPool()
 
     if (!pool) {
       return errorResponse('数据库未配置', 500)
