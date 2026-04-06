@@ -7,13 +7,13 @@ import { successResponse, errorResponse } from '@/lib/api/response'
 
 export async function POST() {
   try {
-    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    const { getPool } = await import('@/storage/database/pg-client')
 
-    if (!isDatabaseConfigured()) {
+    const pool = getPool()
+
+    if (!pool) {
       return errorResponse('数据库未配置', 500)
     }
-
-    const db = getSupabaseClient()
 
     // 创建 character_appearances 表
     const createTableSQL = `
@@ -33,27 +33,36 @@ export async function POST() {
 
     // 创建索引
     const createIndex1SQL = `
-      CREATE INDEX IF NOT EXISTS character_appearances_character_id_idx 
+      CREATE INDEX IF NOT EXISTS character_appearances_character_id_idx
       ON character_appearances(character_id);
     `
 
     const createIndex2SQL = `
-      CREATE INDEX IF NOT EXISTS character_appearances_is_primary_idx 
+      CREATE INDEX IF NOT EXISTS character_appearances_is_primary_idx
       ON character_appearances(character_id, is_primary);
     `
 
     // 执行 SQL
-    await db.rpc('exec_sql', { sql: createTableSQL }).catch(e => {
-      console.log('Table creation error (might already exist):', e)
-    })
+    try {
+      await pool.query(createTableSQL)
+      console.log('Table created successfully')
+    } catch (e: any) {
+      console.log('Table creation error (might already exist):', e.message)
+    }
 
-    await db.rpc('exec_sql', { sql: createIndex1SQL }).catch(e => {
-      console.log('Index1 creation error:', e)
-    })
+    try {
+      await pool.query(createIndex1SQL)
+      console.log('Index1 created successfully')
+    } catch (e: any) {
+      console.log('Index1 creation error:', e.message)
+    }
 
-    await db.rpc('exec_sql', { sql: createIndex2SQL }).catch(e => {
-      console.log('Index2 creation error:', e)
-    })
+    try {
+      await pool.query(createIndex2SQL)
+      console.log('Index2 created successfully')
+    } catch (e: any) {
+      console.log('Index2 creation error:', e.message)
+    }
 
     return successResponse({
       message: '数据库迁移成功',

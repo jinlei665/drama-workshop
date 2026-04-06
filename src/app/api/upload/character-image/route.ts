@@ -31,7 +31,13 @@ export async function POST(request: NextRequest) {
 
     try {
       // 使用阿里云 OSS 上传
-      const ossClient = await import('@/lib/oss').then(m => m.default)
+      const OSS = await import('ali-oss')
+      const ossClient = new OSS.default({
+        region: process.env.ALIYUN_OSS_REGION!,
+        accessKeyId: process.env.ALIYUN_OSS_ACCESS_KEY_ID!,
+        accessKeySecret: process.env.ALIYUN_OSS_ACCESS_KEY_SECRET!,
+        bucket: process.env.ALIYUN_OSS_BUCKET!,
+      })
 
       // 生成唯一的文件名
       const timestamp = Date.now()

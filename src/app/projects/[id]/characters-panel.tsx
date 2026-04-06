@@ -24,7 +24,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-
+import {
+  Plus,
+  MoreVertical,
+  Trash2,
+  Edit,
+  Loader2,
+  Image as ImageIcon,
+  Download,
+  Upload,
+  Search,
+  Library,
+  User,
+  Check
+} from "lucide-react"
 import { toast } from "sonner"
 
 interface Character {
@@ -60,6 +73,38 @@ interface CharactersPanelProps {
   onUpdate: () => void
 }
 
+export function CharactersPanel({ projectId, characters, onUpdate }: CharactersPanelProps) {
+  // 人物库相关状态
+  const [libraryDialogOpen, setLibraryDialogOpen] = useState(false)
+  const [libraryLoading, setLibraryLoading] = useState(false)
+  const [libraryCharacters, setLibraryCharacters] = useState<Character[]>([])
+  const [librarySearch, setLibrarySearch] = useState("")
+
+  // 人物操作状态
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [generating, setGenerating] = useState<string | null>(null)
+  const [importingFromLibrary, setImportingFromLibrary] = useState<string | null>(null)
+  const [addingToLibrary, setAddingToLibrary] = useState<string | null>(null)
+  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
+  const [formData, setFormData] = useState({
+    name: "",
+    description: "",
+    appearance: "",
+    personality: "",
+    tags: [] as string[]
+  })
+
+  // 形象管理相关状态
+  const [appearanceDialogOpen, setAppearanceDialogOpen] = useState(false)
+  const [selectedCharacterForAppearances, setSelectedCharacterForAppearances] = useState<Character | null>(null)
+  const [appearances, setAppearances] = useState<CharacterAppearance[]>([])
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [uploadedImage, setUploadedImage] = useState<{ url: string; file: File } | null>(null)
+  const [appearanceName, setAppearanceName] = useState("")
+  const [appearanceDescription, setAppearanceDescription] = useState("")
+  const [loadingAppearances, setLoadingAppearances] = useState(false)
 
   // 加载人物库
   const loadLibrary = async () => {
@@ -280,6 +325,162 @@ interface CharactersPanelProps {
     setEditDialogOpen(true)
   }
 
+  // 打开形象管理对话框
+  const openAppearanceDialog = async (character: Character) => {
+    setSelectedCharacterForAppearances(character)
+    setAppearanceDialogOpen(true)
+    setLoadingAppearances(true)
+
+    try {
+      const res = await fetch(`/api/characters/${character.id}/appearances`)
+      if (res.ok) {
+        const data = await res.json()
+        setAppearances(data.appearances || [])
+      }
+    } catch (error) {
+      console.error('加载形象列表失败:', error)
+      toast.error('加载形象列表失败')
+    } finally {
+      setLoadingAppearances(false)
+    }
+  }
+
+  // 上传图片
+  const handleImageUpload = async (file: File) => {
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload/character-image', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || '上传失败')
+      }
+
+      const data = await res.json()
+      setUploadedImage({
+        url: data.url,
+        file: file
+      })
+      toast.success('图片上传成功')
+    } catch (error) {
+      console.error('上传图片失败:', error)
+      toast.error('上传图片失败')
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  // 添加形象
+  const handleAddAppearance = async () => {
+    if (!uploadedImage || !selectedCharacterForAppearances) return
+
+    if (!appearanceName.trim()) {
+      toast.error('请输入形象名称')
+      return
+    }
+
+    setCreating(true)
+    try {
+      const res = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: appearanceName,
+          imageKey: uploadedImage.url,
+          description: appearanceDescription || null
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || '添加失败')
+      }
+
+      toast.success('形象添加成功')
+
+      // 重新加载形象列表
+      const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        setAppearances(listData.appearances || [])
+      }
+
+      // 清空表单
+      setUploadedImage(null)
+      setAppearanceName('')
+      setAppearanceDescription('')
+    } catch (error) {
+      console.error('添加形象失败:', error)
+      toast.error('添加形象失败')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  // 设置主形象
+  const handleSetPrimary = async (appearanceId: string) => {
+    if (!selectedCharacterForAppearances) return
+
+    try {
+      const res = await fetch(`/api/character-appearances/${appearanceId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isPrimary: true })
+      })
+
+      if (!res.ok) {
+        throw new Error('设置失败')
+      }
+
+      toast.success('已设为默认形象')
+
+      // 重新加载形象列表
+      const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        setAppearances(listData.appearances || [])
+      }
+    } catch (error) {
+      console.error('设置主形象失败:', error)
+      toast.error('设置主形象失败')
+    }
+  }
+
+  // 删除形象
+  const handleDeleteAppearance = async (appearanceId: string) => {
+    if (!confirm('确定要删除这个形象吗？')) return
+
+    try {
+      const res = await fetch(`/api/character-appearances/${appearanceId}`, {
+        method: 'DELETE'
+      })
+
+      if (!res.ok) {
+        throw new Error('删除失败')
+      }
+
+      toast.success('形象已删除')
+
+      // 重新加载形象列表
+      if (selectedCharacterForAppearances) {
+        const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
+        if (listRes.ok) {
+          const listData = await listRes.json()
+          setAppearances(listData.appearances || [])
+        }
+      }
+    } catch (error) {
+      console.error('删除形象失败:', error)
+      toast.error('删除形象失败')
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -419,6 +620,170 @@ interface CharactersPanelProps {
               loading={creating}
               submitText="保存修改"
             />
+          </DialogContent>
+        </Dialog>
+
+        {/* 形象管理对话框 */}
+        <Dialog open={appearanceDialogOpen} onOpenChange={setAppearanceDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>管理形象 - {selectedCharacter?.name}</DialogTitle>
+              <DialogDescription>
+                添加和管理人物的不同形象（服装、角度等），生成分镜时可以选择使用哪个形象
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6 mt-4">
+              {/* 添加新形象 */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">添加新形象</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>上传图片</Label>
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleImageUpload(file)
+                        }}
+                        className="hidden"
+                        id="appearance-image-upload"
+                      />
+                      <label htmlFor="appearance-image-upload">
+                        <Button variant="outline" asChild disabled={uploadingImage}>
+                          <span>
+                            <Upload className="w-4 h-4 mr-2" />
+                            {uploadingImage ? '上传中...' : '选择图片'}
+                          </span>
+                        </Button>
+                      </label>
+                      {uploadedImage && (
+                        <div className="flex items-center gap-2">
+                          <img src={uploadedImage.url} alt="预览" className="w-16 h-16 rounded object-cover" />
+                          <Button variant="ghost" size="sm" onClick={() => setUploadedImage(null)}>
+                            重新选择
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="appearance-name">形象名称</Label>
+                    <Input
+                      id="appearance-name"
+                      value={appearanceName}
+                      onChange={(e) => setAppearanceName(e.target.value)}
+                      placeholder="如：正面、侧面、服装A、古代装等"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="appearance-desc">形象描述（可选）</Label>
+                    <Textarea
+                      id="appearance-desc"
+                      value={appearanceDescription}
+                      onChange={(e) => setAppearanceDescription(e.target.value)}
+                      placeholder="描述这个形象的特点"
+                      className="min-h-[60px]"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleAddAppearance}
+                    disabled={!uploadedImage || creating}
+                    className="amber-gradient text-white border-0"
+                  >
+                    {creating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        添加中...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-4 h-4 mr-2" />
+                        添加形象
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* 形象列表 */}
+              {appearances.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      已有形象 ({appearances.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      {appearances.map((appearance) => (
+                        <div
+                          key={appearance.id}
+                          className={`relative group border rounded-lg overflow-hidden ${
+                            appearance.isPrimary ? 'ring-2 ring-primary' : ''
+                          }`}
+                        >
+                          {appearance.isPrimary && (
+                            <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-0.5 rounded">
+                              主形象
+                            </div>
+                          )}
+                          <img
+                            src={appearance.imageUrl || ''}
+                            alt={appearance.name}
+                            className="w-full aspect-square object-cover"
+                          />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            {!appearance.isPrimary && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => handleSetPrimary(appearance.id)}
+                              >
+                                <Check className="w-4 h-4 mr-1" />
+                                设为主形象
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleDeleteAppearance(appearance.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+                            <p className="text-white text-sm font-medium">{appearance.name}</p>
+                            {appearance.description && (
+                              <p className="text-white/70 text-xs line-clamp-1">{appearance.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {appearances.length === 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="py-12 text-center">
+                    <ImageIcon className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                    <p className="text-muted-foreground">还没有形象，点击上方添加</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
 
       {characters.length === 0 ? (
         <Card className="border-dashed">
@@ -428,7 +793,21 @@ interface CharactersPanelProps {
           </CardContent>
         </Card>
       ) : (
-
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {characters.map((character) => (
+            <CharacterCard
+              key={character.id}
+              character={character}
+              generating={generating === character.id}
+              addingToLibrary={addingToLibrary === character.id}
+              onEdit={() => openEditDialog(character)}
+              onDelete={() => handleDelete(character.id)}
+              onGenerateViews={() => handleGenerateViews(character)}
+              onAddToLibrary={(imageUrl) => handleAddToLibrary(character, imageUrl)}
+              onManageAppearances={() => openAppearanceDialog(character)}
+            />
+          ))}
+        </div>
       )}
     </div>
   )
@@ -513,7 +892,26 @@ function CharacterForm({
   )
 }
 
-
+// 人物卡片组件
+function CharacterCard({
+  character,
+  generating,
+  addingToLibrary,
+  onEdit,
+  onDelete,
+  onGenerateViews,
+  onAddToLibrary,
+  onManageAppearances
+}: {
+  character: any
+  generating: boolean
+  addingToLibrary: boolean
+  onEdit: () => void
+  onDelete: () => void
+  onGenerateViews: () => void
+  onAddToLibrary: (imageUrl: string) => void
+  onManageAppearances: () => void
+}) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
 
   // 获取图片 URL
@@ -523,7 +921,7 @@ function CharacterForm({
       setImageUrl(character.imageUrl)
       return
     }
-    
+
     // 如果有 frontViewKey，从存储获取签名 URL
     if (character.frontViewKey) {
       fetch(`/api/images?key=${character.frontViewKey}`)
@@ -553,7 +951,34 @@ function CharacterForm({
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
-
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}>
+                <Edit className="w-4 h-4 mr-2" />
+                编辑
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onManageAppearances}>
+                <User className="w-4 h-4 mr-2" />
+                管理形象
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onGenerateViews} disabled={generating}>
+                {generating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="w-4 h-4 mr-2" />
+                    生成造型图
+                  </>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                <Trash2 className="w-4 h-4 mr-2" />
+                删除
+              </DropdownMenuItem>
+            </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </CardHeader>
@@ -561,8 +986,8 @@ function CharacterForm({
         {/* 人物图片 */}
         <div className="aspect-square rounded-lg bg-secondary/50 relative overflow-hidden">
           {imageUrl ? (
-            <img 
-              src={imageUrl} 
+            <img
+              src={imageUrl}
               alt={character.name}
               className="w-full h-full object-cover"
             />
@@ -574,8 +999,8 @@ function CharacterForm({
                   <p className="text-xs text-muted-foreground">生成中...</p>
                 </div>
               ) : (
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   className="flex flex-col items-center gap-2"
                   onClick={onGenerateViews}
                 >
@@ -589,7 +1014,7 @@ function CharacterForm({
 
         {/* 标签 */}
         <div className="flex flex-wrap gap-1">
-          {character.tags?.map((tag, i) => (
+          {character.tags?.map((tag: string, i: number) => (
             <Badge key={i} variant="secondary" className="text-xs">
               {tag}
             </Badge>
