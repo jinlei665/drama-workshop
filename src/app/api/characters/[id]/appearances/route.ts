@@ -90,6 +90,8 @@ export async function POST(
       const count = parseInt(existingResult.rows[0].count)
       const isFirst = count === 0
 
+      console.log('[Add Appearance] isFirst:', isFirst, 'count:', count)
+
       // 插入新形象
       const insertResult = await client.query(
         `INSERT INTO character_appearances
@@ -109,9 +111,13 @@ export async function POST(
 
       const data = insertResult.rows[0]
 
-      console.log('[Add Appearance] Insert success:', data.id)
+      console.log('[Add Appearance] Insert success:', {
+        id: data.id,
+        name: data.name,
+        imageKey: data.image_key,
+      })
 
-      return successResponse({
+      const response = successResponse({
         appearance: {
           id: data.id,
           characterId: data.character_id,
@@ -125,6 +131,9 @@ export async function POST(
           updatedAt: data.updated_at,
         }
       }, 201)
+
+      console.log('[Add Appearance] Response created, status:', response.status)
+      return response
     } catch (dbError) {
       console.error('[Add Appearance] Database error:', dbError)
       return errorResponse(dbError instanceof Error ? dbError.message : '添加失败', 500)

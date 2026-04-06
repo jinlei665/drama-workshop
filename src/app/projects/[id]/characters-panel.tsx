@@ -447,19 +447,45 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         })
       })
 
+      console.log('[Add Appearance] Response status:', addRes.status, addRes.statusText)
+
       if (!addRes.ok) {
-        const errorData = await addRes.json()
-        console.error('[Add Appearance] API error:', errorData)
-        throw new Error(errorData.error || '添加形象失败')
+        const errorText = await addRes.text()
+        console.error('[Add Appearance] API error response:', errorText)
+        try {
+          const errorData = JSON.parse(errorText)
+          throw new Error(errorData.error?.message || errorData.error || '添加形象失败')
+        } catch (parseError) {
+          throw new Error(errorText || '添加形象失败')
+        }
       }
+
+      const addResText = await addRes.text()
+      console.log('[Add Appearance] Success response text:', addResText)
+
+      let addResData
+      try {
+        addResData = JSON.parse(addResText)
+      } catch (parseError) {
+        console.error('[Add Appearance] Parse response error:', parseError)
+        throw new Error('响应格式错误')
+      }
+
+      console.log('[Add Appearance] Success response data:', addResData)
 
       toast.success('新形象生成成功')
 
       // 重新加载形象列表
       const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
       if (listRes.ok) {
-        const listData = await listRes.json()
-        setAppearances(listData.appearances || [])
+        const listText = await listRes.text()
+        console.log('[Load Appearances] Response:', listText)
+        try {
+          const listData = JSON.parse(listText)
+          setAppearances(listData.appearances || [])
+        } catch (parseError) {
+          console.error('[Load Appearances] Parse error:', parseError)
+        }
       }
 
       // 清空表单
