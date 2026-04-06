@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getPool } from "@/storage/database/pg-client"
 
 // GET /api/scripts/[id] - 获取单个脚本
 export async function GET(
@@ -9,6 +8,27 @@ export async function GET(
   const { id } = await params
 
   try {
+    // 优先使用 Supabase
+    const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      const supabase = getAdminClient()
+      const { data, error } = await supabase
+        .from("scripts")
+        .select("*")
+        .eq("id", id)
+        .single()
+      
+      if (error || !data) {
+        console.error("[Scripts API] Supabase GET error:", error)
+        return NextResponse.json({ error: "脚本不存在" }, { status: 404 })
+      }
+      
+      return NextResponse.json({ script: data })
+    }
+    
+    // Fallback to pg
+    const { getPool } = await import("@/storage/database/pg-client")
     const pool = await getPool()
     const result = await pool.query(
       `SELECT * FROM scripts WHERE id = $1`,
@@ -34,6 +54,36 @@ export async function PUT(
   const { id } = await params
 
   try {
+    // 优先使用 Supabase
+    const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      const body = await request.json()
+      const { title, content, description } = body
+      
+      const supabase = getAdminClient()
+      const updateData: any = { updated_at: new Date().toISOString() }
+      if (title !== undefined) updateData.title = title
+      if (content !== undefined) updateData.content = content
+      if (description !== undefined) updateData.description = description
+      
+      const { data, error } = await supabase
+        .from("scripts")
+        .update(updateData)
+        .eq("id", id)
+        .select()
+        .single()
+      
+      if (error || !data) {
+        console.error("[Scripts API] Supabase PUT error:", error)
+        return NextResponse.json({ error: "脚本不存在" }, { status: 404 })
+      }
+      
+      return NextResponse.json({ script: data })
+    }
+    
+    // Fallback to pg
+    const { getPool } = await import("@/storage/database/pg-client")
     const body = await request.json()
     const { title, content, description } = body
 
@@ -87,6 +137,34 @@ export async function DELETE(
   const { id } = await params
 
   try {
+    // 优先使用 Supabase
+    const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      const supabase = getAdminClient()
+      
+      // 先将该脚本关联的分镜解除关联（script_id 设为 null）
+      await supabase
+        .from("scenes")
+        .update({ script_id: null })
+        .eq("script_id", id)
+      
+      // 删除脚本
+      const { error } = await supabase
+        .from("scripts")
+        .delete()
+        .eq("id", id)
+      
+      if (error) {
+        console.error("[Scripts API] Supabase DELETE error:", error)
+        return NextResponse.json({ error: "删除失败" }, { status: 500 })
+      }
+      
+      return NextResponse.json({ success: true })
+    }
+    
+    // Fallback to pg
+    const { getPool } = await import("@/storage/database/pg-client")
     const pool = await getPool()
 
     // 先将该脚本关联的分镜解除关联（script_id 设为 null）

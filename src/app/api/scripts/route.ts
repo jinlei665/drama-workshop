@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getPool } from "@/storage/database/pg-client"
 
 // GET /api/scripts - 获取项目的脚本列表
 export async function GET(request: NextRequest) {
@@ -11,6 +10,27 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // 优先使用 Supabase
+    const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      const supabase = getAdminClient()
+      const { data, error } = await supabase
+        .from("scripts")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: true })
+      
+      if (error) {
+        console.error("[Scripts API] Supabase error:", error)
+        throw error
+      }
+      
+      return NextResponse.json({ scripts: data || [] })
+    }
+    
+    // Fallback to pg
+    const { getPool } = await import("@/storage/database/pg-client")
     const pool = await getPool()
     const result = await pool.query(
       `SELECT * FROM scripts WHERE project_id = $1 ORDER BY created_at ASC`,
@@ -39,10 +59,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 优先使用 Supabase
+    const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      const supabase = getAdminClient()
+      const id = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      
+      console.log('[Scripts API] Inserting script via Supabase:', { id, projectId, title })
+      
+      const { data, error } = await supabase
+        .from("scripts")
+        .insert({
+          id,
+          project_id: projectId,
+          title,
+          content,
+          description: description || "",
+          status: "active",
+        })
+        .select()
+        .single()
+      
+      if (error) {
+        console.error("[Scripts API] Supabase insert error:", error)
+        throw error
+      }
+      
+      console.log('[Scripts API] Insert success:', { scriptId: data.id })
+      
+      return NextResponse.json({ script: data })
+    }
+    
+    // Fallback to pg
+    const { getPool } = await import("@/storage/database/pg-client")
     const pool = await getPool()
     const id = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-    console.log('[Scripts API] Inserting script:', { id, projectId, title })
+    console.log('[Scripts API] Inserting script via PG:', { id, projectId, title })
 
     const result = await pool.query(
       `INSERT INTO scripts (id, project_id, title, content, description, status)
