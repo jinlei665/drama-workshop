@@ -93,18 +93,27 @@ export async function PUT(
   if (parsed.data.mergedVideoStatus !== undefined) updateData.merged_video_status = parsed.data.mergedVideoStatus
   if (parsed.data.mergedVideoKey !== undefined) updateData.merged_video_key = parsed.data.mergedVideoKey
 
-  const { data: episodes, error } = await client
+  // 执行更新
+  const { error } = await client
     .from("episodes")
     .update(updateData)
     .eq("id", id)
-    .select()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error("更新剧集失败:", error)
+    return NextResponse.json({ 
+      error: error.message,
+      hint: "如果遇到 schema 缓存问题，请在 Supabase Dashboard 的 SQL Editor 中执行: NOTIFY pgrst, 'reload'"
+    }, { status: 500 })
   }
 
-  const episode = episodes?.[0] || null
-  return NextResponse.json({ episode })
+  // 获取更新后的剧集
+  const { data: episodes } = await client
+    .from("episodes")
+    .select("*")
+    .eq("id", id)
+
+  return NextResponse.json({ episode: episodes?.[0] || null })
 }
 
 // DELETE /api/episodes/[id] - 删除剧集
