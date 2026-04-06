@@ -10,30 +10,58 @@ export async function GET(
   const { id } = await params
   const client = getSupabaseClient()
 
-  const { data: episode, error } = await client
-    .from("episodes")
-    .select(`
-      *,
-      scenes:scenes(
-        id,
-        scene_number,
-        title,
-        status,
-        video_status
-      )
-    `)
-    .eq("id", id)
-    .single()
+  try {
+    // 先获取剧集信息
+    const { data: episode, error } = await client
+      .from("episodes")
+      .select("*")
+      .eq("id", id)
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    // 处理查询结果
+    if (error) {
+      console.error("获取剧集失败:", error)
+      return NextResponse.json({ 
+        error: error.message || "获取剧集失败",
+        episode: null 
+      }, { status: 200 })
+    }
+
+    // 检查是否有结果
+    if (!episode || episode.length === 0) {
+      return NextResponse.json({ 
+        error: "剧集不存在",
+        episode: null 
+      }, { status: 404 })
+    }
+
+    const episodeData = episode[0]
+
+    // 获取该剧集关联的分镜
+    let scenesData: any[] = []
+    try {
+      const { data: scenes, error: scenesError } = await client
+        .from("scenes")
+        .select("id, scene_number, title, description, image_url, video_url, video_status, status")
+        .eq("episode_id", id)
+        .order("scene_number", { ascending: true })
+
+      if (!scenesError && scenes) {
+        scenesData = scenes
+      }
+    } catch (err) {
+      console.error("获取分镜失败:", err)
+    }
+
+    return NextResponse.json({ 
+      episode: { ...episodeData, scenes: scenesData } 
+    })
+  } catch (err) {
+    console.error("获取剧集详情异常:", err)
+    return NextResponse.json({ 
+      error: "获取剧集详情失败",
+      episode: null 
+    }, { status: 200 })
   }
-
-  if (!episode) {
-    return NextResponse.json({ error: "剧集不存在" }, { status: 404 })
-  }
-
-  return NextResponse.json({ episode })
 }
 
 // PUT /api/episodes/[id] - 更新剧集

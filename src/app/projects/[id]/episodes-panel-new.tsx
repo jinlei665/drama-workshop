@@ -330,6 +330,7 @@ export function EpisodesPanel({
 
   // 打开剧集详情
   const openEpisodeDetail = async (episode: Episode) => {
+    // 先打开对话框并显示基本信息
     setSelectedEpisode(episode)
     setEpisodeDetailOpen(true)
     
@@ -337,11 +338,23 @@ export function EpisodesPanel({
     try {
       const res = await fetch(`/api/episodes/${episode.id}`)
       const data = await res.json()
-      if (res.ok && data.episode) {
-        setSelectedEpisode({ ...episode, scenes: data.episode.scenes || [] })
+      
+      // 即使 API 返回错误，只要剧集存在就更新显示
+      if (data.episode) {
+        setSelectedEpisode({ 
+          ...episode, 
+          scenes: data.episode.scenes || [],
+          description: data.episode.description || episode.description
+        })
+      } else if (data.error) {
+        console.warn("获取分镜列表失败:", data.error)
+        // 仍然保持剧集信息显示
+        setSelectedEpisode({ ...episode, scenes: [] })
       }
     } catch (error) {
       console.error("获取剧集详情失败:", error)
+      // 保持显示基本信息
+      setSelectedEpisode({ ...episode, scenes: [] })
     }
   }
 
