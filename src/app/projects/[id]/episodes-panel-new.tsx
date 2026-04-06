@@ -483,6 +483,8 @@ export function EpisodesPanel({
     }
 
     console.log("添加分镜:", { episodeId: selectedEpisode.id, sceneIds })
+    console.log("当前 scenes 数组长度:", scenes.length)
+    console.log("当前 selectedEpisode.scenes 长度:", selectedEpisode.scenes?.length)
 
     try {
       const res = await fetch(`/api/scenes/batch-update`, {
@@ -505,16 +507,24 @@ export function EpisodesPanel({
       
       // 直接更新本地状态：添加分镜到列表
       const addedScenes = scenes.filter(s => sceneIds.includes(s.id))
+      console.log("找到要添加的分镜:", addedScenes.length, addedScenes.map(s => s.id))
+      
       const newScenes = [...(selectedEpisode.scenes || []), ...addedScenes.map(s => ({
         ...s,
         episode_id: selectedEpisode.id,
+        episodeId: selectedEpisode.id,
       }))]
+      console.log("新的分镜列表长度:", newScenes.length)
       
-      setSelectedEpisode(prev => prev ? {
-        ...prev,
-        scenes: newScenes,
-      } : null)
+      setSelectedEpisode(prev => {
+        console.log("setSelectedEpisode 回调, prev:", prev?.scenes?.length)
+        return prev ? {
+          ...prev,
+          scenes: newScenes,
+        } : null
+      })
       
+      console.log("setSelectedEpisode 已调用")
       fetchEpisodes()
       onUpdate()
     } catch (error) {
