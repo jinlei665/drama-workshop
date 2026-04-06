@@ -55,26 +55,23 @@ export async function GET(
           console.warn('[Project API] Database query error, falling back to memory:', projectError.message)
         } else if (project) {
           useDatabase = true
-          // 获取人物
-          const { data: characters, error: charError } = await db
-            .from('characters')
-            .select('*')
-            .eq('project_id', id)
           
-          console.log(`[Project API] Characters query:`, {
-            count: characters?.length,
-            error: charError?.message
-          })
-          
-          if (charError) console.warn('[Project API] Failed to fetch characters:', charError.message)
-          
-          // 获取分镜和剧集 - 使用 pg 直连绕过 Supabase PostgREST schema cache 问题
+          // 获取人物、分镜和剧集 - 使用 pg 直连绕过 Supabase PostgREST schema cache 问题
+          let characters: any[] = []
           let scenes: any[] = []
           let episodes: any[] = []
           
           try {
             const { getPool } = await import('@/storage/database/pg-client')
             const pool = await getPool()
+            
+            // 使用 pg 直连查询人物（确保返回所有记录，包括新创建的）
+            const charactersResult = await pool.query(
+              `SELECT * FROM characters WHERE project_id = $1`,
+              [id]
+            )
+            characters = charactersResult.rows
+            console.log(`[Project API] PG query characters: ${characters.length} records`)
             
             // 使用 pg 直连查询分镜（确保返回所有记录，包括新创建的）
             const scenesResult = await pool.query(
@@ -94,6 +91,14 @@ export async function GET(
           } catch (pgError) {
             console.warn('[Project API] PG query failed, falling back to Supabase:', pgError)
             // 回退到 Supabase 查询
+            const { data: supabaseCharacters, error: charError } = await db
+              .from('characters')
+              .select('*')
+              .eq('project_id', id)
+            
+            if (charError) console.warn('[Project API] Failed to fetch characters:', charError?.message)
+            else characters = supabaseCharacters || []
+            
             const { data: supabaseScenes, error: sceneError } = await db
               .from('scenes')
               .select('*')
