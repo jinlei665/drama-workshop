@@ -30,6 +30,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { projectId, title, content, description } = body
 
+    console.log('[Scripts API] POST received:', { projectId, title, content: content?.substring(0, 50) })
+
     if (!projectId || !title || !content) {
       return NextResponse.json(
         { error: "缺少必要参数: projectId, title, content" },
@@ -40,12 +42,16 @@ export async function POST(request: NextRequest) {
     const pool = await getPool()
     const id = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
+    console.log('[Scripts API] Inserting script:', { id, projectId, title })
+
     const result = await pool.query(
       `INSERT INTO scripts (id, project_id, title, content, description, status)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [id, projectId, title, content, description || "", "active"]
     )
+
+    console.log('[Scripts API] Insert result:', { rowCount: result.rowCount, rows: result.rows })
 
     return NextResponse.json({ script: result.rows[0] })
   } catch (err: any) {
