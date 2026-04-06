@@ -126,9 +126,14 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
       if (res.ok) {
         const data = await res.json()
         setScripts(data.scripts || [])
+      } else {
+        // API 返回错误，但不阻塞用户操作
+        console.warn("脚本功能暂时不可用:", data?.warning || "schema_cache_error")
+        setScripts([])
       }
     } catch (error) {
-      console.error("获取脚本列表失败:", error)
+      console.warn("脚本功能暂时不可用:", error)
+      setScripts([])
     }
   }
 
