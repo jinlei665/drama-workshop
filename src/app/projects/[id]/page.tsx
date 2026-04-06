@@ -620,6 +620,7 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               onUpdate={fetchData}
               onSelectEpisode={setSelectedEpisodeId}
               selectedEpisodeId={selectedEpisodeId}
+              scenes={scenes}
             />
           </TabsContent>
 
