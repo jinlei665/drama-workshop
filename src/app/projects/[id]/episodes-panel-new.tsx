@@ -198,9 +198,13 @@ export function EpisodesPanel({
     return maxEpisode + 1
   }
 
-  // 获取未分配的分镜：通过项目总分镜数减去当前剧集的分镜数
-  const assignedSceneIds = new Set((selectedEpisode?.scenes || []).map(s => s.id))
-  const unassignedScenes = scenes.filter(s => !assignedSceneIds.has(s.id))
+  // 获取未分配的分镜：排除所有已分配给任何剧集的分镜
+  const allAssignedSceneIds = new Set(
+    episodes
+      .flatMap(ep => ep.scenes || [])
+      .map(s => s.id)
+  )
+  const unassignedScenes = scenes.filter(s => !allAssignedSceneIds.has(s.id))
 
   const handleCreate = async () => {
     if (!formData.title.trim()) {
@@ -224,7 +228,7 @@ export function EpisodesPanel({
       } else if (scriptAssignment.mode === 'all' && scripts.length > 0) {
         // 选择所有有可用分镜的脚本
         const availableScriptIds = scripts
-          .filter(s => scenes.some(sc => sc.scriptId === s.id && !assignedSceneIds.has(sc.id)))
+          .filter(s => scenes.some(sc => sc.scriptId === s.id && !allAssignedSceneIds.has(sc.id)))
           .map(s => s.id)
         if (availableScriptIds.length > 0) {
           requestBody.scriptIds = availableScriptIds
@@ -937,7 +941,7 @@ export function EpisodesPanel({
                     </div>
                     <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-background rounded border">
                       {scripts.map((script) => {
-                        const sceneCount = scenes.filter(s => s.scriptId === script.id && !assignedSceneIds.has(s.id)).length
+                        const sceneCount = scenes.filter(s => s.scriptId === script.id && !allAssignedSceneIds.has(s.id)).length
                         return (
                           <button
                             key={script.id}
@@ -972,13 +976,124 @@ export function EpisodesPanel({
 
                 {scriptAssignment.mode === 'all' && (
                   <p className="text-sm text-muted-foreground">
-                    将所有可用脚本中的分镜添加到此剧集（共 {scripts.reduce((sum, s) => sum + scenes.filter(sc => sc.scriptId === s.id && !assignedSceneIds.has(sc.id)).length, 0)} 个分镜）
+                    将所有可用脚本中的分镜添加到此剧集（共 {scripts.reduce((sum, s) => sum + scenes.filter(sc => sc.scriptId === s.id && !allAssignedSceneIds.has(sc.id)).length, 0)} 个分镜）
                   </p>
                 )}
               </div>
             )}
 
-            {/* 分镜分配已移除，请使用脚本分配功能 */}
+            {/* 分镜分配（可选，用于更精细的控制） */}
+            {unassignedScenes.length > 0 && (
+              <details className="space-y-3" open={scriptAssignment.mode === 'all' || (!scripts || scripts.length === 0)}>
+                <summary className="flex items-center gap-2 cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+                  <ChevronRight className="w-4 h-4 transition-transform" />
+                  高级：按分镜选择
+                </summary>
+                <div className="p-4 bg-muted/30 rounded-lg border mt-2">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2">
+                    <Layers className="w-4 h-4" />
+                    分配分镜 ({unassignedScenes.length} 个未分配)
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSceneAssignment({ ...sceneAssignment, mode: 'all' })}
+                      className={cn(sceneAssignment.mode === 'all' && "bg-primary/10")}
+                    >
+                      全部
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSceneAssignment({ ...sceneAssignment, mode: 'selected' })}
+                      className={cn(sceneAssignment.mode === 'selected' && "bg-primary/10")}
+                    >
+                      选择
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSceneAssignment({ ...sceneAssignment, mode: 'range' })}
+                      className={cn(sceneAssignment.mode === 'range' && "bg-primary/10")}
+                    >
+                      范围
+                    </Button>
+                  </div>
+                </div>
+
+                {sceneAssignment.mode === 'selected' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={toggleSelectAll}
+                      >
+                        {selectedScenes.size === unassignedScenes.length ? "取消全选" : "全选"}
+                      </Button>
+                      <span className="text-sm text-muted-foreground">
+                        已选择 {selectedScenes.size} 个分镜
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-6 gap-2 max-h-32 overflow-y-auto p-2 bg-background rounded border">
+                      {unassignedScenes.map((scene, index) => (
+                        <button
+                          key={scene.id}
+                          onClick={() => toggleSceneSelection(scene.id)}
+                          className={cn(
+                            "p-2 rounded text-sm font-medium transition-colors",
+                            selectedScenes.has(scene.id)
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted hover:bg-muted/80"
+                          )}
+                        >
+                          {index + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {sceneAssignment.mode === 'range' && (
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm">从</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={unassignedScenes.length}
+                        value={sceneRange.start}
+                        onChange={(e) => setSceneRange({ ...sceneRange, start: parseInt(e.target.value) || 1 })}
+                        className="w-20"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-sm">到</Label>
+                      <Input
+                        type="number"
+                        min={sceneRange.start}
+                        max={unassignedScenes.length}
+                        value={sceneRange.end}
+                        onChange={(e) => setSceneRange({ ...sceneRange, end: parseInt(e.target.value) || sceneRange.start })}
+                        className="w-20"
+                      />
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      共 {Math.max(0, sceneRange.end - sceneRange.start + 1)} 个分镜
+                    </span>
+                  </div>
+                )}
+
+                {sceneAssignment.mode === 'all' && (
+                  <p className="text-sm text-muted-foreground">
+                    将所有未分配的分镜 ({unassignedScenes.length} 个) 添加到此剧集
+                  </p>
+                )}
+                </div>
+              </details>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>

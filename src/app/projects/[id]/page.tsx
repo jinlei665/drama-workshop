@@ -710,11 +710,32 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>视频合成进度</CardTitle>
-                      <CardDescription>
-                        将分镜图片转换为动态视频片段，保持场景连贯性
-                      </CardDescription>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>视频合成进度</CardTitle>
+                          <CardDescription>
+                            将分镜图片转换为动态视频片段，保持场景连贯性
+                          </CardDescription>
+                        </div>
+                        {scripts.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">脚本:</span>
+                            <select
+                              value={selectedPreviewScriptId || ''}
+                              onChange={(e) => setSelectedPreviewScriptId(e.target.value || null)}
+                              className="px-3 py-1.5 rounded-md border bg-background text-sm"
+                            >
+                              <option value="">全部</option>
+                              {scripts.map(script => (
+                                <option key={script.id} value={script.id}>
+                                  {script.title}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-4">
                       <Badge variant={videoScenes.length === completedScenes.length && completedScenes.length > 0 ? "default" : "outline"}>
@@ -777,28 +798,9 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               {/* 分镜预览 */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>分镜预览</CardTitle>
-                      <CardDescription>查看所有生成的分镜图片</CardDescription>
-                    </div>
-                    {scripts.length > 0 && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-muted-foreground">筛选:</span>
-                        <select
-                          value={selectedPreviewScriptId || ''}
-                          onChange={(e) => setSelectedPreviewScriptId(e.target.value || null)}
-                          className="px-3 py-1.5 rounded-md border bg-background text-sm"
-                        >
-                          <option value="">全部</option>
-                          {scripts.map(script => (
-                            <option key={script.id} value={script.id}>
-                              {script.title}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                  <div>
+                    <CardTitle>分镜预览</CardTitle>
+                    <CardDescription>查看当前选中的脚本分镜图片</CardDescription>
                   </div>
                 </CardHeader>
                 <CardContent>
