@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { getPool } from "@/storage/database/pg-client"
 import { getStylePrompt } from "@/lib/styles"
 import { invokeLLM } from "@/lib/ai"
 
@@ -18,15 +18,20 @@ export async function POST(request: NextRequest) {
 
     // 获取项目信息
     let project = null
-    const client = getSupabaseClient()
     
     if (projectId) {
-      const { data } = await client
-        .from("projects")
-        .select("*")
-        .eq("id", projectId)
-        .single()
-      project = data
+      try {
+        const pool = await getPool()
+        const result = await pool.query(
+          `SELECT * FROM projects WHERE id = $1`,
+          [projectId]
+        )
+        if (result.rows.length > 0) {
+          project = result.rows[0]
+        }
+      } catch (dbErr) {
+        console.warn("获取项目信息失败，使用默认风格:", dbErr)
+      }
     }
 
     // 获取风格提示词

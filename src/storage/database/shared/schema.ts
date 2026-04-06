@@ -83,6 +83,30 @@ export const episodes = pgTable(
 )
 
 /**
+ * 脚本表 - 存储剧本片段信息
+ */
+export const scripts = pgTable(
+  "scripts",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    projectId: varchar("project_id", { length: 36 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    content: text("content"),
+    description: text("description"),
+    status: varchar("status", { length: 20 }).default("active").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("scripts_project_id_idx").on(table.projectId),
+  ]
+)
+
+/**
  * 人物表 - 存储人物信息和角色造型图
  */
 export const characters = pgTable(
