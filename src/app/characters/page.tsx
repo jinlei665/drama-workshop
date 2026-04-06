@@ -56,6 +56,11 @@ export default function CharactersPage() {
   const [uploadingImage, setUploadingImage] = useState(false)
   const [referenceImageUrl, setReferenceImageUrl] = useState('')
   const [generatingTripleViews, setGeneratingTripleViews] = useState(false)
+  
+  // 新建人物的参考图
+  const [createReferenceImage, setCreateReferenceImage] = useState('')
+  const [uploadingCreateImage, setUploadingCreateImage] = useState(false)
+  
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -81,6 +86,20 @@ export default function CharactersPage() {
     }
   }
 
+  // 重置新建表单
+  const resetCreateForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      appearance: '',
+      personality: '',
+      gender: '',
+      age: '',
+      style: 'realistic'
+    })
+    setCreateReferenceImage('')
+  }
+
   useEffect(() => {
     fetchCharacters()
   }, [])
@@ -88,6 +107,11 @@ export default function CharactersPage() {
   const handleCreate = async () => {
     if (!formData.name.trim()) {
       toast.error('请输入人物名称')
+      return
+    }
+
+    if (!formData.appearance.trim()) {
+      toast.error('请输入外貌描述')
       return
     }
 
@@ -103,7 +127,8 @@ export default function CharactersPage() {
           appearance: formData.appearance,
           personality: formData.personality,
           tags: formData.gender ? [formData.gender, formData.age].filter(Boolean) : (formData.age ? [formData.age] : []),
-          style: formData.style
+          style: formData.style,
+          imageUrl: createReferenceImage || undefined // 参考图片 URL
         })
       })
       const result = await res.json()
@@ -114,15 +139,7 @@ export default function CharactersPage() {
 
       toast.success('人物创建成功')
       setCreateDialogOpen(false)
-      setFormData({
-        name: '',
-        description: '',
-        appearance: '',
-        personality: '',
-        gender: '',
-        age: '',
-        style: 'realistic'
-      })
+      resetCreateForm()
       fetchCharacters()
     } catch (error) {
       console.error('创建人物失败:', error)
@@ -266,6 +283,33 @@ export default function CharactersPage() {
     }
   }
 
+  // 新建人物对话框上传参考图
+  const handleUploadCreateReferenceImage = async (file: File) => {
+    setUploadingCreateImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload/character-image', {
+        method: 'POST',
+        body: formData
+      })
+      const result = await res.json()
+
+      if (result.success) {
+        setCreateReferenceImage(result.data.url)
+        toast.success('参考图片上传成功')
+      } else {
+        throw new Error(result.error || '上传失败')
+      }
+    } catch (error) {
+      console.error('上传参考图片失败:', error)
+      toast.error('上传参考图片失败')
+    } finally {
+      setUploadingCreateImage(false)
+    }
+  }
+
   const handleGenerateTripleViews = async () => {
     if (!uploadingCharacter || !referenceImageUrl) {
       toast.error('请先上传参考图片')
@@ -347,21 +391,26 @@ export default function CharactersPage() {
                 />
               </div>
               
-              <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+              <Dialog open={createDialogOpen} onOpenChange={(open) => {
+                setCreateDialogOpen(open)
+                if (open) {
+                  resetCreateForm()
+                }
+              }}>
                 <DialogTrigger asChild>
                   <Button className="gap-2">
                     <Plus className="w-4 h-4" />
                     新建人物
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-xl">
+                <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                       <Users className="w-5 h-5 text-green-500" />
                       创建新人物
                     </DialogTitle>
                     <DialogDescription>
-                      定义人物的基本信息，AI 将帮助生成人物图像
+                      定义人物的基本信息，可以上传参考图或使用文字描述，AI 将帮助生成人物图像
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 mt-4">
@@ -420,6 +469,58 @@ export default function CharactersPage() {
                         </Select>
                       </div>
                     </div>
+                    
+                    {/* 参考图上传 */}
+                    <div className="space-y-2">
+                      <Label>参考图片（可选）</Label>
+                      <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors">
+                        {createReferenceImage ? (
+                          <div className="space-y-2">
+                            <img
+                              src={createReferenceImage}
+                              alt="参考图片"
+                              className="w-full h-48 object-contain rounded-lg bg-muted"
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full"
+                              onClick={() => {
+                                const input = document.getElementById('create-reference-image') as HTMLInputElement
+                                input?.click()
+                              }}
+                              disabled={uploadingCreateImage}
+                            >
+                              {uploadingCreateImage ? '上传中...' : '更换参考图'}
+                            </Button>
+                          </div>
+                        ) : (
+                          <label
+                            htmlFor="create-reference-image"
+                            className="flex flex-col items-center justify-center cursor-pointer"
+                          >
+                            <ImageIcon className="w-12 h-12 text-muted-foreground mb-2" />
+                            <p className="text-sm text-muted-foreground mb-2">点击上传参考图片（可选）</p>
+                            <p className="text-xs text-muted-foreground">支持 JPG、PNG 格式，最大 5MB</p>
+                          </label>
+                        )}
+                        <input
+                          id="create-reference-image"
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) handleUploadCreateReferenceImage(file)
+                          }}
+                          disabled={uploadingCreateImage}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        上传参考图片后，可以生成该角色的三视图（正面、侧面、背面）
+                      </p>
+                    </div>
+                    
                     <div className="space-y-2">
                       <Label htmlFor="appearance">外貌描述</Label>
                       <Textarea

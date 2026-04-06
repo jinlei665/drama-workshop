@@ -108,7 +108,43 @@
 - **功能**: 将多个视频片段合并成一个完整视频
 - **工具**: FFmpeg
 
-### 6. 工作流 (Workflow)
+### 6. 人物库管理 (Character Library)
+- **路径**: `src/app/api/character-library/`, `src/app/characters/`
+- **数据库表**: `character_library`
+- **功能**: 创建人物、编辑人物、删除人物、查看人物列表、从人物库导入到项目
+- **数据结构**:
+  - `id`: 唯一标识符
+  - `name`: 人物名称
+  - `description`: 人物描述
+  - `appearance`: 外貌描述
+  - `personality`: 性格描述
+  - `tags`: 标签（如性别、年龄等）
+  - `image_url`: 参考图片 URL
+  - `front_view_key`: 正面视图存储 key
+  - `style`: 图像风格（realistic、anime、cartoon、oil_painting）
+  - `created_at`: 创建时间
+- **API 端点**:
+  - `GET /api/character-library`: 获取人物库列表（支持搜索）
+  - `POST /api/character-library`: 添加人物到人物库（支持上传参考图和文字描述）
+  - `PUT /api/character-library?id=xxx`: 更新人物库中的人物
+  - `DELETE /api/character-library?id=xxx`: 从人物库删除人物
+- **前端功能**:
+  - 人物卡片显示参考图片
+  - 新建人物时支持上传参考图和填写文字描述
+  - 编辑人物信息
+  - 上传参考图生成三视图（图生图）
+  - 删除人物
+- **项目人物管理**:
+  - 支持从人物库导入人物
+  - 支持添加项目人物到人物库
+  - 支持文字生成新形象（文生图）
+  - 支持形象管理（上传图片、添加形象、设置主形象、拖拽排序）
+- **注意事项**:
+  - 人物库 API 支持 Supabase + pg fallback 机制，解决 IPv6 连接问题
+  - 参考图片上传到阿里云 OSS，生成公网 URL
+  - 三视图使用 image-to-image 生成，保持人物特征一致
+
+### 7. 工作流 (Workflow)
 - **路径**: `src/app/api/workflow/`
 - **功能**: 定义和执行自动化工作流
 
@@ -188,6 +224,19 @@ ALIYUN_OSS_BUCKET=
   - 显示角色列表
   - 添加/编辑/删除角色
   - 生成角色正面视图
+  - 形象管理（上传图片、添加形象、设置主形象、拖拽排序）
+  - 文字生成新形象（文生图）
+  - 从人物库导入人物
+  - 添加人物到人物库
+
+### 5. 人物库页面
+- **路径**: `src/app/characters/page.tsx`
+- **功能**:
+  - 显示人物库列表（支持搜索）
+  - 新建人物（支持上传参考图和文字描述）
+  - 编辑人物信息
+  - 上传参考图生成三视图（图生图）
+  - 删除人物
 
 ## 构建和测试命令
 
