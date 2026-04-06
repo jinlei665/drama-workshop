@@ -223,21 +223,14 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mergedVideoUrl: result.url,
-          mergedVideoStatus: 'completed'
+          description: `合并视频: ${result.url}`
         })
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        // 检查是否是 schema cache 问题
-        if (data.error?.includes('schema cache') || data.hint?.includes('NOTIFY pgrst')) {
-          toast.error('数据库需要更新，请在 Supabase Dashboard 执行: NOTIFY pgrst, \'reload\'')
-        } else {
-          throw new Error(data.error || '添加失败')
-        }
-        return
+        throw new Error(data.error || '添加失败')
       }
 
       toast.success('已添加到剧集')
