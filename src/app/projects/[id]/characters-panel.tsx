@@ -432,13 +432,15 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: appearanceName,
-          imageKey: data.viewUrl,
+          imageKey: data.fileKey,
+          imageUrl: data.viewUrl,
           description: appearanceDescription || null
         })
       })
 
       if (!addRes.ok) {
-        throw new Error('添加形象失败')
+        const errorData = await addRes.json()
+        throw new Error(errorData.error || '添加形象失败')
       }
 
       toast.success('新形象生成成功')
