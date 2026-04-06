@@ -460,8 +460,12 @@ export function EpisodesPanel({
 
       toast.success("分镜已从剧集中移除")
       
-      // 重新获取剧集详情以更新显示
-      await refreshEpisodeDetail(selectedEpisode.id)
+      // 直接更新本地状态：移除分镜
+      setSelectedEpisode(prev => prev ? {
+        ...prev,
+        scenes: (prev.scenes || []).filter(s => s.id !== sceneId),
+      } : null)
+      
       fetchEpisodes()
       onUpdate()
     } catch (error) {
@@ -499,30 +503,23 @@ export function EpisodesPanel({
 
       toast.success(`已添加 ${sceneIds.length} 个分镜到剧集`)
       
-      // 重新获取剧集详情以更新显示
-      await refreshEpisodeDetail(selectedEpisode.id)
+      // 直接更新本地状态：添加分镜到列表
+      const addedScenes = scenes.filter(s => sceneIds.includes(s.id))
+      const newScenes = [...(selectedEpisode.scenes || []), ...addedScenes.map(s => ({
+        ...s,
+        episode_id: selectedEpisode.id,
+      }))]
+      
+      setSelectedEpisode(prev => prev ? {
+        ...prev,
+        scenes: newScenes,
+      } : null)
+      
       fetchEpisodes()
       onUpdate()
     } catch (error) {
       console.error("添加分镜失败:", error)
       toast.error(error instanceof Error ? error.message : "添加分镜失败")
-    }
-  }
-
-  // 刷新剧集详情
-  const refreshEpisodeDetail = async (episodeId: string) => {
-    try {
-      const res = await fetch(`/api/episodes/${episodeId}`)
-      const data = await res.json()
-      
-      if (data.episode) {
-        setSelectedEpisode({ 
-          ...data.episode,
-          scenes: data.episode.scenes || [],
-        })
-      }
-    } catch (error) {
-      console.error("刷新剧集详情失败:", error)
     }
   }
 
