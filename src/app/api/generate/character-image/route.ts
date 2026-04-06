@@ -28,9 +28,17 @@ export async function POST(request: NextRequest) {
   // 提取请求头用于转发
   const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
 
-  console.log('[Character Image] Starting generation for:', characterId)
+  console.log('[Character Image] Starting generation for:', characterId, 'with data:', { characterName, appearance, style, gender })
 
   try {
+    // 检查必要参数
+    if (!appearance) {
+      console.error('[Character Image] Missing appearance parameter')
+      return NextResponse.json(
+        { error: "缺少外貌描述参数" },
+        { status: 400 }
+      )
+    }
     // 构建图像生成提示词
     const name = characterName || '角色'
     const genderText = gender ? (gender === 'male' ? '男性' : gender === 'female' ? '女性' : '人物') : '人物'

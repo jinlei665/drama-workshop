@@ -115,11 +115,11 @@ export async function POST(request: NextRequest) {
     try {
       await pool.query(
         `UPDATE character_library
-         SET front_view_key = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [fileKey, characterId]
+         SET front_view_key = $1, image_url = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [fileKey, viewUrl, characterId]
       )
-      console.log("Database updated with front_view_key:", fileKey)
+      console.log("Database updated with front_view_key and image_url:", fileKey, viewUrl)
     } catch (dbError) {
       console.warn("Failed to update database:", dbError)
     }
