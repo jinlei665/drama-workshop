@@ -14,30 +14,27 @@ export async function POST(request: NextRequest) {
     const pool = await getPool()
     const results: { characters: any[], scenes: any[] } = { characters: [], scenes: [] }
 
-    // 批量创建角色
+    // 批量创建角色（使用表中实际存在的字段）
     if (characters && characters.length > 0) {
       const values: any[] = []
       const placeholders: string[] = []
       
       characters.forEach((c: any, index: number) => {
-        const offset = index * 8
+        const offset = index * 5
         placeholders.push(
-          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`
         )
         values.push(
           c.id,
           projectId,
           c.name,
           c.description || "",
-          c.appearance || c.description || "",
-          c.gender || "other",
-          c.age || "",
-          JSON.stringify(c.tags || [])
+          c.appearance || c.description || ""
         )
       })
 
       const result = await pool.query(
-        `INSERT INTO characters (id, project_id, name, description, appearance, gender, age, tags)
+        `INSERT INTO characters (id, project_id, name, description, appearance)
          VALUES ${placeholders.join(", ")}
          RETURNING *`,
         values

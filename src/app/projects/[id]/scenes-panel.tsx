@@ -143,6 +143,37 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
     onScriptSelect?.(scriptId)
   }
 
+  // 删除脚本
+  const handleDeleteScript = async (scriptId: string) => {
+    if (!confirm("确定要删除这个脚本吗？关联的分镜不会被删除。")) {
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/scripts/${scriptId}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "删除失败")
+      }
+
+      toast.success("脚本已删除")
+      
+      // 如果当前选中的是要删除的脚本，重置选择
+      if (selectedScriptId === scriptId) {
+        setSelectedScriptId(null)
+      }
+      
+      fetchScripts()
+      onUpdate()
+    } catch (error) {
+      console.error("删除脚本失败:", error)
+      toast.error(error instanceof Error ? error.message : "删除脚本失败")
+    }
+  }
+
   // 过滤分镜列表
   const filteredScenes = selectedScriptId
     ? scenes.filter(s => s.scriptId === selectedScriptId)
@@ -500,19 +531,29 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
           {scripts.map(script => {
             const sceneCount = scenes.filter(s => s.scriptId === script.id).length
             return (
-              <button
+              <div
                 key={script.id}
-                onClick={() => handleScriptSelect(script.id)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                className={`group relative px-3 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
                   selectedScriptId === script.id
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary hover:bg-secondary/80 text-secondary-foreground"
                 }`}
+                onClick={() => handleScriptSelect(script.id)}
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>{script.title}</span>
                 <span className="text-xs opacity-70">({sceneCount})</span>
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDeleteScript(script.id)
+                  }}
+                  className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded hover:bg-destructive/20 hover:text-destructive transition-opacity"
+                  title="删除脚本"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             )
           })}
         </div>
