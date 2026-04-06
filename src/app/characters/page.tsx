@@ -28,18 +28,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { 
-  ArrowLeft, 
-  Plus, 
-  Search, 
-  Users, 
+import {
+  ArrowLeft,
+  Plus,
+  Search,
+  Users,
   Image as ImageIcon,
   Edit2,
   Trash2,
   Sparkles,
-  Loader2
+  Loader2,
+  HelpCircle
 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { AppShell } from '@/components/layout'
 import type { Character } from '@/lib/types'
 
@@ -60,6 +67,7 @@ export default function CharactersPage() {
   // 新建人物的参考图
   const [createReferenceImage, setCreateReferenceImage] = useState('')
   const [uploadingCreateImage, setUploadingCreateImage] = useState(false)
+  const [autoGenerateImage, setAutoGenerateImage] = useState(false) // 是否自动生成图像
   
   const [formData, setFormData] = useState({
     name: '',
@@ -98,6 +106,7 @@ export default function CharactersPage() {
       style: 'realistic'
     })
     setCreateReferenceImage('')
+    setAutoGenerateImage(false)
   }
 
   useEffect(() => {
@@ -138,6 +147,39 @@ export default function CharactersPage() {
       }
 
       toast.success('人物创建成功')
+
+      const newCharacter = result.data.character
+
+      // 如果启用了自动生成图像，则生成图像
+      if (autoGenerateImage) {
+        try {
+          toast.info('正在自动生成人物图像...')
+          const genRes = await fetch('/api/generate/character-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              characterId: newCharacter.id,
+              characterName: newCharacter.name,
+              appearance: newCharacter.appearance,
+              personality: newCharacter.personality,
+              style: newCharacter.style || 'realistic',
+              gender: formData.gender,
+              description: newCharacter.description
+            })
+          })
+          const genResult = await genRes.json()
+
+          if (genResult.success) {
+            toast.success('人物图像生成成功')
+          } else {
+            toast.error('图像生成失败，人物已创建')
+          }
+        } catch (genError) {
+          console.error('自动生成图像失败:', genError)
+          toast.error('图像生成失败，人物已创建')
+        }
+      }
+
       setCreateDialogOpen(false)
       resetCreateForm()
       fetchCharacters()
@@ -238,7 +280,12 @@ export default function CharactersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           characterId: character.id,
-          style: 'realistic'
+          characterName: character.name,
+          appearance: character.appearance,
+          personality: character.personality,
+          style: character.style || 'realistic',
+          gender: character.tags?.find(t => ['male', 'female', 'other'].includes(t)),
+          description: character.description
         })
       })
       const result = await res.json()
@@ -531,6 +578,31 @@ export default function CharactersPage() {
                         onChange={(e) => setFormData({ ...formData, appearance: e.target.value })}
                       />
                     </div>
+
+                    {/* 自动生成图像选项 */}
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="auto-generate-image"
+                        checked={autoGenerateImage}
+                        onChange={(e) => setAutoGenerateImage(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <Label htmlFor="auto-generate-image" className="text-sm cursor-pointer">
+                        创建后自动生成图像
+                      </Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <HelpCircle className="w-4 h-4 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>勾选后，创建人物时会自动根据描述生成正面视图图像</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+
                     <div className="space-y-2">
                       <Label htmlFor="personality">性格特点</Label>
                       <Textarea
