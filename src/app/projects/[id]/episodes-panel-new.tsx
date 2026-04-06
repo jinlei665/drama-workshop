@@ -199,9 +199,10 @@ export function EpisodesPanel({
   }
 
   // 获取未分配的分镜：排除所有已分配给任何剧集的分镜
+  // 直接从 scenes prop 中过滤出已分配的分镜（有 episode_id 的）
   const allAssignedSceneIds = new Set(
-    episodes
-      .flatMap(ep => ep.scenes || [])
+    scenes
+      .filter(s => s.episodeId || s.episode_id)
       .map(s => s.id)
   )
   const unassignedScenes = scenes.filter(s => !allAssignedSceneIds.has(s.id))
@@ -1246,13 +1247,14 @@ export function EpisodesPanel({
                   添加分镜 ({unassignedScenes.length} 个可用)
                 </h4>
                 <div className="grid grid-cols-8 gap-2 max-h-32 overflow-y-auto p-2 bg-background rounded border">
-                  {unassignedScenes.map((scene, index) => (
+                  {unassignedScenes.map((scene) => (
                     <button
                       key={scene.id}
                       onClick={() => handleAddScenesToEpisode([scene.id])}
                       className="p-2 rounded bg-muted hover:bg-primary hover:text-primary-foreground text-sm font-medium transition-colors"
+                      title={scene.title || scene.description}
                     >
-                      {index + 1}
+                      {scene.sceneNumber || scene.scene_number}
                     </button>
                   ))}
                 </div>

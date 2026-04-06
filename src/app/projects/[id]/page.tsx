@@ -710,32 +710,11 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle>视频合成进度</CardTitle>
-                          <CardDescription>
-                            将分镜图片转换为动态视频片段，保持场景连贯性
-                          </CardDescription>
-                        </div>
-                        {scripts.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">脚本:</span>
-                            <select
-                              value={selectedPreviewScriptId || ''}
-                              onChange={(e) => setSelectedPreviewScriptId(e.target.value || null)}
-                              className="px-3 py-1.5 rounded-md border bg-background text-sm"
-                            >
-                              <option value="">全部</option>
-                              {scripts.map(script => (
-                                <option key={script.id} value={script.id}>
-                                  {script.title}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
-                      </div>
+                    <div>
+                      <CardTitle>视频合成进度</CardTitle>
+                      <CardDescription>
+                        将分镜图片转换为动态视频片段，保持场景连贯性
+                      </CardDescription>
                     </div>
                     <div className="flex items-center gap-4">
                       <Badge variant={videoScenes.length === completedScenes.length && completedScenes.length > 0 ? "default" : "outline"}>
@@ -777,17 +756,57 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
 
               {/* 视频播放器 */}
               {videoScenes.length > 0 ? (
-                <VideoPlayer scenes={videoScenes} />
-              ) : (
-                <Card>
-                  <CardContent className="py-12">
-                    <div className="text-center text-muted-foreground">
-                      <Film className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                      <p className="text-lg mb-2">暂无视频片段</p>
-                      <p className="text-sm">请在分镜管理中为单个分镜生成视频，或点击上方按钮批量合成</p>
+                <>
+                  {/* 视频筛选 */}
+                  {scripts.length > 0 && (
+                    <div className="flex items-center justify-end gap-2 mb-4">
+                      <span className="text-sm text-muted-foreground">脚本筛选:</span>
+                      <select
+                        value={selectedPreviewScriptId || ''}
+                        onChange={(e) => setSelectedPreviewScriptId(e.target.value || null)}
+                        className="px-3 py-1.5 rounded-md border bg-background text-sm"
+                      >
+                        <option value="">全部</option>
+                        {scripts.map(script => (
+                          <option key={script.id} value={script.id}>
+                            {script.title}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  </CardContent>
-                </Card>
+                  )}
+                  <VideoPlayer scenes={videoScenes} />
+                </>
+              ) : (
+                <>
+                  {/* 视频筛选 */}
+                  {scripts.length > 0 && (
+                    <div className="flex items-center justify-end gap-2 mb-4">
+                      <span className="text-sm text-muted-foreground">脚本筛选:</span>
+                      <select
+                        value={selectedPreviewScriptId || ''}
+                        onChange={(e) => setSelectedPreviewScriptId(e.target.value || null)}
+                        className="px-3 py-1.5 rounded-md border bg-background text-sm"
+                      >
+                        <option value="">全部</option>
+                        {scripts.map(script => (
+                          <option key={script.id} value={script.id}>
+                            {script.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <Card>
+                    <CardContent className="py-12">
+                      <div className="text-center text-muted-foreground">
+                        <Film className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg mb-2">暂无视频片段</p>
+                        <p className="text-sm">请在分镜管理中为单个分镜生成视频，或点击上方按钮批量合成</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
               )}
 
               {/* 视频合并面板 */}
