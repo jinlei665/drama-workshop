@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,9 +53,9 @@ export async function GET(request: NextRequest) {
     }
 
     // 统计每个脚本下的分镜数量
-    const scriptsWithSceneCount = scripts?.map(script => ({
+    const scriptsWithSceneCount = scripts?.map((script: any) => ({
       ...script,
-      sceneCount: scenes?.filter(scene => scene.script_id === script.id).length || 0
+      sceneCount: scenes?.filter((scene: any) => scene.script_id === script.id).length || 0
     })) || []
 
     return NextResponse.json({

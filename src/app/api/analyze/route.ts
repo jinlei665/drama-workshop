@@ -247,7 +247,66 @@ export async function POST(request: NextRequest) {
       console.log(`[Analyze] Saving data for project: ${projectId}`)
       console.log(`[Analyze] Characters to save: ${result.characters?.length || 0}`)
       console.log(`[Analyze] Scenes to save: ${result.scenes?.length || 0}`)
-      
+
+      // 检查或创建"默认脚本"
+      let defaultScriptId = `script_default_${projectId}`
+      let defaultScriptInMemory = false
+
+      try {
+        const { getSupabaseClient, isDatabaseConfigured, getAdminClient } = await import('@/storage/database/supabase-client')
+
+        if (isDatabaseConfigured()) {
+          const supabase = getAdminClient()
+
+          // 检查"默认脚本"是否已存在
+          const { data: existingScript } = await supabase
+            .from("scripts")
+            .select("id")
+            .eq("id", defaultScriptId)
+            .single()
+
+          if (!existingScript) {
+            // 创建"默认脚本"
+            const { error: insertError } = await supabase
+              .from("scripts")
+              .insert({
+                id: defaultScriptId,
+                project_id: projectId,
+                title: "默认脚本",
+                content: "自动生成的默认脚本，用于存放未关联脚本的分镜",
+                description: "项目创建时自动生成",
+                status: "active",
+              })
+
+            if (insertError) {
+              console.error(`[Analyze] Failed to create default script:`, insertError.message)
+            } else {
+              console.log(`[Analyze] Created default script: ${defaultScriptId}`)
+            }
+          } else {
+            console.log(`[Analyze] Default script already exists: ${defaultScriptId}`)
+          }
+        }
+      } catch (dbError) {
+        console.warn(`[Analyze] Failed to check/create default script:`, dbError)
+      }
+
+      // 检查内存中是否有"默认脚本"
+      const { memoryScripts } = await import('@/lib/memory-storage')
+      if (!memoryScripts.some(s => s.id === defaultScriptId)) {
+        memoryScripts.push({
+          id: defaultScriptId,
+          projectId,
+          title: "默认脚本",
+          content: "自动生成的默认脚本，用于存放未关联脚本的分镜",
+          description: "项目创建时自动生成",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        console.log(`[Analyze] Added default script to memory: ${defaultScriptId}`)
+      }
+
       const savedCharacters: string[] = []
       
       // 保存人物
@@ -372,6 +431,7 @@ export async function POST(request: NextRequest) {
               const insertData = {
                 id: sceneId,
                 project_id: projectId,
+                script_id: defaultScriptId,
                 scene_number: scene.sceneNumber,
                 title: scene.title,
                 description: scene.description,
@@ -405,6 +465,7 @@ export async function POST(request: NextRequest) {
             memoryScenes.push({
               id: sceneId,
               projectId,
+              scriptId: defaultScriptId,
               sceneNumber: scene.sceneNumber,
               title: scene.title,
               description: scene.description,

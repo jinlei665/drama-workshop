@@ -37,10 +37,23 @@ export const memoryCharacters: Array<{
   createdAt: string
 }> = []
 
+// 脚本存储
+export const memoryScripts: Array<{
+  id: string
+  projectId: string
+  title: string
+  content: string
+  description?: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}> = []
+
 // 分镜存储
 export const memoryScenes: Array<{
   id: string
   projectId: string
+  scriptId?: string
   episodeId?: string
   sceneNumber: number
   title?: string
