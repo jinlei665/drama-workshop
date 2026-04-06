@@ -119,31 +119,16 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
   const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null)
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false)
 
-  // 获取脚本列表（使用 API，通过 pg 直连）
+  // 获取脚本列表
   const fetchScripts = async () => {
     try {
       const res = await fetch(`/api/scripts?projectId=${projectId}`)
-      const data = await res.json()
-      if (res.ok && data.scripts) {
-        // 转换数据库字段名为前端字段名
-        const convertedScripts: Script[] = data.scripts.map((s: any) => ({
-          id: s.id,
-          projectId: s.project_id,
-          title: s.title,
-          content: s.content,
-          description: s.description || "",
-          status: s.status || "active",
-          createdAt: s.created_at,
-          updatedAt: s.updated_at,
-        }))
-        setScripts(convertedScripts)
-      } else {
-        console.warn("获取脚本列表失败:", data.error)
-        setScripts([])
+      if (res.ok) {
+        const data = await res.json()
+        setScripts(data.scripts || [])
       }
     } catch (error) {
       console.error("获取脚本列表失败:", error)
-      setScripts([])
     }
   }
 
@@ -165,15 +150,13 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
     }
 
     try {
-      // 调用 API 删除脚本
       const res = await fetch(`/api/scripts/${scriptId}`, {
         method: "DELETE",
       })
-      const data = await res.json()
-      
+
       if (!res.ok) {
-        console.warn("删除脚本失败:", data.error)
-        // 继续执行，即使 API 删除失败（可能是因为本地测试没有真实数据库）
+        const data = await res.json()
+        throw new Error(data.error || "删除失败")
       }
 
       toast.success("脚本已删除")
@@ -187,7 +170,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
       onUpdate()
     } catch (error) {
       console.error("删除脚本失败:", error)
-      toast.error("删除脚本失败")
+      toast.error(error instanceof Error ? error.message : "删除脚本失败")
     }
   }
 

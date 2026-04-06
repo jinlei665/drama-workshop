@@ -194,33 +194,24 @@ export function ScriptDialog({
 
     setSaving(true)
     try {
-      // 调用 API 保存脚本到数据库（使用 pg 直连）
-      let scriptId: string = ""
-      try {
-        const scriptRes = await fetch("/api/scripts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId,
-            title: `脚本 ${new Date().toLocaleDateString()}`,
-            content: scriptContent,
-            description: "AI 分析生成",
-          }),
-        })
-        const scriptData = await scriptRes.json()
-        if (scriptRes.ok && scriptData.script) {
-          scriptId = scriptData.script.id
-          console.log("脚本已保存到数据库:", scriptId)
-        } else {
-          console.warn("脚本保存失败，使用本地 ID:", scriptData.error)
-          // 降级：使用本地生成的 ID
-          scriptId = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-        }
-      } catch (e) {
-        console.error('保存脚本到数据库失败:', e)
-        // 降级：使用本地生成的 ID
-        scriptId = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      // 1. 创建脚本记录
+      const scriptRes = await fetch("/api/scripts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          title: `脚本 ${new Date().toLocaleDateString()}`,
+          content: scriptContent,
+          description: "AI 分析生成",
+        }),
+      })
+
+      const scriptData = await scriptRes.json()
+      if (!scriptRes.ok) {
+        throw new Error(scriptData.error || "创建脚本失败")
       }
+
+      const scriptId = scriptData.script.id
 
       // 2. 批量创建选中的角色和分镜
       const batchRes = await fetch("/api/scenes/batch-create", {
@@ -240,13 +231,13 @@ export function ScriptDialog({
         }),
       })
 
-      const batchResult = await batchRes.json()
+      const batchData = await batchRes.json()
       if (!batchRes.ok) {
-        throw new Error(batchResult.error || "批量创建失败")
+        throw new Error(batchData.error || "批量创建失败")
       }
 
       toast.success(
-        `创建完成：${batchResult.charactersCount} 个角色，${batchResult.scenesCount} 个分镜`
+        `创建完成：${batchData.charactersCount} 个角色，${batchData.scenesCount} 个分镜`
       )
       onSuccess()
       onOpenChange(false)

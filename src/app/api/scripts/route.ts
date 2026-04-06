@@ -13,31 +13,21 @@ export async function GET(request: NextRequest) {
   try {
     const pool = await getPool()
     const result = await pool.query(
-      `SELECT id, project_id, title, content, description, status, created_at, updated_at
-       FROM scripts 
-       WHERE project_id = $1
-       ORDER BY created_at ASC`,
+      `SELECT * FROM scripts WHERE project_id = $1 ORDER BY created_at ASC`,
       [projectId]
     )
-    
-    return NextResponse.json({ scripts: result.rows })
-  } catch (err: any) {
-    console.error("获取脚本失败:", err)
-    // 优雅降级：连接失败时返回空数组
-    return NextResponse.json({ 
-      scripts: [], 
-      error: "database_connection_failed",
-      message: err.message 
-    }, { status: 200 }) // 返回 200 而不是 500，避免前端报错
+
+    return NextResponse.json({ scripts: result.rows || [] })
+  } catch (err) {
+    console.error("获取脚本异常:", err)
+    return NextResponse.json({ error: "获取脚本失败" }, { status: 500 })
   }
 }
 
 // POST /api/scripts - 创建脚本
 export async function POST(request: NextRequest) {
-  let body: any = null
-  
   try {
-    body = await request.json()
+    const body = await request.json()
     const { projectId, title, content, description } = body
 
     console.log('[Scripts API] POST received:', { projectId, title, content: content?.substring(0, 50) })
@@ -55,32 +45,17 @@ export async function POST(request: NextRequest) {
     console.log('[Scripts API] Inserting script:', { id, projectId, title })
 
     const result = await pool.query(
-      `INSERT INTO scripts (id, project_id, title, content, description, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-       RETURNING id, project_id, title, content, description, status, created_at, updated_at`,
+      `INSERT INTO scripts (id, project_id, title, content, description, status)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
       [id, projectId, title, content, description || "", "active"]
     )
 
-    console.log('[Scripts API] Insert result:', result.rows[0])
+    console.log('[Scripts API] Insert result:', { rowCount: result.rowCount, rows: result.rows })
 
     return NextResponse.json({ script: result.rows[0] })
   } catch (err: any) {
     console.error("创建脚本异常:", err)
-    // 优雅降级：返回本地生成的 ID
-    const fallbackId = `script_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    return NextResponse.json({ 
-      script: {
-        id: fallbackId,
-        project_id: body?.projectId,
-        title: body?.title,
-        content: body?.content,
-        description: body?.description || "",
-        status: "active",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      warning: "database_connection_failed",
-      message: err.message 
-    }, { status: 200 })
+    return NextResponse.json({ error: err.message || "创建脚本失败" }, { status: 500 })
   }
 }

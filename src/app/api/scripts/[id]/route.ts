@@ -64,12 +64,12 @@ export async function PUT(
     values.push(id)
 
     const result = await pool.query(
-      `UPDATE scripts SET ${updates.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      `UPDATE scripts SET ${updates.join(", ")} WHERE id = $${paramIndex} RETURNING *`,
       values
     )
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ error: "脚本不存在或更新失败" }, { status: 404 })
+      return NextResponse.json({ error: "脚本不存在" }, { status: 404 })
     }
 
     return NextResponse.json({ script: result.rows[0] })
@@ -97,7 +97,7 @@ export async function DELETE(
 
     // 删除脚本
     const result = await pool.query(
-      `DELETE FROM scripts WHERE id = $1 RETURNING *`,
+      `DELETE FROM scripts WHERE id = $1 RETURNING id`,
       [id]
     )
 
@@ -105,7 +105,7 @@ export async function DELETE(
       return NextResponse.json({ error: "脚本不存在" }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, script: result.rows[0] })
+    return NextResponse.json({ success: true })
   } catch (err: any) {
     console.error("删除脚本异常:", err)
     return NextResponse.json({ error: err.message || "删除脚本失败" }, { status: 500 })

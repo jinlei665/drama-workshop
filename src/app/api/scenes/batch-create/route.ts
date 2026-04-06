@@ -14,50 +14,68 @@ export async function POST(request: NextRequest) {
     const pool = await getPool()
     const results: { characters: any[], scenes: any[] } = { characters: [], scenes: [] }
 
-    // 批量创建角色
+    // 批量创建角色（使用表中实际存在的字段）
     if (characters && characters.length > 0) {
-      for (const c of characters) {
-        try {
-          const result = await pool.query(
-            `INSERT INTO characters (id, project_id, name, appearance, status)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING *`,
-            [c.id, projectId, c.name, c.appearance || c.description || "", "pending"]
-          )
-          results.characters.push(result.rows[0])
-        } catch (charErr) {
-          console.error("创建角色失败:", c.name, charErr)
-        }
-      }
+      const values: any[] = []
+      const placeholders: string[] = []
+      
+      characters.forEach((c: any, index: number) => {
+        const offset = index * 5
+        placeholders.push(
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`
+        )
+        values.push(
+          c.id,
+          projectId,
+          c.name,
+          c.description || "",
+          c.appearance || c.description || ""
+        )
+      })
+
+      const result = await pool.query(
+        `INSERT INTO characters (id, project_id, name, description, appearance)
+         VALUES ${placeholders.join(", ")}
+         RETURNING *`,
+        values
+      )
+
+      results.characters = result.rows || []
     }
 
     // 批量创建分镜
     if (scenes && scenes.length > 0) {
-      for (const s of scenes) {
-        try {
-          const result = await pool.query(
-            `INSERT INTO scenes (id, project_id, script_id, episode_id, scene_number, title, description, dialogue, action, emotion, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-             RETURNING *`,
-            [
-              s.id,
-              projectId,
-              scriptId || null,
-              episodeId || null,
-              s.sceneNumber || s.scene_number || 1,
-              s.title || "",
-              s.description || "",
-              s.dialogue || "",
-              s.action || "",
-              s.emotion || "",
-              s.status || "pending"
-            ]
-          )
-          results.scenes.push(result.rows[0])
-        } catch (sceneErr) {
-          console.error("创建分镜失败:", s.title, sceneErr)
-        }
-      }
+      const values: any[] = []
+      const placeholders: string[] = []
+      
+      scenes.forEach((s: any, index: number) => {
+        const offset = index * 11
+        placeholders.push(
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9}, $${offset + 10}, $${offset + 11})`
+        )
+        values.push(
+          s.id,
+          projectId,
+          scriptId || null,
+          episodeId || null,
+          s.sceneNumber || (index + 1),
+          s.title || "",
+          s.description || "",
+          s.dialogue || "",
+          s.action || "",
+          s.emotion || "",
+          s.status || "pending"
+        )
+      })
+
+      const result = await pool.query(
+        `INSERT INTO scenes (id, project_id, script_id, episode_id, scene_number, title, description, dialogue, action, emotion, status)
+         VALUES ${placeholders.join(", ")}
+         RETURNING *`,
+        values
+      )
+
+      results.scenes = result.rows || []
     }
 
     return NextResponse.json({
