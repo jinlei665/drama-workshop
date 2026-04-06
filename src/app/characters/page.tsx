@@ -51,6 +51,11 @@ export default function CharactersPage() {
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null)
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [uploadingCharacter, setUploadingCharacter] = useState<Character | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [referenceImageUrl, setReferenceImageUrl] = useState('')
+  const [generatingTripleViews, setGeneratingTripleViews] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -233,7 +238,77 @@ export default function CharactersPage() {
     }
   }
 
-  const filteredCharacters = characters.filter(c => 
+  const handleUploadReferenceImage = async (file: File) => {
+    if (!uploadingCharacter) return
+
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload/character-image', {
+        method: 'POST',
+        body: formData
+      })
+      const result = await res.json()
+
+      if (result.success) {
+        setReferenceImageUrl(result.data.url)
+        toast.success('参考图片上传成功')
+      } else {
+        throw new Error(result.error || '上传失败')
+      }
+    } catch (error) {
+      console.error('上传参考图片失败:', error)
+      toast.error('上传参考图片失败')
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  const handleGenerateTripleViews = async () => {
+    if (!uploadingCharacter || !referenceImageUrl) {
+      toast.error('请先上传参考图片')
+      return
+    }
+
+    setGeneratingTripleViews(true)
+    try {
+      const res = await fetch('/api/generate/character-triple-views', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referenceImageUrl,
+          characterId: uploadingCharacter.id,
+          characterName: uploadingCharacter.name,
+          appearance: uploadingCharacter.appearance
+        })
+      })
+      const result = await res.json()
+
+      if (result.success) {
+        toast.success('三视图生成成功')
+        setUploadDialogOpen(false)
+        setReferenceImageUrl('')
+        fetchCharacters()
+      } else {
+        throw new Error(result.error || '生成失败')
+      }
+    } catch (error) {
+      console.error('生成三视图失败:', error)
+      toast.error('生成三视图失败')
+    } finally {
+      setGeneratingTripleViews(false)
+    }
+  }
+
+  const handleOpenUploadDialog = (character: Character) => {
+    setUploadingCharacter(character)
+    setReferenceImageUrl('')
+    setUploadDialogOpen(true)
+  }
+
+  const filteredCharacters = characters.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     c.description?.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -550,7 +625,16 @@ export default function CharactersPage() {
                       </div>
                     )}
                     {/* 悬浮操作 */}
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 flex-wrap p-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleOpenUploadDialog(character)}
+                        disabled={uploadingImage || generatingTripleViews}
+                      >
+                        <ImageIcon className="w-4 h-4 mr-1" />
+                        上传参考图
+                      </Button>
                       <Button
                         size="sm"
                         variant="secondary"
@@ -607,6 +691,104 @@ export default function CharactersPage() {
           )}
         </main>
       </div>
+
+      {/* 上传参考图生成三视图对话框 */}
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ImageIcon className="w-5 h-5 text-green-500" />
+              上传参考图生成三视图
+            </DialogTitle>
+            <DialogDescription>
+              上传参考图片，AI 将根据参考图生成角色的三视图（正面、侧面、背面）
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            {/* 参考图上传 */}
+            <div className="space-y-2">
+              <Label htmlFor="reference-image">参考图片 *</Label>
+              <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors">
+                {referenceImageUrl ? (
+                  <div className="space-y-2">
+                    <img
+                      src={referenceImageUrl}
+                      alt="参考图片"
+                      className="w-full h-48 object-contain rounded-lg bg-muted"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        const input = document.getElementById('reference-image') as HTMLInputElement
+                        input?.click()
+                      }}
+                      disabled={uploadingImage}
+                    >
+                      {uploadingImage ? '上传中...' : '更换参考图'}
+                    </Button>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="reference-image"
+                    className="flex flex-col items-center justify-center cursor-pointer"
+                  >
+                    <ImageIcon className="w-12 h-12 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground mb-2">点击上传参考图片</p>
+                    <p className="text-xs text-muted-foreground">支持 JPG、PNG 格式，最大 5MB</p>
+                  </label>
+                )}
+                <input
+                  id="reference-image"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      handleUploadReferenceImage(file)
+                    }
+                  }}
+                  disabled={uploadingImage}
+                />
+              </div>
+            </div>
+
+            {/* 提示信息 */}
+            {referenceImageUrl && (
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+                <p className="text-sm font-medium">生成说明</p>
+                <p className="text-xs text-muted-foreground">
+                  AI 将根据上传的参考图片，生成角色的三视图（正面、侧面、背面），保持人物形象一致。
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button variant="outline" onClick={() => setUploadDialogOpen(false)} disabled={generatingTripleViews}>
+                取消
+              </Button>
+              <Button
+                onClick={handleGenerateTripleViews}
+                disabled={!referenceImageUrl || uploadingImage || generatingTripleViews}
+              >
+                {generatingTripleViews ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    生成中...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 mr-1" />
+                    生成三视图
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   )
 }

@@ -37,7 +37,8 @@ import {
   Library,
   User,
   Check,
-  GripVertical
+  GripVertical,
+  Sparkles
 } from "lucide-react"
 import { toast } from "sonner"
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd"
@@ -107,6 +108,10 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
   const [appearanceName, setAppearanceName] = useState("")
   const [appearanceDescription, setAppearanceDescription] = useState("")
   const [loadingAppearances, setLoadingAppearances] = useState(false)
+  const [generateMode, setGenerateMode] = useState<'upload' | 'ai'>('upload')
+  const [referenceImage, setReferenceImage] = useState<{ url: string } | null>(null)
+  const [changeDescription, setChangeDescription] = useState("")
+  const [generatingAppearance, setGeneratingAppearance] = useState(false)
 
   // 加载人物库
   const loadLibrary = async () => {
@@ -333,6 +338,14 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
     setAppearanceDialogOpen(true)
     setLoadingAppearances(true)
 
+    // 重置表单状态
+    setGenerateMode('upload')
+    setUploadedImage(null)
+    setReferenceImage(null)
+    setChangeDescription('')
+    setAppearanceName('')
+    setAppearanceDescription('')
+
     try {
       const res = await fetch(`/api/characters/${character.id}/appearances`)
       if (res.ok) {
@@ -375,6 +388,111 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       toast.error('上传图片失败')
     } finally {
       setUploadingImage(false)
+    }
+  }
+
+  // 上传参考图（AI 生成模式）
+  const handleReferenceImageUpload = async (file: File) => {
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload/character-image', {
+        method: 'POST',
+        body: formData
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || '上传失败')
+      }
+
+      const data = await res.json()
+      setReferenceImage({
+        url: data.url
+      })
+      toast.success('参考图片上传成功')
+    } catch (error) {
+      console.error('上传参考图片失败:', error)
+      toast.error('上传参考图片失败')
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
+  // 根据参考图生成新形象
+  const handleGenerateAppearance = async () => {
+    if (!referenceImage || !selectedCharacterForAppearances) {
+      toast.error('请先上传参考图片')
+      return
+    }
+
+    if (!appearanceName.trim()) {
+      toast.error('请输入形象名称')
+      return
+    }
+
+    if (!changeDescription.trim()) {
+      toast.error('请输入变更描述')
+      return
+    }
+
+    setGeneratingAppearance(true)
+    try {
+      const res = await fetch('/api/generate/appearance-from-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referenceImageUrl: referenceImage.url,
+          characterId: selectedCharacterForAppearances.id,
+          characterName: selectedCharacterForAppearances.name,
+          appearance: selectedCharacterForAppearances.appearance,
+          changeDescription: changeDescription
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || '生成失败')
+      }
+
+      const data = await res.json()
+
+      // 添加生成的形象
+      const addRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: appearanceName,
+          imageKey: data.viewUrl,
+          description: appearanceDescription || null
+        })
+      })
+
+      if (!addRes.ok) {
+        throw new Error('添加形象失败')
+      }
+
+      toast.success('新形象生成成功')
+
+      // 重新加载形象列表
+      const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        setAppearances(listData.appearances || [])
+      }
+
+      // 清空表单
+      setReferenceImage(null)
+      setChangeDescription('')
+      setAppearanceName('')
+      setAppearanceDescription('')
+    } catch (error) {
+      console.error('生成新形象失败:', error)
+      toast.error(error instanceof Error ? error.message : '生成新形象失败')
+    } finally {
+      setGeneratingAppearance(false)
     }
   }
 
@@ -683,40 +801,111 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                   <CardTitle className="text-base">添加新形象</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>上传图片</Label>
-                    <div className="flex items-center gap-4">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) handleImageUpload(file)
-                        }}
-                        className="hidden"
-                        id="appearance-image-upload"
-                      />
-                      <label htmlFor="appearance-image-upload">
-                        <Button variant="outline" asChild disabled={uploadingImage}>
-                          <span>
-                            <Upload className="w-4 h-4 mr-2" />
-                            {uploadingImage ? '上传中...' : '选择图片'}
-                          </span>
-                        </Button>
-                      </label>
-                      {uploadedImage && (
-                        <div className="flex items-center gap-2">
-                          <img src={uploadedImage.url} alt="预览" className="w-16 h-16 rounded object-cover" />
-                          <Button variant="ghost" size="sm" onClick={() => setUploadedImage(null)}>
-                            重新选择
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+                  {/* 生成模式选择 */}
+                  <div className="flex items-center gap-4">
+                    <Label>生成方式</Label>
+                    <Tabs value={generateMode} onValueChange={(v) => setGenerateMode(v as 'upload' | 'ai')} className="flex-1">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="upload">直接上传</TabsTrigger>
+                        <TabsTrigger value="ai">AI 生成</TabsTrigger>
+                      </TabsList>
+                    </Tabs>
                   </div>
 
+                  {/* 直接上传模式 */}
+                  {generateMode === 'upload' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>上传图片</Label>
+                        <div className="flex items-center gap-4">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleImageUpload(file)
+                            }}
+                            className="hidden"
+                            id="appearance-image-upload"
+                          />
+                          <label htmlFor="appearance-image-upload">
+                            <Button variant="outline" asChild disabled={uploadingImage}>
+                              <span>
+                                <Upload className="w-4 h-4 mr-2" />
+                                {uploadingImage ? '上传中...' : '选择图片'}
+                              </span>
+                            </Button>
+                          </label>
+                          {uploadedImage && (
+                            <div className="flex items-center gap-2">
+                              <img src={uploadedImage.url} alt="预览" className="w-16 h-16 rounded object-cover" />
+                              <Button variant="ghost" size="sm" onClick={() => setUploadedImage(null)}>
+                                重新选择
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* AI 生成模式 */}
+                  {generateMode === 'ai' && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>参考图片 *</Label>
+                        <div className="flex items-center gap-4">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) handleReferenceImageUpload(file)
+                            }}
+                            className="hidden"
+                            id="reference-image-upload"
+                          />
+                          <label htmlFor="reference-image-upload">
+                            <Button variant="outline" asChild disabled={uploadingImage}>
+                              <span>
+                                <Upload className="w-4 h-4 mr-2" />
+                                {uploadingImage ? '上传中...' : '上传参考图'}
+                              </span>
+                            </Button>
+                          </label>
+                          {referenceImage && (
+                            <div className="flex items-center gap-2">
+                              <img src={referenceImage.url} alt="参考图" className="w-16 h-16 rounded object-cover" />
+                              <Button variant="ghost" size="sm" onClick={() => setReferenceImage(null)}>
+                                重新选择
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="change-description">变更描述 *</Label>
+                        <Textarea
+                          id="change-description"
+                          value={changeDescription}
+                          onChange={(e) => setChangeDescription(e.target.value)}
+                          placeholder="请描述你希望如何改变人物形象，例如：换一套红色的西装、变成古代装束、穿着休闲运动服等"
+                          className="min-h-[80px]"
+                        />
+                      </div>
+
+                      <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+                        <p className="text-sm font-medium">生成说明</p>
+                        <p className="text-xs text-muted-foreground">
+                          AI 将根据参考图片和你的变更描述，生成一张新的人物形象图片，保持人物面部特征一致。
+                        </p>
+                      </div>
+                    </>
+                  )}
+
                   <div className="space-y-2">
-                    <Label htmlFor="appearance-name">形象名称</Label>
+                    <Label htmlFor="appearance-name">形象名称 *</Label>
                     <Input
                       id="appearance-name"
                       value={appearanceName}
@@ -736,23 +925,43 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                     />
                   </div>
 
-                  <Button
-                    onClick={handleAddAppearance}
-                    disabled={!uploadedImage || creating}
-                    className="amber-gradient text-white border-0"
-                  >
-                    {creating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        添加中...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4 mr-2" />
-                        添加形象
-                      </>
-                    )}
-                  </Button>
+                  {generateMode === 'upload' ? (
+                    <Button
+                      onClick={handleAddAppearance}
+                      disabled={!uploadedImage || creating}
+                      className="amber-gradient text-white border-0"
+                    >
+                      {creating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          添加中...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 mr-2" />
+                          添加形象
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleGenerateAppearance}
+                      disabled={!referenceImage || !appearanceName || !changeDescription || generatingAppearance}
+                      className="amber-gradient text-white border-0"
+                    >
+                      {generatingAppearance ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          生成中...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          生成新形象
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
 
