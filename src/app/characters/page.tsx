@@ -143,7 +143,9 @@ export default function CharactersPage() {
       const result = await res.json()
 
       if (!res.ok || !result.success) {
-        throw new Error(result.error?.message || result.error || '创建失败')
+        // API 返回的格式是 { error: { message: string, ... } }
+        const errorMsg = result.error?.message || '创建失败'
+        throw new Error(errorMsg)
       }
 
       toast.success('人物创建成功')
@@ -248,7 +250,8 @@ export default function CharactersPage() {
       const result = await res.json()
 
       if (!res.ok || !result.success) {
-        throw new Error(result.error?.message || result.error || '更新失败')
+        const errorMsg = result.error?.message || '更新失败'
+        throw new Error(errorMsg)
       }
 
       toast.success('人物更新成功')
@@ -294,7 +297,8 @@ export default function CharactersPage() {
         toast.success('人物图像生成成功')
         fetchCharacters()
       } else {
-        throw new Error(result.error || '生成失败')
+        const errorMsg = result.error?.message || '生成失败'
+        throw new Error(errorMsg)
       }
     } catch (error) {
       console.error('生成图像失败:', error)
@@ -320,7 +324,8 @@ export default function CharactersPage() {
         setReferenceImageUrl(result.data.url)
         toast.success('参考图片上传成功')
       } else {
-        throw new Error(result.error || '上传失败')
+        const errorMsg = result.error?.message || '上传失败'
+        throw new Error(errorMsg)
       }
     } catch (error) {
       console.error('上传参考图片失败:', error)
@@ -347,7 +352,8 @@ export default function CharactersPage() {
         setCreateReferenceImage(result.data.url)
         toast.success('参考图片上传成功')
       } else {
-        throw new Error(result.error || '上传失败')
+        const errorMsg = result.error?.message || '上传失败'
+        throw new Error(errorMsg)
       }
     } catch (error) {
       console.error('上传参考图片失败:', error)
@@ -383,7 +389,8 @@ export default function CharactersPage() {
         setReferenceImageUrl('')
         fetchCharacters()
       } else {
-        throw new Error(result.error || '生成失败')
+        const errorMsg = result.error?.message || '生成失败'
+        throw new Error(errorMsg)
       }
     } catch (error) {
       console.error('生成三视图失败:', error)
