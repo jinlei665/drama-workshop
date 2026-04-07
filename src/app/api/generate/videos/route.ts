@@ -136,34 +136,36 @@ async function saveVideo(
 
   console.log(`视频验证通过，大小: ${(buffer.length / 1024).toFixed(2)} KB`);
 
-  // 尝试使用 S3Storage 上传视频
+  // 尝试使用 ali-oss SDK 上传视频
   if (storage) {
     try {
-      const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
-      console.log(`开始上传视频到 OSS，key: ${key}`);
-      
-      // 检查 storage.uploadFile 的参数格式
-      if (typeof (storage as any).uploadFile === 'function') {
-        // 尝试新版 API: uploadFile(key, data, contentType)
-        await storage.uploadFile(key, buffer, 'video/mp4');
-      } else {
-        // 尝试旧版 API: uploadFile({ fileContent, fileName, contentType })
-        await (storage as any).uploadFile({
-          fileContent: buffer,
-          fileName: key,
-          contentType: 'video/mp4'
-        });
-      }
-      
-      console.log(`视频上传成功`);
+      const OSS = await import('ali-oss')
+      const ossClient = new OSS.default({
+        region: process.env.S3_REGION || 'oss-cn-chengdu',
+        accessKeyId: process.env.S3_ACCESS_KEY || '',
+        accessKeySecret: process.env.S3_SECRET_KEY || '',
+        bucket: process.env.S3_BUCKET || 'drama-studio',
+        secure: true,
+      })
+
+      const key = `videos/${sceneId}/video_${Date.now()}.mp4`
+      console.log(`开始上传视频到 OSS，key: ${key}`)
+
+      // 上传视频
+      await ossClient.put(key, buffer)
+
+      // 设置为公开读取
+      await ossClient.putACL(key, 'public-read')
+
+      console.log(`视频上传成功`)
 
       // 生成公网 URL
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
-      const publicUrl = `${endpoint}/${key}`;
-      console.log(`视频公网 URL: ${publicUrl}`);
-      return publicUrl;
+      const publicUrl = `${endpoint}/${key}`
+      console.log(`视频公网 URL: ${publicUrl}`)
+      return publicUrl
     } catch (uploadErr) {
-      console.warn(`对象存储上传失败，尝试本地存储:`, uploadErr);
+      console.warn(`对象存储上传失败，尝试本地存储:`, uploadErr)
     }
   }
   

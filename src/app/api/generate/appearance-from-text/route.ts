@@ -60,18 +60,23 @@ export async function POST(request: NextRequest) {
     let viewUrl: string = imageUrl
 
     try {
-      const storage = new S3Storage({
-        endpointUrl: process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL,
-        accessKey: process.env.S3_ACCESS_KEY || '',
-        secretKey: process.env.S3_SECRET_KEY || '',
-        bucketName: process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME,
-        region: process.env.S3_REGION || 'us-east-1',
+      // 使用 ali-oss SDK 上传（支持设置 ACL）
+      const OSS = await import('ali-oss')
+      const ossClient = new OSS.default({
+        region: process.env.S3_REGION || 'oss-cn-chengdu',
+        accessKeyId: process.env.S3_ACCESS_KEY || '',
+        accessKeySecret: process.env.S3_SECRET_KEY || '',
+        bucket: process.env.S3_BUCKET || 'drama-studio',
+        secure: true,
       })
 
       // 上传到 OSS
       const timestamp = Date.now()
       fileKey = `character-appearances/${characterId}/appearance_${timestamp}.png`
-      await storage.uploadFile(fileKey, imageBuffer, 'image/png')
+      await ossClient.put(fileKey, imageBuffer)
+
+      // 设置为公开读取
+      await ossClient.putACL(fileKey, 'public-read')
 
       // 生成公网 URL
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
