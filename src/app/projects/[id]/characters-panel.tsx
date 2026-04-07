@@ -348,7 +348,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       const res = await fetch(`/api/characters/${character.id}/appearances`)
       if (res.ok) {
         const data = await res.json()
-        setAppearances(data.appearances || [])
+        // 修复：访问 data.data.appearances 而不是 data.appearances
+        setAppearances(data.data?.appearances || [])
       }
     } catch (error) {
       console.error('加载形象列表失败:', error)
@@ -525,9 +526,10 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         try {
           const listData = JSON.parse(listText)
           console.log('[Load Appearances] Parsed data:', listData)
-          console.log('[Load Appearances] Appearances count:', listData.appearances?.length)
-          console.log('[Load Appearances] First appearance:', listData.appearances?.[0])
-          setAppearances(listData.appearances || [])
+          console.log('[Load Appearances] Appearances count:', listData.data?.appearances?.length)
+          console.log('[Load Appearances] First appearance:', listData.data?.appearances?.[0])
+          // 修复：访问 listData.data.appearances 而不是 listData.appearances
+          setAppearances(listData.data?.appearances || [])
         } catch (parseError) {
           console.error('[Load Appearances] Parse error:', parseError)
         }
@@ -588,7 +590,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
       if (listRes.ok) {
         const listData = await listRes.json()
-        setAppearances(listData.appearances || [])
+        // 修复：访问 listData.data.appearances 而不是 listData.appearances
+        setAppearances(listData.data?.appearances || [])
       }
 
       // 清空表单
@@ -624,7 +627,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
       if (listRes.ok) {
         const listData = await listRes.json()
-        setAppearances(listData.appearances || [])
+        // 修复：访问 listData.data.appearances 而不是 listData.appearances
+        setAppearances(listData.data?.appearances || [])
       }
     } catch (error) {
       console.error('设置主形象失败:', error)
@@ -652,7 +656,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
         if (listRes.ok) {
           const listData = await listRes.json()
-          setAppearances(listData.appearances || [])
+          // 修复：访问 listData.data.appearances 而不是 listData.appearances
+          setAppearances(listData.data?.appearances || [])
         }
       }
     } catch (error) {
@@ -696,7 +701,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
         if (listRes.ok) {
           const listData = await listRes.json()
-          setAppearances(listData.appearances || [])
+          // 修复：访问 listData.data.appearances 而不是 listData.appearances
+          setAppearances(listData.data?.appearances || [])
         }
       }
     }
