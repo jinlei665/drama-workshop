@@ -363,13 +363,15 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
         const res = await fetch(`/api/characters/${charId}/appearances`)
         if (res.ok) {
           const data = await res.json()
+          // 修复：访问 data.data.appearances 而不是 data.appearances
+          const appearancesList = data.data?.appearances || []
           setCharacterAppearancesMap(prev => ({
             ...prev,
-            [charId]: data.appearances || []
+            [charId]: appearancesList
           }))
-          
+
           // 默认选择主形象
-          const primaryAppearance = (data.appearances || []).find((a: any) => a.is_primary)
+          const primaryAppearance = appearancesList.find((a: any) => a.is_primary)
           if (primaryAppearance) {
             newCharacterAppearancesMap[charId] = primaryAppearance.id
           }

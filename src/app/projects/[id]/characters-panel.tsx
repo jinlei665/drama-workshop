@@ -348,8 +348,28 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       const res = await fetch(`/api/characters/${character.id}/appearances`)
       if (res.ok) {
         const data = await res.json()
-        // 修复：访问 data.data.appearances 而不是 data.appearances
-        setAppearances(data.data?.appearances || [])
+        let appearances = data.data?.appearances || []
+
+        // 检查是否需要添加角色的原始形象作为默认形象
+        const hasCharacterAppearance = appearances.some(app => app.imageKey === character.frontViewKey || app.imageUrl === character.imageUrl)
+
+        if (!hasCharacterAppearance && (character.imageUrl || character.frontViewKey)) {
+          // 添加角色的原始形象作为默认形象
+          const defaultAppearance: CharacterAppearance = {
+            id: `default_${character.id}`, // 使用临时ID
+            characterId: character.id,
+            name: '默认形象',
+            imageKey: character.frontViewKey || null,
+            imageUrl: character.imageUrl || null,
+            isPrimary: appearances.length === 0, // 如果没有其他形象，则设为主形象
+            description: '角色的原始形象',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          appearances = [defaultAppearance, ...appearances]
+        }
+
+        setAppearances(appearances)
       }
     } catch (error) {
       console.error('加载形象列表失败:', error)
