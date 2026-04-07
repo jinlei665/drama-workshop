@@ -25,8 +25,11 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    console.log(`🔍 GET Workflow API - 项目ID: ${id}`)
 
-    // 尝试从数据库获取
+    // 尝试从数据库获取项目信息（不查询 metadata 字段，避免 Supabase 缓存问题）
+    let projectData: any = null
+
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
 
@@ -34,46 +37,46 @@ export async function GET(
         const db = getSupabaseClient()
         const { data, error } = await db
           .from('projects')
-          .select('metadata, name, source_content, style')
+          .select('id, name, source_content, style')
           .eq('id', id)
           .maybeSingle()
 
-        if (!error && data?.metadata) {
-          const metadata = data.metadata as Record<string, unknown>
-          if (metadata.workflow) {
-            return successResponse({ workflow: metadata.workflow })
-          } else {
-            // 项目存在但没有工作流，返回提示需要生成系统工作流
-            return successResponse({
-              workflow: null,
-              needsSystemWorkflow: true,
-              projectName: data.name,
-              sourceContent: data.source_content,
-              style: data.style,
-            })
-          }
+        console.log(`📊 Supabase REST API 查询结果:`, {
+          hasError: !!error,
+          errorMessage: error?.message,
+          hasData: !!data,
+        })
+
+        if (!error && data) {
+          projectData = data
+          console.log(`✅ 找到项目: ${data.name}`)
         }
       }
     } catch (dbError) {
-      console.warn('Database not available, using memory storage:', dbError)
+      console.warn('数据库查询失败:', dbError)
     }
 
-    // 从内存存储获取
-    const project = memoryProjects.find(p => p.id === id)
-    if (project?.metadata?.workflow) {
-      return successResponse({ workflow: project.metadata.workflow })
-    } else if (project) {
-      // 项目存在但没有工作流，返回提示需要生成系统工作流
+    // 如果找到了项目，直接生成系统工作流
+    if (projectData) {
+      console.log(`⚠️ 项目存在，生成系统工作流`)
+      // 生成系统工作流（不保存到数据库，直接返回）
+      const systemWorkflow = createSystemWorkflow(
+        projectData.id,
+        projectData.name,
+        projectData.source_content,
+        projectData.style
+      )
+
+      console.log(`✨ 系统工作流生成完成: ${systemWorkflow.nodes.length} 个节点`)
       return successResponse({
-        workflow: null,
-        needsSystemWorkflow: true,
-        projectName: project.name,
-        sourceContent: project.sourceContent,
-        style: project.style,
+        workflow: systemWorkflow,
+        isSystem: true,
+        readonly: true,
       })
     }
 
     // 如果项目不存在，返回默认工作流
+    console.log(`⚠️ 项目不存在，返回默认工作流`)
     const defaultWorkflow = getDefaultWorkflow()
     return successResponse({
       workflow: defaultWorkflow,
@@ -172,12 +175,18 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  console.log('🔥 POST /api/projects/[id]/workflow 被调用')
+
   try {
     const { id } = await params
+    console.log('📝 项目ID:', id)
+
     const body = await getJSON<{ generate?: boolean }>(request)
+    console.log('📦 请求体:', body)
 
     // 如果是生成系统工作流的请求
     if (body.generate === true) {
+      console.log('🚀 开始生成系统工作流流程...')
       // 获取项目信息
       let project: any = null
 

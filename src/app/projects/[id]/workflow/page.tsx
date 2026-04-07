@@ -31,52 +31,99 @@ export default function ProjectWorkflowPage({
   const [generating, setGenerating] = useState(false)
 
   useEffect(() => {
+    console.log('🎬 Workflow 页面组件已挂载，项目ID:', id)
     loadSystemWorkflow()
   }, [id])
 
   const loadSystemWorkflow = async () => {
     try {
+      console.log('📥 开始加载系统工作流，项目ID:', id)
       setLoading(true)
       const response = await fetch(`/api/projects/${id}/workflow`)
+      console.log('📡 加载响应状态:', response.status)
+
+      if (response.status === 404) {
+        console.error('❌ 项目不存在')
+        toast.error('项目不存在，请返回项目列表')
+        setLoading(false)
+        return
+      }
+
       const data = await response.json()
+      console.log('📦 加载响应数据:', data)
 
       if (data.success) {
-        if (data.needsSystemWorkflow) {
-          // 项目没有系统工作流，显示提示界面
+        // 检查是否有工作流数据
+        const hasWorkflow = data.data?.workflow &&
+                            Array.isArray(data.data.workflow.nodes) &&
+                            data.data.workflow.nodes.length > 0
+
+        const isSystem = data.data?.isSystem === true ||
+                         (data.data?.workflow?.system === true)
+
+        if (hasWorkflow && !isSystem) {
+          // 项目有自定义工作流
+          console.log('✅ 项目有自定义工作流')
+          setSystemWorkflow({
+            nodes: data.data.workflow.nodes || [],
+            edges: data.data.workflow.edges || []
+          })
+          setIsSystemReadonly(data.data.workflow.readonly !== false)
+          setMode('system')
+        } else if (hasWorkflow && isSystem) {
+          // 项目有系统工作流
+          console.log('✅ 项目有系统工作流')
+          setSystemWorkflow({
+            nodes: data.data.workflow.nodes || [],
+            edges: data.data.workflow.edges || []
+          })
+          setIsSystemReadonly(true)
+          setMode('system')
+        } else {
+          // 项目没有工作流，显示提示界面
+          console.log('⚠️ 项目需要初始化工作流')
           setNeedsSystemWorkflow(true)
           setMode('empty')
-        } else if (data.workflow) {
-          // 项目有工作流
-          setSystemWorkflow({
-            nodes: data.workflow.nodes || [],
-            edges: data.workflow.edges || []
-          })
-          setIsSystemReadonly(data.workflow.readonly !== false)
-          setMode('system')
         }
+      } else {
+        console.error('❌ 加载工作流失败:', data.error)
+        toast.error(data.error || '加载工作流失败')
       }
     } catch (error) {
-      console.error('加载系统工作流失败:', error)
+      console.error('❌ 加载系统工作流失败:', error)
       toast.error('加载工作流失败')
     } finally {
       setLoading(false)
+      console.log('✨ 加载流程完成')
     }
   }
 
   const handleGenerateSystemWorkflow = async () => {
+    console.log('🎯 开始生成系统工作流，项目ID:', id)
     try {
       setGenerating(true)
+      console.log('⏳ 正在发送请求...')
+
       const response = await fetch(`/api/projects/${id}/workflow`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ generate: true }),
       })
 
+      console.log('📡 收到响应，状态码:', response.status)
+
+      if (response.status === 404) {
+        console.error('❌ 项目不存在')
+        toast.error('项目不存在，请返回项目列表')
+        return
+      }
+
       const data = await response.json()
 
-      console.log('生成系统工作流响应:', data)
+      console.log('✅ 生成系统工作流响应:', data)
 
       if (data.success && data.workflow) {
+        console.log('🎉 工作流生成成功，节点数:', data.workflow.nodes?.length, '连接数:', data.workflow.edges?.length)
         toast.success(data.message || '系统工作流生成成功')
         setNeedsSystemWorkflow(false)
         setSystemWorkflow({
@@ -85,14 +132,16 @@ export default function ProjectWorkflowPage({
         })
         setIsSystemReadonly(data.workflow.readonly !== false)
         setMode('system')
+        console.log('✨ 已切换到系统工作流模式')
       } else {
-        toast.error(data.error || '生成失败')
-        console.error('生成失败:', data)
+        console.error('❌ 生成失败，响应数据:', data)
+        toast.error(data.error?.message || data.error || '生成失败')
       }
     } catch (error) {
-      console.error('生成系统工作流失败:', error)
-      toast.error('生成系统工作流失败')
+      console.error('💥 生成系统工作流异常:', error)
+      toast.error(`生成系统工作流失败: ${error instanceof Error ? error.message : '未知错误'}`)
     } finally {
+      console.log('🏁 生成流程结束，设置 generating 为 false')
       setGenerating(false)
     }
   }
@@ -224,7 +273,15 @@ export default function ProjectWorkflowPage({
               <Button
                 variant={mode === 'system' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setMode('system')}
+                onClick={() => {
+                  if (!systemWorkflow || systemWorkflow.nodes.length === 0) {
+                    toast.warning('请先生成系统工作流')
+                    setNeedsSystemWorkflow(true)
+                    setMode('empty')
+                  } else {
+                    setMode('system')
+                  }
+                }}
                 disabled={loading || mode === 'system'}
               >
                 系统工作流

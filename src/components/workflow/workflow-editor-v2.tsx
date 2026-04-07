@@ -1075,8 +1075,8 @@ export function WorkflowEditorV2({
                     <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-4">
                       <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" />
                     </div>
-                    <p className="mb-2 font-medium">系统工作流正在生成中...</p>
-                    <p className="text-sm">请稍候片刻</p>
+                    <p className="mb-2 font-medium">系统工作流尚未生成</p>
+                    <p className="text-sm">请返回上一页，点击"生成系统工作流"按钮</p>
                   </>
                 ) : (
                   <>
