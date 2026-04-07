@@ -6,12 +6,40 @@ import { NextRequest, NextResponse } from "next/server"
 import { HeaderUtils, S3Storage } from "coze-coding-dev-sdk"
 import { generateImageFromImage } from "@/lib/ai"
 import { downloadFile } from "@/lib/utils"
-import { Pool } from 'pg'
+import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 
-// PostgreSQL 连接配置
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-})
+// 获取人物库专用的数据库客户端（与人物库 API 保持一致）
+function getCharacterLibraryClient() {
+  const userUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (userUrl && serviceKey) {
+    console.log('[Character Triple Views] Using user Supabase with service_role:', userUrl)
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    return createClient(userUrl, serviceKey, {
+      db: { timeout: 60000 },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  }
+
+  // 回退到沙箱环境或默认客户端
+  const cozeUrl = process.env.COZE_SUPABASE_URL
+  const cozeKey = process.env.COZE_SUPABASE_ANON_KEY
+
+  if (cozeUrl && cozeKey) {
+    console.log('[Character Triple Views] Using sandbox Supabase:', cozeUrl)
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    return createClient(cozeUrl, cozeKey, {
+      db: { timeout: 60000 },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  }
+
+  // 回退到默认客户端
+  return getSupabaseClient()
+}
 
 // POST /api/generate/character-triple-views - 根据参考图片生成三视图
 export async function POST(request: NextRequest) {
@@ -114,17 +142,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 更新数据库（使用 pg 直连）
+    // 更新数据库（使用 Supabase 客户端，与人物库 API 保持一致）
     try {
-      await pool.query(
-        `UPDATE character_library
-         SET front_view_key = $1, image_url = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [fileKey, viewUrl, characterId]
-      )
-      console.log("Database updated with front_view_key and image_url:", fileKey, viewUrl)
+      console.log('[Character Triple Views] Updating database for character:', characterId, 'with URL:', viewUrl)
+      const supabase = getCharacterLibraryClient()
+      const { error } = await supabase
+        .from('character_library')
+        .update({
+          front_view_key: fileKey,
+          image_url: viewUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', characterId)
+
+      if (error) {
+        console.error('[Character Triple Views] Failed to update database:', error)
+      } else {
+        console.log('[Character Triple Views] Database updated successfully')
+      }
     } catch (dbError) {
-      console.warn("Failed to update database:", dbError)
+      console.error('[Character Triple Views] Failed to update database:', dbError)
     }
 
     return NextResponse.json({
