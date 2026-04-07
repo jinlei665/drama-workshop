@@ -1118,7 +1118,20 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                             ref={provided.innerRef}
                             className="grid grid-cols-2 md:grid-cols-3 gap-4"
                           >
-                            {appearances.map((appearance, index) => (
+                            {appearances.map((appearance, index) => {
+                              // 调试：打印每个形象的信息
+                              console.log('[Render Appearance Card]', {
+                                index,
+                                id: appearance.id,
+                                name: appearance.name,
+                                imageKey: appearance.imageKey,
+                                imageUrl: appearance.imageUrl,
+                                isPrimary: appearance.isPrimary,
+                                hasValidImageUrl: !!appearance.imageUrl?.trim(),
+                                hasValidImageKey: !!appearance.imageKey?.trim()
+                              })
+
+                              return (
                               <Draggable
                                 key={appearance.id}
                                 draggableId={appearance.id}
@@ -1210,7 +1223,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                                   </div>
                                 )}
                               </Draggable>
-                            ))}
+                              )
+                            })}
                             {provided.placeholder}
                           </div>
                         )}
