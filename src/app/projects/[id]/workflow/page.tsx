@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Workflow, Plus, Sparkles, RefreshCw } from 'lucide-react'
-import { WorkflowEditorV2 } from '@/components/workflow/workflow-editor-v2'
+import WorkflowEditorV2 from '@/components/workflow/workflow-editor-v2'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
 import { toast } from 'sonner'
 
@@ -304,17 +304,13 @@ export default function ProjectWorkflowPage({
       <div className="h-[calc(100vh-73px)]">
         {mode === 'system' ? (
           <WorkflowEditorV2
-            projectId={id}
             initialNodes={systemWorkflow?.nodes || []}
             initialEdges={systemWorkflow?.edges || []}
-            readonly={isSystemReadonly}
-            isSystem={true}
+            readOnly={isSystemReadonly}
           />
         ) : (
           <WorkflowEditorV2
-            projectId={id}
-            readonly={false}
-            isSystem={false}
+            readOnly={false}
           />
         )}
       </div>
