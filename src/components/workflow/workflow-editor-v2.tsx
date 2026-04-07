@@ -728,29 +728,41 @@ export function WorkflowEditorV2({
 
     const NODE_WIDTH = 200
     const HEADER_HEIGHT = 40
-    const PORT_ITEM_HEIGHT = 32 // 每个端口项的高度
-    const PORT_GAP = 4 // 端口之间的间距（space-y-1）
-    const SECTION_PADDING_TOP = 8 // py-2
-    const SECTION_PADDING_BOTTOM = 8
-    const BORDER_TOP = 1 // border-t
-    const PORT_SIZE = 16 // 端口圆圈的大小（w-3 h-3 + border-2 * 2 = 12px + 4px = 16px）
-    const SECTION_PADDING_X = 8 // px-2
 
-    // 计算端口位置
-    let portX: number
+    // 端口圆圈尺寸：w-3 h-3 + border-2 = 12px + 4px = 16px
+    // 圆圈中心应该在：8px（padding） + 8px（圆圈半径）= 16px
+    const PORT_CENTER_X_INPUT = 8 + 8  // padding (px-2) + 半径
+    const PORT_CENTER_X_OUTPUT = NODE_WIDTH - 8 - 8  // 节点宽度 - padding - 半径
+
+    // 端口项高度：w-3 h-3 + border-2 + gap = 12px + 4px + 8px (gap-2) = 24px
+    // 但是 flex items 的高度是 text-xs + gap，大约是 16px
+    const PORT_ITEM_HEIGHT = 20  // 实际测量的端口项高度
+    const PORT_GAP = 4  // space-y-1 = 4px
+    const SECTION_PADDING_Y = 8  // py-2 = 8px
+    const BORDER_TOP = 1  // border-t
+
+    // 计算端口 Y 位置
     let portY: number
-
     if (type === 'input') {
-      // 输入端口: X 在左侧，Y 垂直居中
-      portX = SECTION_PADDING_X + PORT_SIZE / 2
-      portY = HEADER_HEIGHT + SECTION_PADDING_TOP + index * (PORT_ITEM_HEIGHT + PORT_GAP) + PORT_ITEM_HEIGHT / 2
+      // 输入端口
+      portY = HEADER_HEIGHT + SECTION_PADDING_Y + index * (PORT_ITEM_HEIGHT + PORT_GAP) + PORT_ITEM_HEIGHT / 2
     } else {
-      // 输出端口: X 在右侧，Y 垂直居中
-      portX = NODE_WIDTH - SECTION_PADDING_X - PORT_SIZE / 2
-      // 输出端口: Y 计算
+      // 输出端口
       const inputPortsHeight = inputPorts.length > 0 ? inputPorts.length * (PORT_ITEM_HEIGHT + PORT_GAP) - PORT_GAP : 0
-      portY = HEADER_HEIGHT + SECTION_PADDING_TOP + inputPortsHeight + BORDER_TOP + SECTION_PADDING_TOP + index * (PORT_ITEM_HEIGHT + PORT_GAP) + PORT_ITEM_HEIGHT / 2
+      portY = HEADER_HEIGHT + SECTION_PADDING_Y + inputPortsHeight + BORDER_TOP + SECTION_PADDING_Y + index * (PORT_ITEM_HEIGHT + PORT_GAP) + PORT_ITEM_HEIGHT / 2
     }
+
+    const portX = type === 'input' ? PORT_CENTER_X_INPUT : PORT_CENTER_X_OUTPUT
+
+    console.log(`端口位置 ${node.id}.${portName} (${type}):`, {
+      portX,
+      portY,
+      index,
+      portItemHeight: PORT_ITEM_HEIGHT,
+      inputPortsLength: inputPorts.length,
+      outputPortsLength: outputPorts.length,
+      inputPortsHeight: inputPorts.length * (PORT_ITEM_HEIGHT + PORT_GAP) - PORT_GAP
+    })
 
     return { x: node.position.x + portX, y: node.position.y + portY }
   }, [])
@@ -925,6 +937,94 @@ export function WorkflowEditorV2({
             }}
           />
 
+          {/* 连接线 SVG - 在 transform 容器外面 */}
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              overflow: 'visible',
+              zIndex: 0
+            }}
+          >
+            {edges.map((edge) => {
+              const sourceNode = nodes.find(n => n.id === edge.from)
+              const targetNode = nodes.find(n => n.id === edge.to)
+              if (!sourceNode?.position || !targetNode?.position) {
+                console.warn(`连线 ${edge.id}: 源或目标节点不存在`, { sourceNode, targetNode })
+                return null
+              }
+
+              const startPos = getPortPosition(sourceNode, edge.fromPort || '', 'output')
+              const endPos = getPortPosition(targetNode, edge.toPort || '', 'input')
+              if (!startPos || !endPos) {
+                console.warn(`连线 ${edge.id}: 端口位置获取失败`, { startPos, endPos })
+                return null
+              }
+
+              // 应用 transform：平移和缩放
+              const startX = startPos.x * zoom + pan.x
+              const startY = startPos.y * zoom + pan.y
+              const endX = endPos.x * zoom + pan.x
+              const endY = endPos.y * zoom + pan.y
+
+              // 调试日志
+              console.log(`连线 ${edge.id}:`, {
+                from: edge.from,
+                fromPort: edge.fromPort,
+                to: edge.to,
+                toPort: edge.toPort,
+                startPos,
+                endPos,
+                transformedStart: { x: startX, y: startY },
+                transformedEnd: { x: endX, y: endY },
+                zoom,
+                pan
+              })
+
+              const midX = (startX + endX) / 2
+              const midY = (startY + endY) / 2
+
+              return (
+                <g key={edge.id} className="cursor-pointer">
+                  {/* 直线测试 */}
+                  <path
+                    d={`M ${startX} ${startY} L ${endX} ${endY}`}
+                    fill="none"
+                    stroke="red"
+                    strokeWidth={2 * zoom}
+                    strokeLinecap="round"
+                  />
+                  {/* 贝塞尔曲线 */}
+                  <path
+                    d={`M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`}
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2 * zoom}
+                    strokeLinecap="round"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      deleteEdge(edge.id)
+                    }}
+                  />
+                  <circle cx={startX} cy={startY} r={4 * zoom} fill="hsl(var(--primary))" />
+                  <circle cx={endX} cy={endY} r={4 * zoom} fill="hsl(var(--primary))" />
+                </g>
+              )
+            })}
+
+            {/* 连接预览线 */}
+            {connectingFrom && (
+              <g>
+                <path
+                  d={`M ${mousePos.x} ${mousePos.y} L ${mousePos.x} ${mousePos.y}`}
+                  fill="none"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2 * zoom}
+                  strokeDasharray="4,4"
+                />
+              </g>
+            )}
+          </svg>
+
           {/* 节点容器 */}
           <div
             className="absolute inset-0 overflow-visible pointer-events-none"
@@ -933,96 +1033,6 @@ export function WorkflowEditorV2({
               transformOrigin: '0 0',
             }}
           >
-            {/* 连接线 SVG - 使用绝对定位覆盖整个画布 */}
-            <svg
-              className="absolute pointer-events-none"
-              style={{
-                left: 0,
-                top: 0,
-                width: '100%',
-                height: '100%',
-                minWidth: '10000px',
-                minHeight: '10000px',
-                overflow: 'visible',
-                zIndex: 0
-              }}
-            >
-              {edges.map((edge) => {
-                const sourceNode = nodes.find(n => n.id === edge.from)
-                const targetNode = nodes.find(n => n.id === edge.to)
-                if (!sourceNode?.position || !targetNode?.position) {
-                  console.warn(`连线 ${edge.id}: 源或目标节点不存在`, { sourceNode, targetNode })
-                  return null
-                }
-
-                const startPos = getPortPosition(sourceNode, edge.fromPort || '', 'output')
-                const endPos = getPortPosition(targetNode, edge.toPort || '', 'input')
-                if (!startPos || !endPos) {
-                  console.warn(`连线 ${edge.id}: 端口位置获取失败`, { startPos, endPos })
-                  return null
-                }
-
-                // 调试日志
-                console.log(`连线 ${edge.id}:`, {
-                  from: edge.from,
-                  fromPort: edge.fromPort,
-                  to: edge.to,
-                  toPort: edge.toPort,
-                  sourceNode: { id: sourceNode.id, type: sourceNode.type, position: sourceNode.position },
-                  targetNode: { id: targetNode.id, type: targetNode.type, position: targetNode.position },
-                  startPos,
-                  endPos,
-                })
-
-                const midX = (startPos.x + endPos.x) / 2
-                const midY = (startPos.y + endPos.y) / 2
-
-                // 使用更简单的贝塞尔曲线
-                const pathD = `M ${startPos.x} ${startPos.y} C ${midX} ${startPos.y}, ${midX} ${endPos.y}, ${endPos.x} ${endPos.y}`
-
-                console.log(`连线路径 ${edge.id}:`, { pathD, startPos, endPos, midX, midY })
-
-                return (
-                  <g key={edge.id} className="cursor-pointer">
-                    {/* 先画一条直线测试 */}
-                    <path
-                      d={`M ${startPos.x} ${startPos.y} L ${endPos.x} ${endPos.y}`}
-                      fill="none"
-                      stroke="red"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    {/* 再画贝塞尔曲线 */}
-                    <path
-                      d={pathD}
-                      fill="none"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteEdge(edge.id)
-                      }}
-                    />
-                    <circle cx={startPos.x} cy={startPos.y} r="4" fill="hsl(var(--primary))" />
-                    <circle cx={endPos.x} cy={endPos.y} r="4" fill="hsl(var(--primary))" />
-                  </g>
-                )
-              })}
-              
-              {/* 连接预览线 */}
-              {connectingFrom && (
-                <g>
-                  <path
-                    d={`M ${mousePos.x} ${mousePos.y} L ${mousePos.x} ${mousePos.y}`}
-                    fill="none"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth="2"
-                    strokeDasharray="4,4"
-                  />
-                </g>
-              )}
-            </svg>
 
             {/* 节点 */}
             {nodes.map((node) => {
