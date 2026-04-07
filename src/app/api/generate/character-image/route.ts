@@ -7,12 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { HeaderUtils } from "coze-coding-dev-sdk"
 import { generateImage } from "@/lib/ai"
 import { downloadFile } from "@/lib/utils"
-import { Pool } from 'pg'
-
-// PostgreSQL 连接配置
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-})
+import { getSupabaseClient } from "@/storage/database/supabase-client"
 
 // POST /api/generate/character-image - 根据人物描述生成图像
 export async function POST(request: NextRequest) {
@@ -135,17 +130,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 更新数据库（使用 pg 直连）
+    // 更新数据库（使用 Supabase 客户端）
     try {
-      await pool.query(
-        `UPDATE character_library
-         SET image_url = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [viewUrl, characterId]
-      )
-      console.log("Database updated with image_url:", viewUrl)
+      console.log('[Character Image] Updating database for character:', characterId, 'with URL:', viewUrl)
+      const supabase = getSupabaseClient()
+      const { error } = await supabase
+        .from('character_library')
+        .update({
+          image_url: viewUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', characterId)
+      
+      if (error) {
+        console.error('[Character Image] Failed to update database:', error)
+      } else {
+        console.log('[Character Image] Database updated successfully')
+      }
     } catch (dbError) {
-      console.warn("Failed to update database:", dbError)
+      console.error('[Character Image] Failed to update database:', dbError)
     }
 
     return NextResponse.json({
