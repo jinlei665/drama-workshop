@@ -69,8 +69,22 @@ export async function POST(request: NextRequest) {
 
       // 使用 Promise.all 等待所有异步操作完成
       const appearancePromises = characterAppearances.map(async (charApp: any) => {
-        if (charApp.selectedAppearance && charApp.selectedAppearance.imageUrl) {
-          console.log(`[Scene Image] Character ${charApp.characterName}: using selected appearance image`)
+        // 如果有选中的形象，优先使用它的 imageKey 构造公网 URL
+        if (charApp.selectedAppearance && charApp.selectedAppearance.imageKey) {
+          console.log(`[Scene Image] Character ${charApp.characterName}: using selected appearance imageKey`)
+          const imageKey = charApp.selectedAppearance.imageKey
+          // 构造完整的公网 URL
+          const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+          if (endpoint) {
+            return `${endpoint}/${imageKey}`
+          } else {
+            // 降级：使用域名 + /api/images
+            const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+            return `${domain}/api/images?key=${imageKey}`
+          }
+        } else if (charApp.selectedAppearance && charApp.selectedAppearance.imageUrl && charApp.selectedAppearance.imageUrl.startsWith('http')) {
+          // 如果 imageUrl 已经是完整的公网 URL，直接使用
+          console.log(`[Scene Image] Character ${charApp.characterName}: using selected appearance imageUrl (HTTP)`)
           return charApp.selectedAppearance.imageUrl
         } else if (charApp.appearanceDescription) {
           console.log(`[Scene Image] Character ${charApp.characterName}: using character front view`)
@@ -82,13 +96,21 @@ export async function POST(request: NextRequest) {
               .select('front_view_key, image_url')
               .eq('id', charApp.characterId)
               .single()
-            
+
             if (data) {
               const key = (data as any).front_view_key || (data as any).image_url
               if (key) {
-                const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
-                const url = key.startsWith('http') ? key : `${domain}/characters/${key}`
-                return url
+                // 构造完整的公网 URL
+                const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+                if (endpoint && !key.startsWith('http')) {
+                  return `${endpoint}/${key}`
+                } else if (key.startsWith('http')) {
+                  return key
+                } else {
+                  // 降级：使用域名 + /api/images
+                  const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+                  return `${domain}/api/images?key=${key}`
+                }
               }
             }
           }
@@ -129,11 +151,19 @@ export async function POST(request: NextRequest) {
                 console.log(`[Scene Image] Character ${c.name}: using HTTP URL ${key}`)
                 return key
               }
-              // 如果是本地路径，构造完整 URL
-              const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
-              const url = `${domain}/characters/${key}`
-              console.log(`[Scene Image] Character ${c.name}: using local path ${url}`)
-              return url
+              // 构造完整的公网 URL
+              const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+              if (endpoint) {
+                const url = `${endpoint}/${key}`
+                console.log(`[Scene Image] Character ${c.name}: using public URL ${url}`)
+                return url
+              } else {
+                // 降级：使用域名 + /api/images
+                const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+                const url = `${domain}/api/images?key=${key}`
+                console.log(`[Scene Image] Character ${c.name}: using API URL ${url}`)
+                return url
+              }
             })
             .filter(Boolean)
         }
@@ -151,9 +181,15 @@ export async function POST(request: NextRequest) {
             if (!key) return null
             // 如果是完整 URL 直接使用
             if (key.startsWith('http')) return key
-            // 如果是本地路径，构造完整 URL
-            const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
-            return `${domain}/characters/${key}`
+            // 构造完整的公网 URL
+            const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+            if (endpoint) {
+              return `${endpoint}/${key}`
+            } else {
+              // 降级：使用域名 + /api/images
+              const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+              return `${domain}/api/images?key=${key}`
+            }
           })
           .filter(Boolean) as string[]
       }

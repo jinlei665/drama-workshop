@@ -675,7 +675,11 @@ async function convertImageUrlForVideo(
 
       // 上传图片
       console.log(`[convertImageUrl] 开始上传图片到 OSS...`)
-      await storage.uploadFile(key, buffer, `image/${format}`)
+      await storage.uploadFile({
+        fileContent: buffer,
+        fileName: key,
+        contentType: `image/${format}`,
+      })
       console.log(`[convertImageUrl] 上传成功`)
 
       // 生成公网 URL

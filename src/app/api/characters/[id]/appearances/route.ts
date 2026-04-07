@@ -103,6 +103,7 @@ export async function POST(
       imageUrl?: string
       description?: string
       tags?: string[]
+      isPrimary?: boolean
     }>(request)
 
     console.log('[Add Appearance] Request body:', JSON.stringify(body, null, 2))

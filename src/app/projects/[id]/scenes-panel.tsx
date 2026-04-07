@@ -410,12 +410,29 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
           const appearanceId = imageGenerateFormData.characterAppearances[charId]
           const appearances = characterAppearancesMap[charId] || []
           const selectedAppearance = appearances.find((a: any) => a.id === appearanceId)
-          
+
+          // 只发送必要的字段：如果 imageUrl 是 API 端点，只发送 imageKey
+          let appearanceToSend: any = null
+          if (selectedAppearance) {
+            if (selectedAppearance.imageKey) {
+              // 优先发送 imageKey
+              appearanceToSend = {
+                id: selectedAppearance.id,
+                name: selectedAppearance.name,
+                imageKey: selectedAppearance.imageKey
+              }
+              // 如果 imageUrl 是完整的公网 URL，也发送它
+              if (selectedAppearance.imageUrl && selectedAppearance.imageUrl.startsWith('http')) {
+                appearanceToSend.imageUrl = selectedAppearance.imageUrl
+              }
+            }
+          }
+
           characterAppearances.push({
             characterId: charId,
             characterName: char.name,
             appearanceDescription: char.appearance,
-            selectedAppearance: selectedAppearance || null
+            selectedAppearance: appearanceToSend
           })
         }
       })
@@ -859,28 +876,39 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
                       const isLoading = loadingAppearances[charId]
 
                       // 获取显示的图片 URL
-                      let imageUrl = selectedAppearance?.imageUrl || null
-                      
+                      let imageUrl = null
+
+                      // 如果有选中的形象，优先使用它的图片
+                      if (selectedAppearance) {
+                        if (selectedAppearance.imageUrl) {
+                          if (selectedAppearance.imageUrl.startsWith('http')) {
+                            imageUrl = selectedAppearance.imageUrl
+                          } else if (selectedAppearance.imageUrl.startsWith('/api/images')) {
+                            imageUrl = selectedAppearance.imageUrl
+                          } else {
+                            imageUrl = `/api/images?key=${selectedAppearance.imageUrl}`
+                          }
+                        } else if (selectedAppearance.imageKey) {
+                          imageUrl = `/api/images?key=${selectedAppearance.imageKey}`
+                        }
+                      }
+
                       // 如果没有选中的形象，尝试使用角色的正面视图
                       if (!imageUrl) {
                         if (char.frontViewKey) {
                           if (char.frontViewKey.startsWith('http')) {
                             imageUrl = char.frontViewKey
                           } else {
-                            const cleanKey = char.frontViewKey.startsWith('characters/')
-                              ? char.frontViewKey.replace('characters/', '')
-                              : char.frontViewKey
-                            imageUrl = `/characters/${cleanKey}`
+                            // 使用 /api/images 获取签名 URL
+                            imageUrl = `/api/images?key=${char.frontViewKey}`
                           }
                         }
                         if (!imageUrl && char.imageUrl) {
                           if (char.imageUrl.startsWith('http')) {
                             imageUrl = char.imageUrl
                           } else {
-                            const cleanKey = char.imageUrl.startsWith('characters/')
-                              ? char.imageUrl.replace('characters/', '')
-                              : char.imageUrl
-                            imageUrl = `/characters/${cleanKey}`
+                            // 使用 /api/images 获取签名 URL
+                            imageUrl = `/api/images?key=${char.imageUrl}`
                           }
                         }
                       }

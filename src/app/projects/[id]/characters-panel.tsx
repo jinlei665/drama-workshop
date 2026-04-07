@@ -350,7 +350,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         const data = await res.json()
         let appearances = data.data?.appearances || []
 
-        console.log('[Open Appearance Dialog] Loaded appearances from DB:', appearances.map(app => ({
+        console.log('[Open Appearance Dialog] Loaded appearances from DB:', appearances.map((app: any) => ({
           id: app.id,
           name: app.name,
           imageKey: app.imageKey,
@@ -372,7 +372,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
           validFrontViewKey
         })
 
-        const hasCharacterAppearance = appearances.some(app =>
+        const hasCharacterAppearance = appearances.some((app: any) =>
           (validFrontViewKey && app.imageKey === validFrontViewKey) ||
           (validImageUrl && app.imageUrl === validImageUrl)
         )
@@ -386,10 +386,11 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
             id: `default_${character.id}`, // 使用临时ID
             characterId: character.id,
             name: '默认形象',
-            imageKey: validFrontViewKey,
-            imageUrl: validImageUrl,
+            imageKey: validFrontViewKey || '',
+            imageUrl: validImageUrl || null,
             isPrimary: appearances.length === 0, // 如果没有其他形象，则设为主形象
             description: '角色的原始形象',
+            tags: character.tags || [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           }
@@ -467,7 +468,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       let referenceImage: string | undefined
 
       // 1. 优先使用 appearances 中的主形象
-      const primaryAppearance = appearances.find(a => a.is_primary)
+      const primaryAppearance = appearances.find(a => a.isPrimary)
       if (primaryAppearance?.imageUrl) {
         referenceImage = primaryAppearance.imageUrl
         console.log('[Generate Appearance] Using primary appearance:', referenceImage)
@@ -495,7 +496,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
       }
 
       if (!referenceImage) {
-        toast.warn('未找到参考图片，将使用纯文字描述生成')
+        console.warn('[Generate Appearance] 未找到参考图片，将使用纯文字描述生成')
       }
 
       console.log('[Generate Appearance] Request payload:', {
