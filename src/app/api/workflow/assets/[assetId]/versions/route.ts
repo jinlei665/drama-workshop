@@ -12,10 +12,10 @@ const assetManager = new AssetManager()
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { assetId: string } }
+  { params }: { params: Promise<{ assetId: string }> }
 ) {
   try {
-    const { assetId } = params
+    const { assetId } = await params
 
     const versions = assetManager.getVersionHistory(assetId)
 
@@ -40,10 +40,10 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { assetId: string } }
+  { params }: { params: Promise<{ assetId: string }> }
 ) {
   try {
-    const { assetId } = params
+    const { assetId } = await params
     const formData = await request.formData()
     const file = formData.get('file') as File
 

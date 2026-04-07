@@ -4,7 +4,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import { createStorageClient, uploadFile } from '@/lib/storage'
+import { uploadFile } from '@/lib/storage'
 import { S3Storage } from 'coze-coding-dev-sdk'
 
 export enum AssetType {
@@ -65,7 +65,14 @@ export class AssetManager {
   private storage: S3Storage
 
   constructor() {
-    this.storage = new S3Storage()
+    // 使用默认配置初始化 S3Storage
+    this.storage = new S3Storage({
+      endpointUrl: process.env.S3_ENDPOINT || 'http://localhost:9000',
+      accessKey: process.env.S3_ACCESS_KEY || 'minioadmin',
+      secretKey: process.env.S3_SECRET_KEY || 'minioadmin',
+      bucketName: process.env.S3_BUCKET || 'drama-studio',
+      region: process.env.S3_REGION || 'us-east-1',
+    })
   }
 
   /**
@@ -90,9 +97,9 @@ export class AssetManager {
     let url: string
     if (params.file instanceof File) {
       const buffer = Buffer.from(await params.file.arrayBuffer())
-      url = await this.storage.uploadFile(storageKey, buffer, this.getMimeType(params.type, extension))
+      url = await uploadFile(storageKey, buffer, this.getMimeType(params.type, extension))
     } else {
-      url = await this.storage.uploadFile(storageKey, params.file, this.getMimeType(params.type, extension))
+      url = await uploadFile(storageKey, params.file, this.getMimeType(params.type, extension))
     }
 
     // 提取元数据
@@ -142,7 +149,7 @@ export class AssetManager {
     // 上传到存储
     const extension = this.getFileExtensionFromUrl(params.url)
     const storageKey = `assets/${params.projectId}/${id}.${extension}`
-    const finalUrl = await this.storage.uploadFile(
+    const finalUrl = await uploadFile(
       storageKey,
       buffer,
       response.headers.get('content-type') || this.getMimeType(params.type, extension)
@@ -255,7 +262,8 @@ export class AssetManager {
 
     // 从存储删除
     try {
-      await this.storage.deleteFile(asset.storageKey)
+      // S3Storage 的 deleteFile 方法接受一个对象参数
+      await this.storage.deleteFile({ fileKey: asset.storageKey })
     } catch (error) {
       console.error('删除存储文件失败:', error)
     }

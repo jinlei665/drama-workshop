@@ -89,8 +89,11 @@ export class WorkflowAgent {
               version: '1',
               nodes: template.nodes,
               edges: template.edges,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              metadata: {
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                author: 'system',
+              },
             })
           }
         })
@@ -106,11 +109,14 @@ export class WorkflowAgent {
             description: template.description,
             projectId,
             status: 'draft',
-            version: 1,
+            version: '1',
             nodes: template.nodes,
             edges: template.edges,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            metadata: {
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              author: 'system',
+            },
           })
         })
         break

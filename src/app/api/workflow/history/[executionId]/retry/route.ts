@@ -67,7 +67,7 @@ export async function POST(
 
     // 存储执行结果
     const nodeResults = new Map()
-    const events = []
+    const events: Array<{ type: string; data: any; timestamp: number }> = []
 
     // 发送事件到客户端（SSE）
     const emitEvent = (type: string, data: any) => {

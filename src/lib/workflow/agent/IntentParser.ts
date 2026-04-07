@@ -102,16 +102,14 @@ export class IntentParser {
    */
   async parse(userInput: string): Promise<ParsedRequest> {
     try {
-      const response = await invokeLLM([
+      const content = await invokeLLM([
         { role: 'system', content: this.systemPrompt },
         { role: 'user', content: userInput }
       ], {
         model: 'deepseek-chat',
         temperature: 0.3,
-        responseFormat: { type: 'json_object' }
       })
 
-      const content = response.choices[0]?.message?.content || '{}'
       return JSON.parse(content)
     } catch (error) {
       console.error('意图解析失败:', error)

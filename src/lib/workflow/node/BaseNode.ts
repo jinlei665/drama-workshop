@@ -166,16 +166,21 @@ export abstract class BaseNodeClass {
 }
 
 /**
+ * 节点构造函数类型
+ */
+type NodeConstructor = new (config: Partial<BaseNode>) => BaseNodeClass
+
+/**
  * 节点工厂
  * 用于创建和管理节点实例
  */
 export class NodeFactory {
-  private static nodeClasses: Map<NodeType, typeof BaseNodeClass> = new Map()
+  private static nodeClasses: Map<NodeType, NodeConstructor> = new Map()
 
   /**
    * 注册节点类型
    */
-  static registerNode(type: NodeType, nodeClass: typeof BaseNodeClass) {
+  static registerNode(type: NodeType, nodeClass: NodeConstructor) {
     this.nodeClasses.set(type, nodeClass)
   }
 
@@ -187,7 +192,7 @@ export class NodeFactory {
     if (!NodeClass) {
       throw new Error(`未知的节点类型: ${type}`)
     }
-    return new NodeClass(config) as any
+    return new NodeClass(config)
   }
 
   /**
@@ -206,7 +211,7 @@ export class NodeFactory {
       throw new Error(`未知的节点类型: ${type}`)
     }
     // 创建一个临时实例来获取 schema
-    const tempInstance = new NodeClass({ type, name: 'temp' } as any) as any
+    const tempInstance = new NodeClass({ type, name: 'temp' } as any)
     return tempInstance.getParamSchema()
   }
 }

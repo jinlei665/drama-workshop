@@ -26,7 +26,7 @@ export class NodeExecutor {
   /**
    * 执行节点
    */
-  async execute(node: BaseNode): Promise<NodeExecutionResult> {
+  async execute(node: BaseNodeClass): Promise<NodeExecutionResult> {
     const startTime = Date.now()
     const result: NodeExecutionResult = {
       nodeId: node.id,
@@ -38,7 +38,7 @@ export class NodeExecutor {
 
     try {
       // 验证节点参数
-      const validation = node.validate()
+      const validation = node.validateParams()
       if (!validation.valid) {
         throw new Error(`节点参数验证失败: ${validation.errors.join(', ')}`)
       }
@@ -52,16 +52,16 @@ export class NodeExecutor {
       }
 
       // 执行节点逻辑
-      const data = await node.execute(this.context)
-      result.data = data
+      const nodeResult = await node.execute(this.context)
+      result.data = nodeResult.data
 
     } catch (error) {
       result.status = 'error'
       result.error = error instanceof Error ? error.message : '未知错误'
 
       // 重试逻辑
-      if (node.config?.retry && node.config.retry > 0) {
-        return await this.retry(node, node.config.retry)
+      if (node.params?.retry && node.params.retry > 0) {
+        return await this.retry(node, node.params.retry)
       }
     } finally {
       result.endTime = Date.now()
@@ -74,7 +74,7 @@ export class NodeExecutor {
   /**
    * 重试节点执行
    */
-  private async retry(node: BaseNode, maxRetries: number): Promise<NodeExecutionResult> {
+  private async retry(node: BaseNodeClass, maxRetries: number): Promise<NodeExecutionResult> {
     const startTime = Date.now()
     const result: NodeExecutionResult = {
       nodeId: node.id,
@@ -94,7 +94,7 @@ export class NodeExecutor {
         }
 
         const data = await node.execute(this.context)
-        result.data = data
+        result.data = data.data
         result.endTime = Date.now()
         result.duration = result.endTime - startTime
         return result
@@ -120,11 +120,11 @@ export class NodeExecutor {
   /**
    * 检查节点是否应该跳过
    */
-  private shouldSkip(node: BaseNode): boolean {
+  private shouldSkip(node: BaseNodeClass): boolean {
     // 检查条件表达式
-    if (node.config?.condition) {
+    if (node.params?.condition) {
       try {
-        const conditionResult = this.evaluateCondition(node.config.condition)
+        const conditionResult = this.evaluateCondition(node.params.condition)
         return !conditionResult
       } catch (error) {
         console.error(`条件表达式解析失败: ${error}`)
@@ -201,7 +201,7 @@ export class DependencyProcessor {
   /**
    * 构建依赖图
    */
-  buildGraph(nodes: BaseNode[], edges: any[]): DependencyGraph {
+  buildGraph(nodes: BaseNodeClass[], edges: any[]): DependencyGraph {
     const nodeIds = new Set(nodes.map(n => n.id))
     const adjList = new Map<string, string[]>()
     const inDegree = new Map<string, number>()
@@ -293,7 +293,7 @@ export class DependencyProcessor {
   /**
    * 检测关键路径
    */
-  findCriticalPath(nodes: BaseNode[], edges: any[]): string[] {
+  findCriticalPath(nodes: BaseNodeClass[], edges: any[]): string[] {
     // 简化版本：返回最长路径
     const graph = this.buildGraph(nodes, edges)
     const levels = this.topologicalSort(graph)
