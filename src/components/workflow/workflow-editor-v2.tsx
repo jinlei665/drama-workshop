@@ -59,14 +59,29 @@ export default function WorkflowEditorV2({
 
   // 初始化节点参数
   useEffect(() => {
-    const params: Record<string, any> = {}
+    // 只有当 initialNodes 真正变化时才更新
+    const newParams: Record<string, any> = {}
+    let hasChanged = false
+
+    // 检查是否有新的节点或参数变化
     initialNodes.forEach(node => {
       if (node.params) {
-        params[node.id] = { ...node.params }
+        // 深度比较，避免不必要的更新
+        const existingParams = nodeParams[node.id]
+        const paramsString = JSON.stringify(node.params)
+        const existingParamsString = existingParams ? JSON.stringify(existingParams) : null
+
+        if (paramsString !== existingParamsString) {
+          newParams[node.id] = { ...node.params }
+          hasChanged = true
+        }
       }
     })
-    setNodeParams(params)
-  }, [initialNodes])
+
+    if (hasChanged) {
+      setNodeParams(prev => ({ ...prev, ...newParams }))
+    }
+  }, [JSON.stringify(initialNodes)]) // 使用字符串化后的值作为依赖
 
   // 计算端口位置
   const getPortPosition = useCallback((node: BaseNode, portId: string, type: 'input' | 'output') => {
