@@ -1282,22 +1282,15 @@ function CharacterCard({
 
   // 获取图片 URL
   useEffect(() => {
-    // 优先使用直接存储的 imageUrl
-    if (character.imageUrl) {
+    // 优先使用直接存储的 imageUrl（如果它是完整的公网 URL）
+    if (character.imageUrl && character.imageUrl.startsWith('http')) {
       setImageUrl(character.imageUrl)
       return
     }
 
-    // 如果有 frontViewKey，从存储获取签名 URL
+    // 如果有 frontViewKey，使用 /api/images 获取图片（现在是重定向）
     if (character.frontViewKey) {
-      fetch(`/api/images?key=${character.frontViewKey}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.url) {
-            setImageUrl(data.url)
-          }
-        })
-        .catch(console.error)
+      setImageUrl(`/api/images?key=${character.frontViewKey}`)
     }
   }, [character.frontViewKey, character.imageUrl])
 
@@ -1416,22 +1409,15 @@ function AppearanceCard({
 
   // 获取图片 URL
   useEffect(() => {
-    // 优先使用直接存储的 imageUrl
-    if (appearance.imageUrl) {
+    // 优先使用直接存储的 imageUrl（如果它是完整的公网 URL）
+    if (appearance.imageUrl && appearance.imageUrl.startsWith('http')) {
       setImageUrl(appearance.imageUrl)
       return
     }
 
-    // 如果有 imageKey，从存储获取签名 URL
+    // 如果有 imageKey，使用 /api/images 获取图片（现在是重定向）
     if (appearance.imageKey) {
-      fetch(`/api/images?key=${appearance.imageKey}`)
-        .then(res => res.json())
-        .then(data => {
-          if (data.url) {
-            setImageUrl(data.url)
-          }
-        })
-        .catch(console.error)
+      setImageUrl(`/api/images?key=${appearance.imageKey}`)
     }
   }, [appearance.imageKey, appearance.imageUrl])
 
