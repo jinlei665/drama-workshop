@@ -476,26 +476,54 @@ export default function WorkflowEditorV2({
   }
 
   // 执行工作流
-  const handleExecute = async () => {
-    console.log('🚀 开始执行工作流:', { nodes: nodes.length, edges: edges.length })
-
-    try {
-      setIsRunning(true)
-
-      // TODO: 实现真正的工作流执行逻辑
-      // 目前先模拟执行过程
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      console.log('🎉 工作流执行完成')
-
-      // 通知外部组件执行完成
-      onExecute?.()
-    } catch (error) {
-      console.error('❌ 执行工作流时发生错误:', error)
-    } finally {
-      setIsRunning(false)
-    }
+  const handleExecute = () => {
+    console.log('🚀 点击执行按钮')
+    setIsRunning(true)
   }
+
+  // 保存 nodes 和 edges 的 ref，避免依赖变化
+  const nodesRef = useRef(nodes)
+  const edgesRef = useRef(edges)
+  const onExecuteRef = useRef(onExecute)
+
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
+
+  useEffect(() => {
+    edgesRef.current = edges
+  }, [edges])
+
+  useEffect(() => {
+    onExecuteRef.current = onExecute
+  }, [onExecute])
+
+  // 监听执行状态变化，执行工作流
+  useEffect(() => {
+    if (!isRunning) return
+
+    console.log('🚀 开始执行工作流:', { nodes: nodesRef.current.length, edges: edgesRef.current.length })
+
+    const executeWorkflow = async () => {
+      try {
+        // 模拟执行过程
+        console.log('⏳ 执行中，等待 2 秒...')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+
+        console.log('🎉 工作流执行完成')
+
+        // 通知外部组件执行完成
+        onExecuteRef.current?.()
+      } catch (error) {
+        console.error('❌ 执行工作流时发生错误:', error)
+      } finally {
+        console.log('🏁 执行结束，设置 isRunning 为 false')
+        setIsRunning(false)
+      }
+    }
+
+    executeWorkflow()
+  }, [isRunning])
 
   return (
     <div className="flex flex-col h-full bg-muted/30">
