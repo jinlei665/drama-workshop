@@ -7,7 +7,40 @@ import { NextRequest, NextResponse } from "next/server"
 import { HeaderUtils, S3Storage } from "coze-coding-dev-sdk"
 import { generateImage } from "@/lib/ai"
 import { downloadFile } from "@/lib/utils"
-import { getSupabaseClient } from "@/storage/database/supabase-client"
+import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
+
+// 获取人物库专用的数据库客户端（与人物库 API 保持一致）
+function getCharacterLibraryClient() {
+  const userUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (userUrl && serviceKey) {
+    console.log('[Character Image] Using user Supabase with service_role:', userUrl)
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    return createClient(userUrl, serviceKey, {
+      db: { timeout: 60000 },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  }
+
+  // 回退到沙箱环境或默认客户端
+  const cozeUrl = process.env.COZE_SUPABASE_URL
+  const cozeKey = process.env.COZE_SUPABASE_ANON_KEY
+
+  if (cozeUrl && cozeKey) {
+    console.log('[Character Image] Using sandbox Supabase:', cozeUrl)
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    return createClient(cozeUrl, cozeKey, {
+      db: { timeout: 60000 },
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+  }
+
+  // 回退到默认客户端
+  return getSupabaseClient()
+}
 
 // POST /api/generate/character-image - 根据人物描述生成图像
 export async function POST(request: NextRequest) {
@@ -134,21 +167,36 @@ export async function POST(request: NextRequest) {
     }
 
     // 更新数据库（使用 Supabase 客户端）
+    let updatedCharacter: any = null
     try {
       console.log('[Character Image] Updating database for character:', characterId, 'with URL:', viewUrl)
-      const supabase = getSupabaseClient()
-      const { error } = await supabase
+      const supabase = getCharacterLibraryClient()
+      const { data, error } = await supabase
         .from('character_library')
         .update({
           image_url: viewUrl,
           updated_at: new Date().toISOString()
         })
         .eq('id', characterId)
-      
+        .select()
+        .single()
+
       if (error) {
         console.error('[Character Image] Failed to update database:', error)
-      } else {
+      } else if (data) {
         console.log('[Character Image] Database updated successfully')
+        updatedCharacter = {
+          id: data.id,
+          name: data.name,
+          description: data.description,
+          appearance: data.appearance,
+          personality: data.personality,
+          tags: data.tags || [],
+          imageUrl: data.image_url,
+          frontViewKey: data.front_view_key,
+          style: data.style,
+          createdAt: data.created_at,
+        }
       }
     } catch (dbError) {
       console.error('[Character Image] Failed to update database:', dbError)
@@ -158,6 +206,7 @@ export async function POST(request: NextRequest) {
       success: true,
       imageUrl: viewUrl,
       fileKey,
+      character: updatedCharacter // 返回更新后的完整数据
     })
   } catch (error) {
     console.error("Generate character image error:", error)

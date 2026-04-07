@@ -143,10 +143,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 更新数据库（使用 Supabase 客户端，与人物库 API 保持一致）
+    let updatedCharacter: any = null
     try {
       console.log('[Character Triple Views] Updating database for character:', characterId, 'with URL:', viewUrl)
       const supabase = getCharacterLibraryClient()
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('character_library')
         .update({
           front_view_key: fileKey,
@@ -154,11 +155,25 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString()
         })
         .eq('id', characterId)
+        .select()
+        .single()
 
       if (error) {
         console.error('[Character Triple Views] Failed to update database:', error)
-      } else {
+      } else if (data) {
         console.log('[Character Triple Views] Database updated successfully')
+        updatedCharacter = {
+          id: data.id,
+          name: data.name,
+          description: data.description,
+          appearance: data.appearance,
+          personality: data.personality,
+          tags: data.tags || [],
+          imageUrl: data.image_url,
+          frontViewKey: data.front_view_key,
+          style: data.style,
+          createdAt: data.created_at,
+        }
       }
     } catch (dbError) {
       console.error('[Character Triple Views] Failed to update database:', dbError)
@@ -168,6 +183,7 @@ export async function POST(request: NextRequest) {
       success: true,
       viewUrl,
       fileKey,
+      character: updatedCharacter // 返回更新后的完整数据
     })
   } catch (error) {
     console.error("Generate character triple views error:", error)

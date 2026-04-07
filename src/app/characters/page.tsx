@@ -82,8 +82,8 @@ export default function CharactersPage() {
   const fetchCharacters = async () => {
     try {
       setLoading(true)
-      // 使用 character-library API 获取人物库数据
-      const res = await fetch('/api/character-library')
+      // 使用 character-library API 获取人物库数据，添加时间戳避免缓存
+      const res = await fetch(`/api/character-library?_t=${Date.now()}`)
       const data = await res.json()
       setCharacters(data.data?.characters || [])
     } catch (error) {
@@ -205,7 +205,7 @@ export default function CharactersPage() {
 
       setCreateDialogOpen(false)
       resetCreateForm()
-      fetchCharacters()
+      fetchCharacters() // 使用 fetchCharacters 而不是 genResult，因为 genResult 在作用域外
     } catch (error) {
       console.error('创建人物失败:', error)
       toast.error(error instanceof Error ? error.message : '创建人物失败')
@@ -316,7 +316,13 @@ export default function CharactersPage() {
 
       if (result.success) {
         toast.success('人物图像生成成功')
-        fetchCharacters()
+        
+        // 如果返回了更新后的数据，直接更新列表；否则重新获取
+        if (result.character) {
+          setCharacters(prev => prev.map(c => c.id === character.id ? result.character : c))
+        } else {
+          fetchCharacters()
+        }
       } else {
         const errorMsg = result.error?.message || '生成失败'
         throw new Error(errorMsg)
@@ -408,7 +414,13 @@ export default function CharactersPage() {
         toast.success('三视图生成成功')
         setUploadDialogOpen(false)
         setReferenceImageUrl('')
-        fetchCharacters()
+        
+        // 如果返回了更新后的数据，直接更新列表；否则重新获取
+        if (result.character) {
+          setCharacters(prev => prev.map(c => c.id === uploadingCharacter.id ? result.character : c))
+        } else {
+          fetchCharacters()
+        }
       } else {
         const errorMsg = result.error?.message || '生成失败'
         throw new Error(errorMsg)
