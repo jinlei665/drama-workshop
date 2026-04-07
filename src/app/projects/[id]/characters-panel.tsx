@@ -519,10 +519,15 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         console.log('[Load Appearances] Response:', listText)
         try {
           const listData = JSON.parse(listText)
+          console.log('[Load Appearances] Parsed data:', listData)
+          console.log('[Load Appearances] Appearances count:', listData.appearances?.length)
+          console.log('[Load Appearances] First appearance:', listData.appearances?.[0])
           setAppearances(listData.appearances || [])
         } catch (parseError) {
           console.error('[Load Appearances] Parse error:', parseError)
         }
+      } else {
+        console.error('[Load Appearances] Failed to fetch:', listRes.status, listRes.statusText)
       }
 
       // 清空表单
@@ -838,7 +843,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         <Dialog open={appearanceDialogOpen} onOpenChange={setAppearanceDialogOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>管理形象 - {selectedCharacter?.name}</DialogTitle>
+              <DialogTitle>管理形象 - {selectedCharacterForAppearances?.name}</DialogTitle>
               <DialogDescription>
                 添加和管理人物的不同形象（服装、角度等），生成分镜时可以选择使用哪个形象
               </DialogDescription>
