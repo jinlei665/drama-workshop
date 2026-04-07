@@ -19,6 +19,7 @@ import {
   X,
   Copy
 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
 import { WorkflowEngine } from '@/lib/workflow/engine/WorkflowEngine'
 
@@ -512,10 +513,22 @@ export default function WorkflowEditorV2({
 
         console.log('🎉 工作流执行完成')
 
+        // 显示成功提示
+        toast.success('工作流执行完成', {
+          description: `成功执行 ${nodesRef.current.length} 个节点`,
+          duration: 3000,
+        })
+
         // 通知外部组件执行完成
         onExecuteRef.current?.()
       } catch (error) {
         console.error('❌ 执行工作流时发生错误:', error)
+
+        // 显示错误提示
+        toast.error('工作流执行失败', {
+          description: error instanceof Error ? error.message : '未知错误',
+          duration: 5000,
+        })
       } finally {
         console.log('🏁 执行结束，设置 isRunning 为 false')
         setIsRunning(false)
