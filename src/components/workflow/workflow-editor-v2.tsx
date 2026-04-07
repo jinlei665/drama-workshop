@@ -511,11 +511,118 @@ export default function WorkflowEditorV2({
   useEffect(() => {
     if (!isRunning) return
 
-    console.log('🚀 开始执行工作流:', { nodes: nodesRef.current.length, edges: edgesRef.current.length })
+    const executionId = `exec-${Date.now()}`
+    console.log('🚀 开始执行工作流:', {
+      nodes: nodesRef.current.length,
+      edges: edgesRef.current.length,
+      executionId,
+    })
+
+    let eventSource: EventSource | null = null
 
     const executeWorkflow = async () => {
       try {
-        // 调用后端 API 执行工作流
+        // 1. 先启动 SSE 连接监听
+        eventSource = new EventSource(`/api/workflow/ws?executionId=${executionId}`)
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            console.log('📨 收到 SSE 事件:', data.type, data.data)
+
+            if (data.type === 'node:started') {
+              setNodes(prev =>
+                prev.map(node =>
+                  node.id === data.data.nodeId
+                    ? { ...node, status: 'running', progress: 0 }
+                    : node
+                )
+              )
+            } else if (data.type === 'node:progress') {
+              setNodes(prev =>
+                prev.map(node =>
+                  node.id === data.data.nodeId
+                    ? { ...node, progress: data.data.progress }
+                    : node
+                )
+              )
+            } else if (data.type === 'node:completed') {
+              setNodes(prev =>
+                prev.map(node =>
+                  node.id === data.data.nodeId
+                    ? { ...node, status: 'completed', progress: 100, result: data.data.result }
+                    : node
+                )
+              )
+
+              // 如果是图像生成节点，显示生成的图像
+              if (data.data.result?.type === 'image' && data.data.result?.url) {
+                console.log('🖼️ 图像生成成功:', data.data.result.url)
+                toast.success('图像生成成功', {
+                  description: '查看右侧节点结果',
+                  duration: 3000,
+                })
+              }
+            } else if (data.type === 'node:failed') {
+              setNodes(prev =>
+                prev.map(node =>
+                  node.id === data.data.nodeId
+                    ? { ...node, status: 'failed', error: data.data.error }
+                    : node
+                )
+              )
+
+              toast.error('节点执行失败', {
+                description: `${data.data.nodeId}: ${data.data.error}`,
+                duration: 5000,
+              })
+            } else if (data.type === 'execution:started') {
+              toast.info('开始执行工作流', {
+                description: '正在处理节点...',
+                duration: 2000,
+              })
+            } else if (data.type === 'execution:completed') {
+              console.log('🎉 工作流执行完成:', data.data)
+              toast.success('工作流执行完成', {
+                description: data.data.isRetry ? '重试执行成功' : '成功执行工作流',
+                duration: 3000,
+              })
+
+              // 保存执行历史
+              fetch('/api/workflow/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  executionId: data.data.execution?.id || executionId,
+                  workflowId: data.data.execution?.workflowId,
+                  projectId: data.data.execution?.projectId,
+                  nodes: nodesRef.current,
+                  edges: edgesRef.current,
+                  status: data.data.execution?.status,
+                  startTime: data.data.execution?.startTime,
+                  endTime: data.data.execution?.endTime,
+                  results: data.data.results,
+                  error: data.data.execution?.error,
+                }),
+              })
+            } else if (data.type === 'execution:failed') {
+              console.error('❌ 工作流执行失败:', data.data.error)
+              toast.error('工作流执行失败', {
+                description: data.data.error,
+                duration: 5000,
+              })
+            }
+          } catch (error) {
+            console.error('❌ 解析 SSE 事件失败:', error)
+          }
+        }
+
+        eventSource.onerror = (error) => {
+          console.error('❌ SSE 连接错误:', error)
+          eventSource?.close()
+        }
+
+        // 2. 调用后端 API 执行工作流
         const response = await fetch('/api/workflow/execute', {
           method: 'POST',
           headers: {
@@ -526,6 +633,7 @@ export default function WorkflowEditorV2({
             edges: edgesRef.current,
             workflowId: `workflow-${Date.now()}`,
             projectId: 'temp',
+            executionId,
           }),
         })
 
@@ -535,77 +643,8 @@ export default function WorkflowEditorV2({
         }
 
         const { success, data } = await response.json()
-        console.log('🎉 工作流执行完成:', data)
+        console.log('📊 执行 API 返回:', data)
 
-        if (success) {
-          // 处理执行结果
-          const { execution, results, events } = data
-
-          // 更新节点状态
-          events.forEach((event: any) => {
-            if (event.type === 'node:started') {
-              setNodes(prev =>
-                prev.map(node =>
-                  node.id === event.data.nodeId
-                    ? { ...node, status: 'running' }
-                    : node
-                )
-              )
-            } else if (event.type === 'node:completed') {
-              const result = results.find((r: any) => r.nodeId === event.data.nodeId)
-              setNodes(prev =>
-                prev.map(node =>
-                  node.id === event.data.nodeId
-                    ? { ...node, status: 'completed', result: result?.result }
-                    : node
-                )
-              )
-
-              // 如果是图像生成节点，显示生成的图像
-              if (result?.result?.type === 'image' && result?.result?.url) {
-                console.log('🖼️ 图像生成成功:', result.result.url)
-                toast.success('图像生成成功', {
-                  description: '查看右侧节点结果',
-                  duration: 3000,
-                })
-              }
-            } else if (event.type === 'node:failed') {
-              const result = results.find((r: any) => r.nodeId === event.data.nodeId)
-              setNodes(prev =>
-                prev.map(node =>
-                  node.id === event.data.nodeId
-                    ? { ...node, status: 'failed', error: event.data.error }
-                    : node
-                )
-              )
-
-              toast.error('节点执行失败', {
-                description: `${event.data.nodeId}: ${event.data.error}`,
-                duration: 5000,
-              })
-            }
-          })
-
-          // 显示最终结果
-          if (execution.status === 'completed') {
-            console.log('✅ 所有节点执行成功')
-            toast.success('工作流执行完成', {
-              description: `成功执行 ${nodesRef.current.length} 个节点`,
-              duration: 3000,
-            })
-          } else if (execution.status === 'failed') {
-            console.error('❌ 工作流执行失败:', execution.error)
-            toast.error('工作流执行失败', {
-              description: execution.error,
-              duration: 5000,
-            })
-          }
-        } else {
-          throw new Error('执行失败')
-        }
-
-        // 通知外部组件执行完成
-        onExecuteRef.current?.()
       } catch (error) {
         console.error('❌ 执行工作流时发生错误:', error)
         toast.error('执行失败', {
@@ -615,10 +654,19 @@ export default function WorkflowEditorV2({
       } finally {
         console.log('🏁 执行结束，设置 isRunning 为 false')
         setIsRunning(false)
+        // 关闭 SSE 连接
+        setTimeout(() => {
+          eventSource?.close()
+        }, 1000)
       }
     }
 
     executeWorkflow()
+
+    // 清理函数
+    return () => {
+      eventSource?.close()
+    }
   }, [isRunning])
 
   return (
@@ -1058,7 +1106,9 @@ export default function WorkflowEditorV2({
                         {node.status === 'running' && (
                           <>
                             <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                            <span className="text-blue-600 dark:text-blue-400">运行中...</span>
+                            <span className="text-blue-600 dark:text-blue-400">
+                              {node.progress !== undefined ? `执行中 ${Math.round(node.progress)}%` : '运行中...'}
+                            </span>
                           </>
                         )}
                         {node.status === 'completed' && (
@@ -1074,6 +1124,17 @@ export default function WorkflowEditorV2({
                           </>
                         )}
                       </div>
+                      {/* 进度条 */}
+                      {node.status === 'running' && node.progress !== undefined && (
+                        <div className="mt-2">
+                          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                            <div
+                              className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                              style={{ width: `${node.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 

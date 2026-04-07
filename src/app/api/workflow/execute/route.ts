@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { WorkflowEngine } from '@/lib/workflow/engine/WorkflowEngine'
-import type { Workflow, BaseNode, Edge, NodeResult, WorkflowExecution } from '@/lib/workflow/types'
+import type { Workflow, BaseNode, Edge, NodeResult } from '@/lib/workflow/types'
+import { sendExecutionEvent, closeExecutionConnection } from '../ws/route'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
  * POST /api/workflow/execute
- * 执行工作流
+ * 执行工作流（支持实时状态推送）
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { nodes, edges, workflowId = `workflow-${Date.now()}`, projectId = 'temp' } = body
+    const {
+      nodes,
+      edges,
+      workflowId = `workflow-${Date.now()}`,
+      projectId = 'temp',
+      executionId = `exec-${Date.now()}`,
+    } = body
 
     if (!nodes || !edges) {
       return NextResponse.json(
@@ -21,7 +28,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🚀 开始执行工作流:', { nodes: nodes.length, edges: edges.length, workflowId, projectId })
+    console.log('🚀 开始执行工作流:', {
+      nodes: nodes.length,
+      edges: edges.length,
+      workflowId,
+      projectId,
+      executionId,
+    })
 
     // 构建工作流对象
     const workflow: Workflow = {
@@ -44,16 +57,28 @@ export async function POST(request: NextRequest) {
     const nodeResults: Map<string, NodeResult> = new Map()
     const events: Array<{ type: string; data: any; timestamp: number }> = []
 
+    // 发送事件到客户端（SSE）
+    const emitEvent = (type: string, data: any) => {
+      const event = { type, data, timestamp: Date.now() }
+      events.push(event)
+      sendExecutionEvent(executionId, event)
+    }
+
     // 监听执行事件
     engine.on('node:started', (data: any) => {
       console.log('✅ 节点开始执行:', data.nodeId)
-      events.push({ type: 'node:started', data, timestamp: Date.now() })
+      emitEvent('node:started', data)
+    })
+
+    engine.on('node:progress', (data: any) => {
+      console.log('📊 节点执行进度:', data.nodeId, data.progress)
+      emitEvent('node:progress', data)
     })
 
     engine.on('node:completed', (data: any) => {
       console.log('✅ 节点执行完成:', data.nodeId, data.result)
       nodeResults.set(data.nodeId, data.result)
-      events.push({ type: 'node:completed', data, timestamp: Date.now() })
+      emitEvent('node:completed', data)
     })
 
     engine.on('node:failed', (data: any) => {
@@ -64,8 +89,11 @@ export async function POST(request: NextRequest) {
         error: data.error,
         duration: 0,
       })
-      events.push({ type: 'node:failed', data, timestamp: Date.now() })
+      emitEvent('node:failed', data)
     })
+
+    // 发送开始执行事件
+    emitEvent('execution:started', { executionId, workflowId, projectId })
 
     // 执行工作流
     console.log('⏳ 开始执行...')
@@ -83,9 +111,16 @@ export async function POST(request: NextRequest) {
       result,
     }))
 
+    // 发送完成事件
+    emitEvent('execution:completed', { execution, results })
+
+    // 关闭 SSE 连接
+    setTimeout(() => closeExecutionConnection(executionId), 1000)
+
     return NextResponse.json({
       success: true,
       data: {
+        executionId,
         execution,
         results,
         events,
@@ -93,6 +128,14 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('❌ 执行工作流时发生错误:', error)
+    const executionId = body.executionId || `exec-${Date.now()}`
+    sendExecutionEvent(executionId, {
+      type: 'execution:failed',
+      data: { error: error instanceof Error ? error.message : '未知错误' },
+      timestamp: Date.now(),
+    })
+    closeExecutionConnection(executionId)
+
     return NextResponse.json(
       {
         success: false,

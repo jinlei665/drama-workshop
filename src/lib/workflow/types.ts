@@ -57,6 +57,7 @@ export interface BaseNode {
   outputs: NodeOutput[]
   params: Record<string, any>
   status?: 'idle' | 'running' | 'completed' | 'failed'
+  progress?: number  // 执行进度（0-100）
   result?: any
   error?: string
 }
