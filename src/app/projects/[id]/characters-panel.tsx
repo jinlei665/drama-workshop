@@ -351,16 +351,23 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         let appearances = data.data?.appearances || []
 
         // 检查是否需要添加角色的原始形象作为默认形象
-        const hasCharacterAppearance = appearances.some(app => app.imageKey === character.frontViewKey || app.imageUrl === character.imageUrl)
+        // 确保 imageUrl 和 frontViewKey 不为空字符串
+        const validImageUrl = character.imageUrl?.trim() || null
+        const validFrontViewKey = character.frontViewKey?.trim() || null
 
-        if (!hasCharacterAppearance && (character.imageUrl || character.frontViewKey)) {
+        const hasCharacterAppearance = appearances.some(app =>
+          (validFrontViewKey && app.imageKey === validFrontViewKey) ||
+          (validImageUrl && app.imageUrl === validImageUrl)
+        )
+
+        if (!hasCharacterAppearance && (validImageUrl || validFrontViewKey)) {
           // 添加角色的原始形象作为默认形象
           const defaultAppearance: CharacterAppearance = {
             id: `default_${character.id}`, // 使用临时ID
             characterId: character.id,
             name: '默认形象',
-            imageKey: character.frontViewKey || null,
-            imageUrl: character.imageUrl || null,
+            imageKey: validFrontViewKey,
+            imageUrl: validImageUrl,
             isPrimary: appearances.length === 0, // 如果没有其他形象，则设为主形象
             description: '角色的原始形象',
             createdAt: new Date().toISOString(),
@@ -1061,11 +1068,25 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                                         主形象
                                       </div>
                                     )}
-                                    <img
-                                      src={appearance.imageUrl || ''}
-                                      alt={appearance.name}
-                                      className="w-full aspect-square object-cover"
-                                    />
+                                    {appearance.imageUrl?.trim() ? (
+                                      <img
+                                        src={appearance.imageUrl}
+                                        alt={appearance.name}
+                                        className="w-full aspect-square object-cover"
+                                      />
+                                    ) : appearance.imageKey?.trim() ? (
+                                      // 如果没有 imageUrl 但有 imageKey，使用 /api/images 获取
+                                      <img
+                                        src={`/api/images?key=${appearance.imageKey}`}
+                                        alt={appearance.name}
+                                        className="w-full aspect-square object-cover"
+                                      />
+                                    ) : (
+                                      // 没有有效的图片，显示占位符
+                                      <div className="w-full aspect-square bg-muted flex items-center justify-center">
+                                        <ImageIcon className="w-12 h-12 text-muted-foreground opacity-50" />
+                                      </div>
+                                    )}
                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                       {!appearance.isPrimary && (
                                         <Button
