@@ -355,10 +355,22 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         const validImageUrl = character.imageUrl?.trim() || null
         const validFrontViewKey = character.frontViewKey?.trim() || null
 
+        console.log('[Open Appearance Dialog] Character:', {
+          id: character.id,
+          name: character.name,
+          imageUrl: character.imageUrl,
+          frontViewKey: character.frontViewKey,
+          validImageUrl,
+          validFrontViewKey
+        })
+
         const hasCharacterAppearance = appearances.some(app =>
           (validFrontViewKey && app.imageKey === validFrontViewKey) ||
           (validImageUrl && app.imageUrl === validImageUrl)
         )
+
+        console.log('[Open Appearance Dialog] Has character appearance:', hasCharacterAppearance)
+        console.log('[Open Appearance Dialog] Existing appearances count:', appearances.length)
 
         if (!hasCharacterAppearance && (validImageUrl || validFrontViewKey)) {
           // 添加角色的原始形象作为默认形象
@@ -374,8 +386,10 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
             updatedAt: new Date().toISOString(),
           }
           appearances = [defaultAppearance, ...appearances]
+          console.log('[Open Appearance Dialog] Added default appearance:', defaultAppearance)
         }
 
+        console.log('[Open Appearance Dialog] Final appearances count:', appearances.length)
         setAppearances(appearances)
       }
     } catch (error) {
