@@ -74,17 +74,20 @@ export default function ProjectWorkflowPage({
 
       const data = await response.json()
 
-      if (data.success) {
+      console.log('生成系统工作流响应:', data)
+
+      if (data.success && data.workflow) {
         toast.success(data.message || '系统工作流生成成功')
         setNeedsSystemWorkflow(false)
         setSystemWorkflow({
           nodes: data.workflow.nodes || [],
           edges: data.workflow.edges || []
         })
-        setIsSystemReadonly(true)
+        setIsSystemReadonly(data.workflow.readonly !== false)
         setMode('system')
       } else {
         toast.error(data.error || '生成失败')
+        console.error('生成失败:', data)
       }
     } catch (error) {
       console.error('生成系统工作流失败:', error)

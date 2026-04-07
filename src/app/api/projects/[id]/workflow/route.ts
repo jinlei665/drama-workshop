@@ -210,12 +210,23 @@ export async function POST(
       }
 
       // 生成系统工作流
+      console.log(`🔄 开始为项目 ${id} 生成系统工作流...`)
+      console.log(`项目信息:`, { name: project.name, contentLength: project.sourceContent?.length })
+
       const systemWorkflow = createSystemWorkflow(
         project.id,
         project.name,
         project.sourceContent,
         project.style
       )
+
+      console.log(`✅ 系统工作流生成完成:`, {
+        id: systemWorkflow.id,
+        nodesCount: systemWorkflow.nodes.length,
+        edgesCount: systemWorkflow.edges.length,
+        system: systemWorkflow.system,
+        readonly: systemWorkflow.readonly,
+      })
 
       // 保存到数据库
       try {

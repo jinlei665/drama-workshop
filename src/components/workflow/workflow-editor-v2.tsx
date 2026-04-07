@@ -775,6 +775,9 @@ export function WorkflowEditorV2({
                 <span className="text-xs font-medium text-amber-900 dark:text-amber-100">系统工作流（只读）</span>
               </div>
             )}
+            <span className="text-xs text-muted-foreground">
+              {nodes.length} 个节点 · {edges.length} 条连接
+            </span>
             <Button
               variant="outline"
               size="sm"
@@ -800,7 +803,7 @@ export function WorkflowEditorV2({
               重置
             </Button>
           </div>
-          
+
           <div className="flex items-center gap-2">
             {hasChanges && (
               <span className="text-xs text-muted-foreground">有未保存的更改</span>
@@ -1067,11 +1070,23 @@ export function WorkflowEditorV2({
           {nodes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center text-muted-foreground">
-                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
-                  <Play className="w-8 h-8" />
-                </div>
-                <p className="mb-2 font-medium">从左侧拖拽节点到此处</p>
-                <p className="text-sm">点击输出端口拖拽到输入端口来连接节点</p>
+                {readonly && isSystem ? (
+                  <>
+                    <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-4">
+                      <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <p className="mb-2 font-medium">系统工作流正在生成中...</p>
+                    <p className="text-sm">请稍候片刻</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-4">
+                      <Play className="w-8 h-8" />
+                    </div>
+                    <p className="mb-2 font-medium">从左侧拖拽节点到此处</p>
+                    <p className="text-sm">点击输出端口拖拽到输入端口来连接节点</p>
+                  </>
+                )}
               </div>
             </div>
           )}
