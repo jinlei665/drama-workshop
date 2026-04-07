@@ -102,13 +102,13 @@ export async function POST(request: NextRequest) {
       })
 
       // 上传到 OSS
-      fileKey = `characters/${characterId}/views_${Date.now()}.png`
+      fileKey = `${characterId}/views_${Date.now()}.png`
       await storage.uploadFile(fileKey, imageBuffer, 'image/png')
 
       // 生成公网 URL
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
       const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
-      viewUrl = `${endpoint}/${bucket}/${fileKey}`
+      viewUrl = `${endpoint}/${bucket}/characters/${fileKey}`
 
       console.log("Image uploaded to OSS:", fileKey)
     } catch (ossError) {
