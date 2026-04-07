@@ -294,6 +294,19 @@ export function WorkflowEditorV2({
     setTemplates(templateList)
   }, [])
 
+  // 初始化节点参数
+  useEffect(() => {
+    if (initialNodes && initialNodes.length > 0) {
+      const initialParams: Record<string, NodeData> = {}
+      initialNodes.forEach(node => {
+        if (node.params) {
+          initialParams[node.id] = node.params
+        }
+      })
+      setNodeParams(initialParams)
+    }
+  }, [initialNodes])
+
   // 获取选中的节点
   const selectedNode = nodes.find(n => n.id === selectedNodeId)
   const selectedNodeType = selectedNode ? NODE_TYPES[selectedNode.type as keyof typeof NODE_TYPES] : null
@@ -694,20 +707,37 @@ export function WorkflowEditorV2({
     if (!node.position) return null
     const nodeConfig = NODE_TYPES[node.type as keyof typeof NODE_TYPES]
     if (!nodeConfig) return null
-    
+
     const ports = type === 'input' ? nodeConfig.inputs : nodeConfig.outputs
+    const inputPorts = nodeConfig.inputs
+    const outputPorts = nodeConfig.outputs
+
+    // 查找端口索引
     const index = ports.findIndex(p => p.name === portName)
     if (index === -1) return null
-    
+
     const NODE_WIDTH = 200
     const HEADER_HEIGHT = 40
     const PORT_HEIGHT = 24
-    const PORT_Y = HEADER_HEIGHT + 10 + index * PORT_HEIGHT
-    
+    const PORT_PADDING = 8
+
+    // 计算端口位置
+    // 输入端口从 header 下方开始
+    // 输出端口从输入端口区域下方开始
+    let portY: number
     if (type === 'input') {
-      return { x: node.position.x, y: node.position.y + PORT_Y }
+      // 输入端口: HEADER_HEIGHT + padding + index * PORT_HEIGHT
+      portY = HEADER_HEIGHT + PORT_PADDING + index * PORT_HEIGHT
     } else {
-      return { x: node.position.x + NODE_WIDTH, y: node.position.y + PORT_Y }
+      // 输出端口: HEADER_HEIGHT + padding + 输入端口区域高度 + padding + index * PORT_HEIGHT
+      const inputPortsHeight = inputPorts.length * PORT_HEIGHT
+      portY = HEADER_HEIGHT + PORT_PADDING + inputPortsHeight + PORT_PADDING + index * PORT_HEIGHT
+    }
+
+    if (type === 'input') {
+      return { x: node.position.x, y: node.position.y + portY }
+    } else {
+      return { x: node.position.x + NODE_WIDTH, y: node.position.y + portY }
     }
   }, [])
 
