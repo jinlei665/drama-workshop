@@ -151,6 +151,118 @@ export default function WorkflowEditorV2({
     return colorMap[type] || 'bg-gray-500'
   }
 
+  // 添加节点
+  const addNode = (nodeType: string) => {
+    const newNode: BaseNode = {
+      id: `node-${Date.now()}`,
+      type: nodeType as any,
+      name: getNodeName(nodeType),
+      description: getNodeDescription(nodeType),
+      position: {
+        x: 100 + Math.random() * 200,
+        y: 100 + Math.random() * 200,
+      },
+      inputs: getNodeInputs(nodeType),
+      outputs: getNodeOutputs(nodeType),
+      params: {},
+      status: 'idle',
+    }
+
+    setNodes(prev => [...prev, newNode])
+  }
+
+  // 获取节点名称
+  const getNodeName = (type: string): string => {
+    const nameMap: Record<string, string> = {
+      'script-input': '脚本输入',
+      'text-to-image': '生成图像',
+      'image-to-video': '生成视频',
+      'text-to-audio': '生成语音',
+      'text-to-character': '创建角色',
+      'script-to-scenes': '分镜分析',
+      'llm-process': 'LLM 处理',
+      'video-compose': '视频合成',
+    }
+    return nameMap[type] || type
+  }
+
+  // 获取节点描述
+  const getNodeDescription = (type: string): string => {
+    const descMap: Record<string, string> = {
+      'script-input': '输入脚本内容',
+      'text-to-image': '根据描述生成图像',
+      'image-to-video': '根据图像生成视频',
+      'text-to-audio': '根据文本生成语音',
+      'text-to-character': '根据描述创建角色',
+      'script-to-scenes': '分析脚本生成分镜',
+      'llm-process': '使用大语言模型处理',
+      'video-compose': '合成多个视频片段',
+    }
+    return descMap[type] || ''
+  }
+
+  // 获取节点输入端口
+  const getNodeInputs = (type: string) => {
+    const inputsMap: Record<string, any[]> = {
+      'script-input': [],
+      'text-to-image': [
+        { id: 'prompt', name: '提示词', type: 'text', required: true, connected: false },
+      ],
+      'image-to-video': [
+        { id: 'image', name: '首帧图像', type: 'image', required: true, connected: false },
+        { id: 'lastFrameImage', name: '尾帧图像', type: 'image', required: false, connected: false },
+      ],
+      'text-to-audio': [
+        { id: 'text', name: '文本', type: 'text', required: true, connected: false },
+      ],
+      'text-to-character': [
+        { id: 'description', name: '描述', type: 'text', required: true, connected: false },
+      ],
+      'script-to-scenes': [
+        { id: 'script', name: '脚本', type: 'text', required: true, connected: false },
+      ],
+      'llm-process': [
+        { id: 'input', name: '输入', type: 'any', required: true, connected: false },
+      ],
+      'video-compose': [
+        { id: 'videos', name: '视频列表', type: 'any', required: true, connected: false },
+      ],
+    }
+    return inputsMap[type] || []
+  }
+
+  // 获取节点输出端口
+  const getNodeOutputs = (type: string) => {
+    const outputsMap: Record<string, any[]> = {
+      'script-input': [
+        { id: 'script', name: '脚本', type: 'text', required: false, connected: false },
+      ],
+      'text-to-image': [
+        { id: 'image', name: '图像', type: 'image', required: false, connected: false },
+      ],
+      'image-to-video': [
+        { id: 'video', name: '视频', type: 'video', required: false, connected: false },
+      ],
+      'text-to-audio': [
+        { id: 'audio', name: '语音', type: 'audio', required: false, connected: false },
+      ],
+      'text-to-character': [
+        { id: 'character', name: '角色', type: 'any', required: false, connected: false },
+        { id: 'image', name: '图像', type: 'image', required: false, connected: false },
+      ],
+      'script-to-scenes': [
+        { id: 'scenes', name: '分镜', type: 'any', required: false, connected: false },
+      ],
+      'llm-process': [
+        { id: 'output', name: '输出', type: 'any', required: false, connected: false },
+      ],
+      'video-compose': [
+        { id: 'video', name: '视频', type: 'video', required: false, connected: false },
+      ],
+    }
+    return outputsMap[type] || []
+  }
+
   // 删除节点
   const deleteNode = (nodeId: string) => {
     setNodes(prev => prev.filter(n => n.id !== nodeId))
@@ -334,9 +446,103 @@ export default function WorkflowEditorV2({
         {/* 左侧面板 - 节点列表（只读模式下隐藏） */}
         {!readOnly && (
           <div className="w-72 border-r bg-background/95 backdrop-blur overflow-y-auto p-4">
-            <h4 className="font-semibold mb-4">节点信息</h4>
-            <div className="text-sm text-muted-foreground">
-              当前共有 {nodes.length} 个节点，{edges.length} 条连接
+            <h4 className="font-semibold mb-4">添加节点</h4>
+            <div className="space-y-2">
+              {/* 脚本输入节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('script-input')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-blue-600" />
+                  <span className="font-medium text-sm">脚本输入</span>
+                </div>
+                <p className="text-xs text-muted-foreground">输入脚本内容</p>
+              </div>
+
+              {/* 图像生成节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('text-to-image')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-pink-500" />
+                  <span className="font-medium text-sm">生成图像</span>
+                </div>
+                <p className="text-xs text-muted-foreground">根据描述生成图像</p>
+              </div>
+
+              {/* 视频生成节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('image-to-video')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-orange-500" />
+                  <span className="font-medium text-sm">生成视频</span>
+                </div>
+                <p className="text-xs text-muted-foreground">根据图像生成视频</p>
+              </div>
+
+              {/* 语音生成节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('text-to-audio')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-teal-500" />
+                  <span className="font-medium text-sm">生成语音</span>
+                </div>
+                <p className="text-xs text-muted-foreground">根据文本生成语音</p>
+              </div>
+
+              {/* 角色创建节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('text-to-character')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-green-600" />
+                  <span className="font-medium text-sm">创建角色</span>
+                </div>
+                <p className="text-xs text-muted-foreground">根据描述创建角色</p>
+              </div>
+
+              {/* 分镜分析节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('script-to-scenes')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-indigo-500" />
+                  <span className="font-medium text-sm">分镜分析</span>
+                </div>
+                <p className="text-xs text-muted-foreground">分析脚本生成分镜</p>
+              </div>
+
+              {/* LLM 处理节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('llm-process')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-violet-500" />
+                  <span className="font-medium text-sm">LLM 处理</span>
+                </div>
+                <p className="text-xs text-muted-foreground">使用大语言模型处理</p>
+              </div>
+
+              {/* 视频合成节点 */}
+              <div
+                className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
+                onClick={() => addNode('video-compose')}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-3 h-3 rounded-full bg-fuchsia-500" />
+                  <span className="font-medium text-sm">视频合成</span>
+                </div>
+                <p className="text-xs text-muted-foreground">合成多个视频片段</p>
+              </div>
             </div>
           </div>
         )}
