@@ -17,11 +17,19 @@ import {
   Edit3,
   Check,
   X,
-  Copy
+  Copy,
+  CheckCircle2,
+  XCircle
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
-import { WorkflowEngine } from '@/lib/workflow/engine/WorkflowEngine'
+
+// 注册节点类型
+NodeFactory.registerNode('text-input', TextInputNode)
+NodeFactory.registerNode('image-input', ImageInputNode)
+NodeFactory.registerNode('script-input', ScriptInputNode)
+NodeFactory.registerNode('text-to-image', TextToImageNode)
+NodeFactory.registerNode('image-to-video', ImageToVideoNode)
 
 export interface WorkflowEditorV2Props {
   initialNodes?: BaseNode[]
@@ -507,25 +515,100 @@ export default function WorkflowEditorV2({
 
     const executeWorkflow = async () => {
       try {
-        // 模拟执行过程
-        console.log('⏳ 执行中，等待 2 秒...')
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        console.log('🎉 工作流执行完成')
-
-        // 显示成功提示
-        toast.success('工作流执行完成', {
-          description: `成功执行 ${nodesRef.current.length} 个节点`,
-          duration: 3000,
+        // 调用后端 API 执行工作流
+        const response = await fetch('/api/workflow/execute', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            nodes: nodesRef.current,
+            edges: edgesRef.current,
+            workflowId: `workflow-${Date.now()}`,
+            projectId: 'temp',
+          }),
         })
+
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || '执行失败')
+        }
+
+        const { success, data } = await response.json()
+        console.log('🎉 工作流执行完成:', data)
+
+        if (success) {
+          // 处理执行结果
+          const { execution, results, events } = data
+
+          // 更新节点状态
+          events.forEach((event: any) => {
+            if (event.type === 'node:started') {
+              setNodes(prev =>
+                prev.map(node =>
+                  node.id === event.data.nodeId
+                    ? { ...node, status: 'running' }
+                    : node
+                )
+              )
+            } else if (event.type === 'node:completed') {
+              const result = results.find((r: any) => r.nodeId === event.data.nodeId)
+              setNodes(prev =>
+                prev.map(node =>
+                  node.id === event.data.nodeId
+                    ? { ...node, status: 'completed', result: result?.result }
+                    : node
+                )
+              )
+
+              // 如果是图像生成节点，显示生成的图像
+              if (result?.result?.type === 'image' && result?.result?.url) {
+                console.log('🖼️ 图像生成成功:', result.result.url)
+                toast.success('图像生成成功', {
+                  description: '查看右侧节点结果',
+                  duration: 3000,
+                })
+              }
+            } else if (event.type === 'node:failed') {
+              const result = results.find((r: any) => r.nodeId === event.data.nodeId)
+              setNodes(prev =>
+                prev.map(node =>
+                  node.id === event.data.nodeId
+                    ? { ...node, status: 'failed', error: event.data.error }
+                    : node
+                )
+              )
+
+              toast.error('节点执行失败', {
+                description: `${event.data.nodeId}: ${event.data.error}`,
+                duration: 5000,
+              })
+            }
+          })
+
+          // 显示最终结果
+          if (execution.status === 'completed') {
+            console.log('✅ 所有节点执行成功')
+            toast.success('工作流执行完成', {
+              description: `成功执行 ${nodesRef.current.length} 个节点`,
+              duration: 3000,
+            })
+          } else if (execution.status === 'failed') {
+            console.error('❌ 工作流执行失败:', execution.error)
+            toast.error('工作流执行失败', {
+              description: execution.error,
+              duration: 5000,
+            })
+          }
+        } else {
+          throw new Error('执行失败')
+        }
 
         // 通知外部组件执行完成
         onExecuteRef.current?.()
       } catch (error) {
         console.error('❌ 执行工作流时发生错误:', error)
-
-        // 显示错误提示
-        toast.error('工作流执行失败', {
+        toast.error('执行失败', {
           description: error instanceof Error ? error.message : '未知错误',
           duration: 5000,
         })
@@ -963,6 +1046,81 @@ export default function WorkflowEditorV2({
                     </div>
                     ) : null
                   })()}
+
+                  {/* 执行状态指示器 */}
+                  {node.status && (
+                    <div className={`px-3 py-2 border-t ${
+                      node.status === 'running' ? 'bg-blue-500/10' :
+                      node.status === 'completed' ? 'bg-green-500/10' :
+                      node.status === 'failed' ? 'bg-red-500/10' : ''
+                    }`}>
+                      <div className="flex items-center gap-2 text-xs">
+                        {node.status === 'running' && (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                            <span className="text-blue-600 dark:text-blue-400">运行中...</span>
+                          </>
+                        )}
+                        {node.status === 'completed' && (
+                          <>
+                            <CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" />
+                            <span className="text-green-600 dark:text-green-400">已完成</span>
+                          </>
+                        )}
+                        {node.status === 'failed' && (
+                          <>
+                            <XCircle className="w-3 h-3 text-red-600 dark:text-red-400" />
+                            <span className="text-red-600 dark:text-red-400">失败</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 执行结果预览 */}
+                  {node.status === 'completed' && node.result && (
+                    <div className="px-3 py-2 border-t">
+                      <div className="text-xs font-medium text-muted-foreground mb-2">执行结果</div>
+                      {node.result.type === 'image' && node.result.url && (
+                        <div className="rounded-lg overflow-hidden border">
+                          <img
+                            src={node.result.url}
+                            alt="生成结果"
+                            className="w-full h-32 object-cover"
+                          />
+                        </div>
+                      )}
+                      {node.result.type === 'video' && node.result.url && (
+                        <div className="rounded-lg overflow-hidden border">
+                          <video
+                            src={node.result.url}
+                            controls
+                            className="w-full h-32 object-cover"
+                          />
+                        </div>
+                      )}
+                      {node.result.type === 'text' && node.result.content && (
+                        <div className="p-2 bg-muted rounded-lg text-xs">
+                          {node.result.content}
+                        </div>
+                      )}
+                      {node.result.type === 'json' && node.result.data && (
+                        <div className="p-2 bg-muted rounded-lg text-xs font-mono overflow-auto max-h-32">
+                          <pre>{JSON.stringify(node.result.data, null, 2)}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 错误信息 */}
+                  {node.status === 'failed' && node.error && (
+                    <div className="px-3 py-2 border-t bg-red-500/5">
+                      <div className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">错误信息</div>
+                      <div className="text-xs text-red-600 dark:text-red-400 break-words">
+                        {node.error}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
