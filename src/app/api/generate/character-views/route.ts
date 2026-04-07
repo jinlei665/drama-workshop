@@ -145,12 +145,12 @@ export async function POST(request: NextRequest) {
     if (isDatabaseConfigured()) {
       try {
         const supabase = getSupabaseClient()
-        // 存储相对路径或文件 key，同时更新 imageUrl 为 OSS 的完整 URL
+        
+        // 先只更新 front_view_key（确保至少能更新这个字段）
         const { error } = await supabase
           .from("characters")
           .update({
             front_view_key: fileKey,  // 存储相对路径，更短
-            image_url: viewUrl,       // 存储 OSS 完整 URL 或本地路径
             updated_at: new Date().toISOString(),
           })
           .eq("id", characterId)
@@ -158,7 +158,23 @@ export async function POST(request: NextRequest) {
         if (error) {
           console.warn("Database update error:", error.message)
         } else {
-          console.log("Database updated with front_view_key:", fileKey, "image_url:", viewUrl)
+          console.log("Database updated with front_view_key:", fileKey)
+          
+          // 尝试更新 image_url（如果 schema cache 已刷新）
+          try {
+            const { error: imageError } = await supabase
+              .from("characters")
+              .update({ image_url: viewUrl })
+              .eq("id", characterId)
+            
+            if (imageError) {
+              console.warn("Failed to update image_url (schema cache may need refresh):", imageError.message)
+            } else {
+              console.log("Database updated with image_url:", viewUrl)
+            }
+          } catch (imageErr) {
+            console.warn("Failed to update image_url:", imageErr)
+          }
         }
       } catch (dbError) {
         console.warn("Failed to update database:", dbError)
