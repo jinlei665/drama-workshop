@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { sendExecutionEvent, getConnections } from '@/lib/workflow/sse'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -7,9 +8,6 @@ export const dynamic = 'force-dynamic'
  * WebSocket 路由
  * 用于实时推送工作流执行状态
  */
-
-// 存储活跃的 SSE 连接
-const connections = new Map<string, ReadableStreamDefaultController>()
 
 /**
  * GET /api/workflow/ws
@@ -27,38 +25,40 @@ export async function GET(request: NextRequest) {
     return new Response('Missing executionId parameter', { status: 400 })
   }
 
+  const connections = getConnections()
+
   // 创建 SSE 响应
   const encoder = new TextEncoder()
+
+  let heartbeatInterval: NodeJS.Timeout
 
   const stream = new ReadableStream({
     start(controller) {
       // 保存 controller 以便后续发送事件
-      connections.set(executionId, controller as any)
+      connections.set(executionId, controller)
 
       // 发送连接成功事件
       const event = `data: ${JSON.stringify({ type: 'connected', executionId })}\n\n`
       controller.enqueue(encoder.encode(event))
 
       // 设置心跳
-      const heartbeat = setInterval(() => {
+      heartbeatInterval = setInterval(() => {
         const event = `: heartbeat\n\n`
         try {
           controller.enqueue(encoder.encode(event))
         } catch (error) {
-          clearInterval(heartbeat)
+          clearInterval(heartbeatInterval)
+          connections.delete(executionId)
         }
       }, 30000)
+    },
 
-      // 清理函数
-      request.signal.addEventListener('abort', () => {
-        clearInterval(heartbeat)
-        connections.delete(executionId)
-        try {
-          controller.close()
-        } catch (error) {
-          console.error('Error closing stream:', error)
-        }
-      })
+    cancel() {
+      // 清理资源
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval)
+      }
+      connections.delete(executionId)
     },
   })
 
@@ -70,36 +70,4 @@ export async function GET(request: NextRequest) {
       'X-Accel-Buffering': 'no',
     },
   })
-}
-
-/**
- * 发送执行事件到客户端
- */
-export function sendExecutionEvent(executionId: string, event: any) {
-  const controller = connections.get(executionId)
-  if (controller) {
-    const encoder = new TextEncoder()
-    const data = `data: ${JSON.stringify(event)}\n\n`
-    try {
-      controller.enqueue(encoder.encode(data))
-    } catch (error) {
-      console.error('Error sending event:', error)
-      connections.delete(executionId)
-    }
-  }
-}
-
-/**
- * 关闭执行连接
- */
-export function closeExecutionConnection(executionId: string) {
-  const controller = connections.get(executionId)
-  if (controller) {
-    try {
-      controller.close()
-    } catch (error) {
-      console.error('Error closing connection:', error)
-    }
-    connections.delete(executionId)
-  }
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { WorkflowEngine } from '@/lib/workflow/engine/WorkflowEngine'
 import type { Workflow, BaseNode, Edge, NodeResult } from '@/lib/workflow/types'
-import { sendExecutionEvent, closeExecutionConnection } from '../ws/route'
+import { sendExecutionEvent, closeExecutionConnection } from '@/lib/workflow/sse'
 import { getSupabaseClient } from '@/storage/database/supabase-client'
 
 export const runtime = 'nodejs'

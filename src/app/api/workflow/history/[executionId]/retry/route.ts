@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { WorkflowEngine } from '@/lib/workflow/engine/WorkflowEngine'
 import type { Workflow } from '@/lib/workflow/types'
 import { getSupabaseClient } from '@/storage/database/supabase-client'
-import { sendExecutionEvent, closeExecutionConnection } from '../../../ws/route'
+import { sendExecutionEvent, closeExecutionConnection } from '@/lib/workflow/sse'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

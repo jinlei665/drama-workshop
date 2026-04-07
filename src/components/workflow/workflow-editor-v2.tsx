@@ -520,6 +520,49 @@ export default function WorkflowEditorV2({
         // 1. 先启动 SSE 连接监听
         eventSource = new EventSource(`/api/workflow/ws?executionId=${executionId}`)
 
+        // 等待 SSE 连接建立
+        await new Promise<void>((resolve, reject) => {
+          let connected = false
+          let timeout: NodeJS.Timeout
+
+          const handleMessage = (event: MessageEvent) => {
+            try {
+              const data = JSON.parse(event.data)
+              if (data.type === 'connected') {
+                connected = true
+                console.log('✅ SSE 连接已建立')
+                eventSource!.removeEventListener('message', handleMessage)
+                eventSource!.removeEventListener('error', handleError)
+                clearTimeout(timeout)
+                resolve()
+              }
+            } catch (error) {
+              // 忽略解析错误
+            }
+          }
+
+          const handleError = (error: Event) => {
+            console.error('❌ SSE 连接失败:', error)
+            eventSource?.removeEventListener('message', handleMessage)
+            eventSource?.removeEventListener('error', handleError)
+            clearTimeout(timeout)
+            reject(new Error('SSE 连接失败'))
+          }
+
+          eventSource?.addEventListener('message', handleMessage)
+          eventSource?.addEventListener('error', handleError)
+
+          // 10 秒超时
+          timeout = setTimeout(() => {
+            eventSource!.removeEventListener('message', handleMessage)
+            eventSource!.removeEventListener('error', handleError)
+            if (!connected) {
+              reject(new Error('SSE 连接超时'))
+            }
+          }, 10000)
+        })
+
+        // 2. SSE 连接建立后，处理后续事件
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
