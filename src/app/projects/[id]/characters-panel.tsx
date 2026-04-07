@@ -350,6 +350,14 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         const data = await res.json()
         let appearances = data.data?.appearances || []
 
+        console.log('[Open Appearance Dialog] Loaded appearances from DB:', appearances.map(app => ({
+          id: app.id,
+          name: app.name,
+          imageKey: app.imageKey,
+          imageUrl: app.imageUrl,
+          isPrimary: app.isPrimary
+        })))
+
         // 检查是否需要添加角色的原始形象作为默认形象
         // 确保 imageUrl 和 frontViewKey 不为空字符串
         const validImageUrl = character.imageUrl?.trim() || null
