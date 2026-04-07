@@ -1118,113 +1118,16 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                             ref={provided.innerRef}
                             className="grid grid-cols-2 md:grid-cols-3 gap-4"
                           >
-                            {appearances.map((appearance, index) => {
-                              // 调试：打印每个形象的信息
-                              console.log('[Render Appearance Card]', {
-                                index,
-                                id: appearance.id,
-                                name: appearance.name,
-                                imageKey: appearance.imageKey,
-                                imageUrl: appearance.imageUrl,
-                                isPrimary: appearance.isPrimary,
-                                hasValidImageUrl: !!appearance.imageUrl?.trim(),
-                                hasValidImageKey: !!appearance.imageKey?.trim()
-                              })
-
-                              return (
-                              <Draggable
+                            {appearances.map((appearance, index) => (
+                              <AppearanceCard
                                 key={appearance.id}
-                                draggableId={appearance.id}
+                                appearance={appearance}
                                 index={index}
-                                isDragDisabled={appearance.id.startsWith('default_')} // 禁用默认形象的拖拽
-                              >
-                                {(provided, snapshot) => (
-                                  <div
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    className={`relative group border rounded-lg overflow-hidden ${
-                                      appearance.isPrimary ? 'ring-2 ring-primary' : ''
-                                    } ${snapshot.isDragging ? 'shadow-lg' : ''}`}
-                                  >
-                                    <div
-                                      {...provided.dragHandleProps}
-                                      className="absolute top-2 left-2 z-20 bg-black/50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-move"
-                                    >
-                                      <GripVertical className="w-4 h-4" />
-                                    </div>
-                                    {appearance.isPrimary && (
-                                      <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-0.5 rounded">
-                                        主形象
-                                      </div>
-                                    )}
-                                    {appearance.imageUrl?.trim() ? (
-                                      <img
-                                        src={appearance.imageUrl}
-                                        alt={appearance.name}
-                                        className="w-full aspect-square object-cover"
-                                        onError={(e) => {
-                                          console.error('[Appearance Image] Failed to load imageUrl:', appearance.imageUrl)
-                                        }}
-                                      />
-                                    ) : appearance.imageKey?.trim() ? (
-                                      // 如果没有 imageUrl 但有 imageKey，使用 /api/images 获取
-                                      <img
-                                        src={`/api/images?key=${appearance.imageKey}`}
-                                        alt={appearance.name}
-                                        className="w-full aspect-square object-cover"
-                                        onError={(e) => {
-                                          console.error('[Appearance Image] Failed to load imageKey:', appearance.imageKey)
-                                        }}
-                                      />
-                                    ) : (
-                                      // 没有有效的图片，显示占位符
-                                      <div className="w-full aspect-square bg-muted flex items-center justify-center">
-                                        <ImageIcon className="w-12 h-12 text-muted-foreground opacity-50" />
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                                      {!appearance.isPrimary && (
-                                        <Button
-                                          size="sm"
-                                          variant="secondary"
-                                          onClick={() => handleSetPrimary(appearance.id)}
-                                        >
-                                          <Check className="w-4 h-4 mr-1" />
-                                          设为主形象
-                                        </Button>
-                                      )}
-                                      {/* 默认形象不能删除 */}
-                                      {!appearance.id.startsWith('default_') && (
-                                        <Button
-                                          size="sm"
-                                          variant="destructive"
-                                          onClick={() => handleDeleteAppearance(appearance.id)}
-                                        >
-                                          <Trash2 className="w-4 h-4" />
-                                        </Button>
-                                      )}
-                                      {appearance.id.startsWith('default_') && (
-                                        <Button
-                                          size="sm"
-                                          variant="secondary"
-                                          disabled
-                                          title="默认形象不能删除"
-                                        >
-                                          <Trash2 className="w-4 h-4 opacity-50" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-                                      <p className="text-white text-sm font-medium">{appearance.name}</p>
-                                      {appearance.description && (
-                                        <p className="text-white/70 text-xs line-clamp-1">{appearance.description}</p>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </Draggable>
-                              )
-                            })}
+                                isDragDisabled={appearance.id.startsWith('default_')}
+                                onSetPrimary={handleSetPrimary}
+                                onDelete={handleDeleteAppearance}
+                              />
+                            ))}
                             {provided.placeholder}
                           </div>
                         )}
@@ -1491,5 +1394,125 @@ function CharacterCard({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// 形象卡片组件
+function AppearanceCard({
+  appearance,
+  index,
+  isDragDisabled,
+  onSetPrimary,
+  onDelete
+}: {
+  appearance: any
+  index: number
+  isDragDisabled: boolean
+  onSetPrimary: (id: string) => void
+  onDelete: (id: string) => void
+}) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+
+  // 获取图片 URL
+  useEffect(() => {
+    // 优先使用直接存储的 imageUrl
+    if (appearance.imageUrl) {
+      setImageUrl(appearance.imageUrl)
+      return
+    }
+
+    // 如果有 imageKey，从存储获取签名 URL
+    if (appearance.imageKey) {
+      fetch(`/api/images?key=${appearance.imageKey}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.url) {
+            setImageUrl(data.url)
+          }
+        })
+        .catch(console.error)
+    }
+  }, [appearance.imageKey, appearance.imageUrl])
+
+  return (
+    <Draggable
+      key={appearance.id}
+      draggableId={appearance.id}
+      index={index}
+      isDragDisabled={isDragDisabled}
+    >
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          className={`relative group border rounded-lg overflow-hidden ${
+            appearance.isPrimary ? 'ring-2 ring-primary' : ''
+          } ${snapshot.isDragging ? 'shadow-lg' : ''}`}
+        >
+          <div
+            {...provided.dragHandleProps}
+            className="absolute top-2 left-2 z-20 bg-black/50 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-move"
+          >
+            <GripVertical className="w-4 h-4" />
+          </div>
+          {appearance.isPrimary && (
+            <div className="absolute top-2 left-2 z-10 bg-primary text-white text-xs px-2 py-0.5 rounded">
+              主形象
+            </div>
+          )}
+          <div className="aspect-square bg-secondary/50 relative overflow-hidden">
+            {imageUrl ? (
+              <img
+                src={imageUrl}
+                alt={appearance.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <ImageIcon className="w-12 h-12 text-muted-foreground opacity-50" />
+              </div>
+            )}
+          </div>
+          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            {!appearance.isPrimary && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onSetPrimary(appearance.id)}
+              >
+                <Check className="w-4 h-4 mr-1" />
+                设为主形象
+              </Button>
+            )}
+            {/* 默认形象不能删除 */}
+            {!appearance.id.startsWith('default_') && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => onDelete(appearance.id)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
+            {appearance.id.startsWith('default_') && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled
+                title="默认形象不能删除"
+              >
+                <Trash2 className="w-4 h-4 opacity-50" />
+              </Button>
+            )}
+          </div>
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
+            <p className="text-white text-sm font-medium">{appearance.name}</p>
+            {appearance.description && (
+              <p className="text-white/70 text-xs line-clamp-1">{appearance.description}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </Draggable>
   )
 }
