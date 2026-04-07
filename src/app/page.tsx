@@ -325,7 +325,7 @@ export default function Home() {
         <main className="flex-1 overflow-auto p-6">
           {/* 快捷入口 */}
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <Link href="/workflow-test">
+            <Link href="/workflow">
               <Card className="group hover:border-primary/50 hover:bg-card/80 transition-all cursor-pointer">
                 <CardContent className="p-6">
                   <div className="flex items-center gap-4">
