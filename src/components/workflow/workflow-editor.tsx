@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import {
   Play,
   Pause,
@@ -21,10 +22,15 @@ import {
   X,
   AlertCircle,
   CheckCircle2,
-  Loader2
+  Loader2,
+  Sparkles,
+  Lightbulb,
+  MessageSquare
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { WorkflowNode, WorkflowEdge } from '@/lib/types'
+import { Textarea } from '@/components/ui/textarea'
+import { Card } from '@/components/ui/card'
 
 interface WorkflowEditorProps {
   projectId: string
@@ -155,7 +161,15 @@ export function WorkflowEditor({
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
-  
+
+  // Agent 智能共创状态
+  const [agentInput, setAgentInput] = useState('')
+  const [isAgentProcessing, setIsAgentProcessing] = useState(false)
+  const [agentRecommendations, setAgentRecommendations] = useState<string[]>([])
+  const [showAgentPanel, setShowAgentPanel] = useState(false)
+  const [templates, setTemplates] = useState<any[]>([])
+  const [showTemplates, setShowTemplates] = useState(false)
+
   // 连接状态
   const [connectingFrom, setConnectingFrom] = useState<{
     nodeId: string
@@ -163,22 +177,22 @@ export function WorkflowEditor({
     type: 'output' | 'input'
   } | null>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
-  
+
   const canvasRef = useRef<HTMLDivElement>(null)
   const lastMousePos = useRef({ x: 0, y: 0 })
 
-  // 加载项目工作流
+  // 加载项目工作流和模板
   useEffect(() => {
     const loadWorkflow = async () => {
       if (!projectId || projectId === 'default') {
         setIsLoading(false)
         return
       }
-      
+
       try {
         const res = await fetch(`/api/projects/${projectId}/workflow`)
         const data = await res.json()
-        
+
         if (data.success && data.data?.workflow) {
           setNodes(data.data.workflow.nodes || [])
           setEdges(data.data.workflow.edges || [])
@@ -190,8 +204,21 @@ export function WorkflowEditor({
         setIsLoading(false)
       }
     }
-    
+
+    const loadTemplates = async () => {
+      try {
+        const res = await fetch('/api/workflow/templates')
+        const data = await res.json()
+        if (data.success) {
+          setTemplates(data.data.templates || [])
+        }
+      } catch (error) {
+        console.error('Failed to load templates:', error)
+      }
+    }
+
     loadWorkflow()
+    loadTemplates()
   }, [projectId])
 
   // 保存工作流
@@ -474,6 +501,119 @@ export function WorkflowEditor({
     setZoom((prev) => Math.min(2, Math.max(0.5, prev + delta)))
   }, [])
 
+  // Agent 智能共创 - 处理用户输入
+  const handleAgentSubmit = useCallback(async () => {
+    if (!agentInput.trim() || !projectId || projectId === 'default') {
+      toast.info('请输入需求描述')
+      return
+    }
+
+    setIsAgentProcessing(true)
+    setShowAgentPanel(true)
+
+    try {
+      const response = await fetch('/api/workflow/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userInput: agentInput,
+          projectId,
+          context: {
+            projectAssets: [],
+            userPreferences: {}
+          }
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        const { workflow, recommendations } = data.data
+
+        // 更新工作流
+        if (workflow && workflow.nodes) {
+          setNodes(workflow.nodes)
+          setEdges(workflow.edges || [])
+          setHasChanges(true)
+          toast.success('已根据您的需求生成工作流')
+        }
+
+        // 显示推荐
+        if (recommendations && recommendations.length > 0) {
+          setAgentRecommendations(recommendations)
+        }
+      } else {
+        throw new Error(data.error || '生成失败')
+      }
+    } catch (error) {
+      console.error('Agent 处理失败:', error)
+      toast.error('智能生成失败，请重试')
+    } finally {
+      setIsAgentProcessing(false)
+      setAgentInput('')
+    }
+  }, [agentInput, projectId])
+
+  // 优化工作流
+  const optimizeWorkflow = useCallback(async () => {
+    try {
+      const response = await fetch('/api/workflow/agent', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow: {
+            id: 'current',
+            nodes,
+            edges
+          }
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.data.suggestions?.length > 0) {
+        setAgentRecommendations(data.data.suggestions.map((s: any) => s.title + ': ' + s.description))
+        toast.success(`发现 ${data.data.suggestions.length} 条优化建议`)
+      } else {
+        toast.info('当前工作流已优化')
+      }
+    } catch (error) {
+      console.error('优化失败:', error)
+      toast.error('优化失败，请重试')
+    }
+  }, [nodes, edges])
+
+  // 应用模板
+  const applyTemplate = useCallback(async (templateId: string) => {
+    if (!projectId || projectId === 'default') return
+
+    try {
+      const response = await fetch('/api/workflow/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId,
+          projectId
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setNodes(data.data.workflow.nodes || [])
+        setEdges(data.data.workflow.edges || [])
+        setHasChanges(true)
+        setShowTemplates(false)
+        toast.success('模板已应用')
+      } else {
+        throw new Error(data.error || '应用模板失败')
+      }
+    } catch (error) {
+      console.error('应用模板失败:', error)
+      toast.error('应用模板失败，请重试')
+    }
+  }, [projectId])
+
   // 处理平移
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 1 || (e.button === 0 && e.altKey)) {
@@ -727,17 +867,45 @@ export function WorkflowEditor({
               重置
             </Button>
             {projectId && projectId !== 'default' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={resetWorkflow}
-                title="重置为默认工作流"
-              >
-                重置工作流
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTemplates(true)}
+                  title="应用模板"
+                >
+                  模板
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={resetWorkflow}
+                  title="重置为默认工作流"
+                >
+                  重置工作流
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={optimizeWorkflow}
+                  title="优化工作流"
+                >
+                  <Lightbulb className="h-4 w-4 mr-1" />
+                  优化
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setShowAgentPanel(!showAgentPanel)}
+                  title="AI 智能共创"
+                >
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  AI 共创
+                </Button>
+              </>
             )}
           </div>
-          
+
           <div className="flex items-center gap-2">
             {hasChanges && (
               <span className="text-xs text-muted-foreground">有未保存的更改</span>
@@ -1018,8 +1186,111 @@ export function WorkflowEditor({
         </div>
       </div>
 
+      {/* Agent 面板 */}
+      {showAgentPanel && (
+        <div className="w-80 border-l border-border bg-card/30 flex flex-col">
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              <h3 className="font-medium">AI 智能共创</h3>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => setShowAgentPanel(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-4">
+              {/* 输入区域 */}
+              <div>
+                <label className="text-xs text-muted-foreground">描述您的需求</label>
+                <Textarea
+                  value={agentInput}
+                  onChange={(e) => setAgentInput(e.target.value)}
+                  placeholder="例如：我想创建一个视频生成工作流，从文本生成场景图片，然后生成视频..."
+                  className="mt-2 min-h-[120px] text-sm"
+                />
+                <Button
+                  className="w-full mt-2"
+                  size="sm"
+                  onClick={handleAgentSubmit}
+                  disabled={isAgentProcessing || !agentInput.trim()}
+                >
+                  {isAgentProcessing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      生成中...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      智能生成工作流
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* 推荐建议 */}
+              {agentRecommendations.length > 0 && (
+                <div>
+                  <label className="text-xs text-muted-foreground flex items-center gap-2">
+                    <Lightbulb className="h-3 w-3" />
+                    智能建议
+                  </label>
+                  <div className="mt-2 space-y-2">
+                    {agentRecommendations.map((recommendation, index) => (
+                      <Card key={index} className="p-3 bg-accent/10 border-accent/20">
+                        <p className="text-sm">{recommendation}</p>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 快捷模板 */}
+              <div>
+                <label className="text-xs text-muted-foreground">快速模板</label>
+                <div className="mt-2 space-y-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start text-left"
+                    onClick={() => setAgentInput('创建文生图工作流，从文本描述生成场景图片')}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    文生图工作流
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start text-left"
+                    onClick={() => setAgentInput('创建图生视频工作流，从图片生成动画视频')}
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    图生视频工作流
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start text-left"
+                    onClick={() => setAgentInput('创建角色三视图生成工作流，生成角色的正、侧、背三视图')}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    角色三视图
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+
       {/* 属性面板 */}
-      {selectedNodeId && (
+      {!showAgentPanel && selectedNodeId && (
         <div className="w-72 border-l border-border bg-card/30 flex flex-col">
           <div className="p-4 border-b border-border flex items-center justify-between">
             <h3 className="font-medium">节点属性</h3>
@@ -1039,19 +1310,19 @@ export function WorkflowEditor({
                 if (!node) return null
                 const config = NODE_CONFIG[node.type]
                 const status = nodeStatuses[node.id] || 'idle'
-                
+
                 return (
                   <div className="space-y-4">
                     <div>
                       <label className="text-xs text-muted-foreground">节点名称</label>
                       <p className="text-sm font-medium mt-1">{config?.label}</p>
                     </div>
-                    
+
                     <div>
                       <label className="text-xs text-muted-foreground">描述</label>
                       <p className="text-sm mt-1 text-muted-foreground">{config?.description}</p>
                     </div>
-                    
+
                     <div>
                       <label className="text-xs text-muted-foreground">分类</label>
                       <div className="mt-1">
@@ -1110,6 +1381,37 @@ export function WorkflowEditor({
           </ScrollArea>
         </div>
       )}
+
+      {/* 模板选择对话框 */}
+      <Dialog open={showTemplates} onOpenChange={setShowTemplates}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>选择工作流模板</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[500px]">
+            <div className="grid grid-cols-2 gap-4 p-4">
+              {templates.map((template) => (
+                <Card
+                  key={template.id}
+                  className="p-4 cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => applyTemplate(template.id)}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <Badge variant="secondary">{template.category}</Badge>
+                  </div>
+                  <h4 className="font-medium mb-1">{template.name}</h4>
+                  <p className="text-xs text-muted-foreground">{template.description}</p>
+                </Card>
+              ))}
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplates(false)}>
+              取消
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
