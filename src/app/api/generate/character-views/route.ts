@@ -107,11 +107,12 @@ export async function POST(request: NextRequest) {
 
       // 生成公网 URL
       // 注意：S3_ENDPOINT 已经包含了 bucket 名称（如 https://bucket.oss-region.aliyuncs.com）
-      // 所以只需要拼接 key 即可，不需要再添加 bucket
+      // 所以只需要拼接 key 即可
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
-      viewUrl = `${endpoint}/characters/${fileKey}`
+      viewUrl = `${endpoint}/${fileKey}`
 
       console.log("Image uploaded to OSS:", fileKey)
+      console.log("Image URL:", viewUrl)
     } catch (ossError) {
       console.warn("Failed to upload to OSS, saving to local:", ossError)
       

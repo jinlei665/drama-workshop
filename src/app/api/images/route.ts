@@ -14,31 +14,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // 处理 key：如果是角色视图（char_xxx），添加 characters/ 前缀
-    let s3Key = key
-    if (key.match(/^char_\d+\/|^lib_\d+\/|^proj_\d+\//)) {
-      // 判断是否需要添加 characters/ 前缀
-      if (!key.startsWith('characters/') && !key.startsWith('character-library/') && !key.startsWith('scenes/')) {
-        s3Key = `characters/${key}`
-      }
-    }
+    const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+    
+    console.log('[API Images] S3_ENDPOINT:', endpoint)
+    console.log('[API Images] Constructing URL:', `${endpoint}/${key}`)
 
-    console.log('[API Images] Original key:', key, '-> S3 key:', s3Key)
-    console.log('[API Images] S3_ENDPOINT:', process.env.S3_ENDPOINT)
-
-    // 使用 S3 配置（阿里云 OSS）
-    const storage = new S3Storage({
-      endpointUrl: process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL,
-      accessKey: process.env.S3_ACCESS_KEY || '',
-      secretKey: process.env.S3_SECRET_KEY || '',
-      bucketName: process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME,
-      region: process.env.S3_REGION || 'us-east-1',
-    })
-
-    const url = await storage.generatePresignedUrl({
-      key: s3Key,
-      expireTime: 86400 * 7, // 7天有效
-    })
+    // 直接构建公网 URL（不需要签名，因为 OSS 已设置为公开读取）
+    const url = `${endpoint}/${key}`
 
     console.log('[API Images] Generated URL:', url)
     return NextResponse.json({ url })
