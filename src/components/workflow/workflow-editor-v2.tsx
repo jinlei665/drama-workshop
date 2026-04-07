@@ -19,7 +19,8 @@ import {
   X,
   Copy,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Download
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
@@ -405,7 +406,13 @@ export default function WorkflowEditorV2({
 
   // 鼠标事件处理
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    // 检查点击的目标是否是背景
+    const isBackground = e.target === containerRef.current ||
+                        (e.target as HTMLElement).classList.contains('bg-grid-pattern') ||
+                        (e.target as HTMLElement).classList.contains('absolute')
+
+    // 如果是背景且是左键，或者按住中键或 Alt+左键，则开始平移
+    if ((isBackground && e.button === 0) || e.button === 1 || (e.button === 0 && e.altKey)) {
       setIsPanning(true)
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
     }
@@ -736,6 +743,7 @@ export default function WorkflowEditorV2({
           >
             <ZoomIn className="w-4 h-4" />
           </Button>
+          <span className="text-sm text-muted-foreground w-12 text-center">{Math.round(zoom * 100)}%</span>
           <Button
             variant="outline"
             size="sm"
@@ -1192,14 +1200,39 @@ export default function WorkflowEditorV2({
                   {/* 执行结果预览 */}
                   {node.status === 'completed' && node.result && (
                     <div className="px-3 py-2 border-t">
-                      <div className="text-xs font-medium text-muted-foreground mb-2">执行结果</div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs font-medium text-muted-foreground">执行结果</div>
+                        {node.result.url && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              const link = document.createElement('a')
+                              link.href = node.result.url
+                              link.download = `result-${node.id}.${node.result.type === 'image' ? 'png' : 'mp4'}`
+                              link.target = '_blank'
+                              link.click()
+                            }}
+                          >
+                            <Download className="w-3 h-3 mr-1" />
+                            下载
+                          </Button>
+                        )}
+                      </div>
                       {node.result.type === 'image' && node.result.url && (
-                        <div className="rounded-lg overflow-hidden border">
+                        <div className="rounded-lg overflow-hidden border cursor-pointer group relative">
                           <img
                             src={node.result.url}
                             alt="生成结果"
-                            className="w-full h-32 object-cover"
+                            className="w-full h-64 object-cover"
+                            onClick={() => {
+                              window.open(node.result.url, '_blank')
+                            }}
                           />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                            <span className="text-white text-xs bg-black/50 px-2 py-1 rounded">点击查看大图</span>
+                          </div>
                         </div>
                       )}
                       {node.result.type === 'video' && node.result.url && (
@@ -1207,17 +1240,17 @@ export default function WorkflowEditorV2({
                           <video
                             src={node.result.url}
                             controls
-                            className="w-full h-32 object-cover"
+                            className="w-full h-48 object-cover"
                           />
                         </div>
                       )}
                       {node.result.type === 'text' && node.result.content && (
-                        <div className="p-2 bg-muted rounded-lg text-xs">
+                        <div className="p-2 bg-muted rounded-lg text-xs max-h-48 overflow-auto">
                           {node.result.content}
                         </div>
                       )}
                       {node.result.type === 'json' && node.result.data && (
-                        <div className="p-2 bg-muted rounded-lg text-xs font-mono overflow-auto max-h-32">
+                        <div className="p-2 bg-muted rounded-lg text-xs font-mono overflow-auto max-h-48">
                           <pre>{JSON.stringify(node.result.data, null, 2)}</pre>
                         </div>
                       )}
