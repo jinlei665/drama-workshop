@@ -2,4 +2,4 @@
  * 工作流组件导出
  */
 
-export * from './workflow-editor'
+export * from './workflow-editor-v2'

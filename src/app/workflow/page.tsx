@@ -1,21 +1,17 @@
 /**
- * 工作流页面
+ * 工作流页面 - 使用新的 WorkflowEditorV2
  */
 
 'use client'
 
-import { useParams } from 'next/navigation'
-import { WorkflowEditor } from '@/components/workflow'
+import { WorkflowEditorV2 } from '@/components/workflow/workflow-editor-v2'
 import { AppShell } from '@/components/layout'
 
 export default function WorkflowPage() {
-  const params = useParams()
-  const projectId = params.projectId as string || 'default'
-
   return (
     <AppShell>
       <div className="h-[calc(100vh-4rem)]">
-        <WorkflowEditor projectId={projectId} />
+        <WorkflowEditorV2 projectId="default" />
       </div>
     </AppShell>
   )
