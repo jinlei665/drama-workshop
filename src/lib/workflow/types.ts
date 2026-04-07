@@ -84,6 +84,8 @@ export interface Workflow {
   isTemplate?: boolean
   templateCategory?: string
   version: string
+  system?: boolean  // 是否为系统工作流（只读）
+  readonly?: boolean  // 是否只读
   metadata?: {
     createdAt: string
     updatedAt: string

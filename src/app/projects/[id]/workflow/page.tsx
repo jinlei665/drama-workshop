@@ -1,43 +1,99 @@
 /**
  * 项目工作流页面
- * 显示项目的默认工作流编辑器
+ * 显示项目的系统工作流（只读）或自定义工作流
  */
 
 'use client'
 
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Workflow } from 'lucide-react'
+import { ArrowLeft, Workflow, Plus } from 'lucide-react'
 import { WorkflowEditorV2 } from '@/components/workflow/workflow-editor-v2'
+import type { BaseNode, Edge } from '@/lib/workflow/types'
 
-export default function ProjectWorkflowPage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> 
+export default function ProjectWorkflowPage({
+  params
+}: {
+  params: Promise<{ id: string }>
 }) {
   const paramsData = useParams()
   const id = paramsData.id as string
+  const [mode, setMode] = useState<'system' | 'custom'>('system')
+  const [systemWorkflow, setSystemWorkflow] = useState<{ nodes: BaseNode[], edges: Edge[] } | null>(null)
+  const [isSystemReadonly, setIsSystemReadonly] = useState(true)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadSystemWorkflow()
+  }, [id])
+
+  const loadSystemWorkflow = async () => {
+    try {
+      const response = await fetch(`/api/projects/${id}/workflow`)
+      const data = await response.json()
+
+      if (data.success && data.workflow) {
+        setSystemWorkflow({
+          nodes: data.workflow.nodes || [],
+          edges: data.workflow.edges || []
+        })
+        setIsSystemReadonly(data.workflow.readonly !== false)
+      }
+    } catch (error) {
+      console.error('加载系统工作流失败:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateCustomWorkflow = () => {
+    setMode('custom')
+    // 自定义工作流模式，不传递任何初始节点，用户可以自己创建
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
       {/* 头部 */}
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-4">
-            <Link href={`/projects/${id}`}>
-              <Button variant="ghost" size="icon">
-                <ArrowLeft className="w-5 h-5" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href={`/projects/${id}`}>
+                <Button variant="ghost" size="icon">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                  <Workflow className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold">工作流编辑器</h1>
+                  <p className="text-xs text-muted-foreground">
+                    {mode === 'system' ? '系统工作流（只读）' : '自定义工作流'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={mode === 'system' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setMode('system')}
+                disabled={loading}
+              >
+                系统工作流
               </Button>
-            </Link>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Workflow className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold">工作流编辑器</h1>
-                <p className="text-xs text-muted-foreground">可视化节点式工作流设计</p>
-              </div>
+              <Button
+                variant={mode === 'custom' ? 'default' : 'outline'}
+                size="sm"
+                onClick={handleCreateCustomWorkflow}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                新建工作流
+              </Button>
             </div>
           </div>
         </div>
@@ -45,7 +101,28 @@ export default function ProjectWorkflowPage({
 
       {/* 工作流编辑器 */}
       <div className="h-[calc(100vh-73px)]">
-        <WorkflowEditorV2 projectId={id} />
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <p className="mt-2 text-sm text-muted-foreground">加载工作流...</p>
+            </div>
+          </div>
+        ) : mode === 'system' ? (
+          <WorkflowEditorV2
+            projectId={id}
+            initialNodes={systemWorkflow?.nodes || []}
+            initialEdges={systemWorkflow?.edges || []}
+            readonly={isSystemReadonly}
+            isSystem={true}
+          />
+        ) : (
+          <WorkflowEditorV2
+            projectId={id}
+            readonly={false}
+            isSystem={false}
+          />
+        )}
       </div>
     </div>
   )

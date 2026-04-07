@@ -6,6 +6,7 @@
 import { NextRequest } from 'next/server'
 import { successResponse, errorResponse, getJSON, getQueryParams, parsePagination } from '@/lib/api/response'
 import { memoryProjects, generateId } from '@/lib/memory-storage'
+import { createSystemWorkflow } from '@/lib/workflow/system-workflow'
 
 /**
  * GET /api/projects
@@ -143,6 +144,10 @@ export async function POST(request: NextRequest) {
         
         if (!error && data) {
           savedToDatabase = true
+
+          // 创建系统工作流
+          createSystemWorkflowForProject(data.id, data.name, project.sourceContent, project.style).catch(console.error)
+
           // 触发异步分析
           triggerAnalysis(data.id, project.sourceContent, project.style).catch(console.error)
           
@@ -175,7 +180,10 @@ export async function POST(request: NextRequest) {
       console.log('📝 保存到内存存储:', project.id, project.name)
     }
     memoryProjects.unshift(project)
-    
+
+    // 创建系统工作流
+    createSystemWorkflowForProject(project.id, project.name, project.sourceContent, project.style).catch(console.error)
+
     // 触发异步分析
     triggerAnalysis(project.id, project.sourceContent, project.style).catch(console.error)
     
@@ -297,5 +305,56 @@ async function triggerAnalysis(projectId: string, content: string, style?: strin
     } catch (dbError) {
       console.warn('Failed to update project status in database:', dbError)
     }
+  }
+}
+
+/**
+ * 为项目创建系统工作流（异步）
+ */
+async function createSystemWorkflowForProject(
+  projectId: string,
+  projectName: string,
+  sourceContent: string,
+  style?: string
+) {
+  try {
+    console.log(`🔄 为项目 ${projectId} 创建系统工作流...`)
+
+    // 生成系统工作流
+    const systemWorkflow = createSystemWorkflow(projectId, projectName, sourceContent, style)
+
+    // 保存系统工作流到项目元数据
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+
+      if (isDatabaseConfigured()) {
+        const db = getSupabaseClient()
+        await db
+          .from('projects')
+          .update({
+            metadata: {
+              workflow: systemWorkflow,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', projectId)
+
+        console.log(`✅ 系统工作流已保存到数据库: ${systemWorkflow.id}`)
+      }
+    } catch (dbError) {
+      console.warn('系统工作流保存到数据库失败，保存到内存:', dbError)
+    }
+
+    // 同时保存到内存
+    const projectIndex = memoryProjects.findIndex(p => p.id === projectId)
+    if (projectIndex !== -1) {
+      if (!memoryProjects[projectIndex].metadata) {
+        memoryProjects[projectIndex].metadata = {}
+      }
+      memoryProjects[projectIndex].metadata!.workflow = systemWorkflow
+      console.log(`✅ 系统工作流已保存到内存: ${systemWorkflow.id}`)
+    }
+  } catch (error) {
+    console.error('创建系统工作流失败:', error)
   }
 }

@@ -65,6 +65,8 @@ interface WorkflowEditorProps {
   projectId: string
   initialNodes?: BaseNode[]
   initialEdges?: Edge[]
+  readonly?: boolean  // 是否只读模式
+  isSystem?: boolean  // 是否系统工作流
   className?: string
 }
 
@@ -209,6 +211,8 @@ export function WorkflowEditorV2({
   projectId,
   initialNodes = [],
   initialEdges = [],
+  readonly = false,
+  isSystem = false,
   className
 }: WorkflowEditorProps) {
   const [nodes, setNodes] = useState<BaseNode[]>(initialNodes)
@@ -711,6 +715,19 @@ export function WorkflowEditorV2({
     <div className={cn('flex h-full', className)}>
       {/* 左侧节点库 */}
       <div className="w-64 border-r border-border bg-card/30 flex flex-col">
+        {readonly && isSystem && (
+          <div className="p-4 bg-amber-50 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-900">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-500 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-xs font-medium text-amber-900 dark:text-amber-100">系统工作流</p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  这是系统自动生成的工作流，展示项目内容如何转换为视频。您可以查看工作原理，但无法修改。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="p-4 border-b border-border">
           <h3 className="font-medium flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
@@ -723,9 +740,16 @@ export function WorkflowEditorV2({
             {Object.entries(NODE_TYPES).map(([type, config]) => (
               <div
                 key={type}
-                className="p-3 rounded-lg border border-border bg-card/50 cursor-grab hover:bg-accent/50 hover:border-primary/50 transition-all active:cursor-grabbing"
-                draggable
+                className={cn(
+                  'p-3 rounded-lg border border-border bg-card/50 cursor-grab hover:bg-accent/50 hover:border-primary/50 transition-all active:cursor-grabbing',
+                  readonly && 'opacity-50 cursor-not-allowed hover:bg-card/50 hover:border-border'
+                )}
+                draggable={!readonly}
                 onDragStart={(e) => {
+                  if (readonly) {
+                    e.preventDefault()
+                    return
+                  }
                   e.dataTransfer.setData('nodeType', type)
                   e.dataTransfer.effectAllowed = 'copy'
                 }}
@@ -745,6 +769,12 @@ export function WorkflowEditorV2({
         {/* 工具栏 */}
         <div className="h-12 border-b border-border bg-background/80 backdrop-blur-sm flex items-center justify-between px-4">
           <div className="flex items-center gap-2">
+            {readonly && isSystem && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 dark:bg-amber-900/30 rounded-full">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+                <span className="text-xs font-medium text-amber-900 dark:text-amber-100">系统工作流（只读）</span>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -779,7 +809,7 @@ export function WorkflowEditorV2({
               variant="outline"
               size="sm"
               onClick={() => setSaveDialogOpen(true)}
-              disabled={nodes.length === 0}
+              disabled={nodes.length === 0 || readonly}
             >
               <Save className="h-4 w-4 mr-2" />
               保存
@@ -931,7 +961,7 @@ export function WorkflowEditorV2({
                     setActivePanel('params')
                   }}
                   onMouseDown={(e) => {
-                    if (e.button === 0 && !connectingFrom) {
+                    if (e.button === 0 && !connectingFrom && !readonly) {
                       e.stopPropagation()
                       const startX = e.clientX
                       const startY = e.clientY
@@ -964,17 +994,19 @@ export function WorkflowEditorV2({
                       {status === 'success' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
                       {status === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
                       {status === 'running' && <Loader2 className="w-4 h-4 animate-spin" />}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 p-0 opacity-50 hover:opacity-100"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          deleteNode(node.id)
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      {!readonly && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 p-0 opacity-50 hover:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteNode(node.id)
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   </div>
 
