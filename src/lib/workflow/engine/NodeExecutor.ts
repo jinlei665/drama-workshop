@@ -3,8 +3,8 @@
  * 负责单个节点的执行逻辑
  */
 
-import { BaseNode } from '../node/BaseNode'
-import { ExecutionContext } from '../types'
+import { BaseNodeClass } from '../node/BaseNode'
+import { BaseNode, ExecutionContext } from '../types'
 
 export interface NodeExecutionResult {
   nodeId: string

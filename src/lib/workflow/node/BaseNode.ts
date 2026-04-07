@@ -187,7 +187,7 @@ export class NodeFactory {
     if (!NodeClass) {
       throw new Error(`未知的节点类型: ${type}`)
     }
-    return new NodeClass(config)
+    return new NodeClass(config) as any
   }
 
   /**
@@ -206,7 +206,7 @@ export class NodeFactory {
       throw new Error(`未知的节点类型: ${type}`)
     }
     // 创建一个临时实例来获取 schema
-    const tempInstance = new NodeClass({ type, name: 'temp' } as any)
+    const tempInstance = new NodeClass({ type, name: 'temp' } as any) as any
     return tempInstance.getParamSchema()
   }
 }

@@ -1,96 +1,191 @@
-/**
- * 工作流模板 API 路由
- */
-
 import { NextRequest, NextResponse } from 'next/server'
-import { WorkflowBuilder } from '@/lib/workflow/agent/WorkflowBuilder'
+import { getSupabaseClient } from '@/storage/database/supabase-client'
 
-const workflowBuilder = new WorkflowBuilder()
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 /**
- * GET - 获取工作流模板
+ * POST /api/workflow/templates
+ * 创建工作流模板
  */
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const category = searchParams.get('category')
+    const body = await request.json()
+    const {
+      name,
+      description,
+      projectId,
+      nodes,
+      edges,
+      category,
+      tags,
+    } = body
 
-    const templates = category
-      ? workflowBuilder.getTemplatesByCategory(category)
-      : workflowBuilder.getTemplates()
+    if (!name || !nodes || !edges) {
+      return NextResponse.json(
+        { success: false, error: '缺少必要参数' },
+        { status: 400 }
+      )
+    }
+
+    const db = getSupabaseClient()
+
+    const templateId = `template-${Date.now()}`
+
+    await db.execute(
+      `
+      INSERT INTO workflow_templates
+      (id, name, description, project_id, nodes, edges, category, tags)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        templateId,
+        name,
+        description || null,
+        projectId || null,
+        JSON.stringify(nodes),
+        JSON.stringify(edges),
+        category || null,
+        tags ? JSON.stringify(tags) : null,
+      ]
+    )
 
     return NextResponse.json({
       success: true,
-      data: { templates }
+      data: { templateId },
     })
   } catch (error) {
-    console.error('获取模板失败:', error)
+    console.error('❌ 创建模板失败:', error)
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : '未知错误'
-      },
+      { success: false, error: error instanceof Error ? error.message : '未知错误' },
       { status: 500 }
     )
   }
 }
 
 /**
- * POST - 应用模板到项目
+ * GET /api/workflow/templates
+ * 查询工作流模板
  */
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
+  try {
+    const url = new URL(request.url)
+    const projectId = url.searchParams.get('projectId')
+    const category = url.searchParams.get('category')
+    const limit = parseInt(url.searchParams.get('limit') || '20')
+
+    const db = getSupabaseClient()
+
+    let query = 'SELECT * FROM workflow_templates WHERE 1=1'
+    const params: any[] = []
+    let paramIndex = 1
+
+    if (projectId) {
+      query += ` AND project_id = $${paramIndex}`
+      params.push(projectId)
+      paramIndex++
+    }
+
+    if (category) {
+      query += ` AND category = $${paramIndex}`
+      params.push(category)
+      paramIndex++
+    }
+
+    query += ` ORDER BY updated_at DESC LIMIT $${paramIndex}`
+    params.push(limit)
+
+    const result = await db.query(query, params)
+
+    // 解析 JSON 字段
+    const templates = result.rows.map((row: any) => ({
+      ...row,
+      nodes: typeof row.nodes === 'string' ? JSON.parse(row.nodes) : row.nodes,
+      edges: typeof row.edges === 'string' ? JSON.parse(row.edges) : row.edges,
+      tags: typeof row.tags === 'string' ? JSON.parse(row.tags) : row.tags,
+    }))
+
+    return NextResponse.json({
+      success: true,
+      data: { templates },
+    })
+  } catch (error) {
+    console.error('❌ 查询模板失败:', error)
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : '未知错误' },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * POST /api/workflow/templates/from-history
+ * 从执行历史创建模板
+ */
+export async function POST_FROM_HISTORY(request: NextRequest) {
   try {
     const body = await request.json()
-    const { templateId, projectId } = body
+    const {
+      executionId,
+      name,
+      description,
+      category,
+      tags,
+    } = body
 
-    if (!templateId || !projectId) {
+    if (!executionId || !name) {
       return NextResponse.json(
-        { error: '缺少 templateId 或 projectId 参数' },
+        { success: false, error: '缺少必要参数' },
         { status: 400 }
       )
     }
 
-    const templates = workflowBuilder.getTemplates()
-    const template = templates.find(t => t.id === templateId)
+    const db = getSupabaseClient()
 
-    if (!template) {
+    // 查询执行历史
+    const result = await db.query(
+      'SELECT * FROM workflow_executions WHERE id = $1',
+      [executionId]
+    )
+
+    if (result.rows.length === 0) {
       return NextResponse.json(
-        { error: '模板不存在' },
+        { success: false, error: '执行记录不存在' },
         { status: 404 }
       )
     }
 
-    // 生成工作流
-    const workflow = {
-      id: `workflow_${Date.now()}`,
-      name: template.name,
-      description: template.description,
-      projectId,
-      status: 'draft',
-      version: 1,
-      nodes: template.nodes.map((node: any) => ({
-        ...node,
-        id: `${node.type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      })),
-      edges: template.edges.map((edge: any) => ({
-        ...edge,
-        id: `edge_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      })),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
+    const history = result.rows[0]
+
+    // 创建模板
+    const templateId = `template-${Date.now()}`
+
+    await db.execute(
+      `
+      INSERT INTO workflow_templates
+      (id, name, description, project_id, nodes, edges, category, tags)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `,
+      [
+        templateId,
+        name,
+        description || `从执行历史 ${executionId} 创建`,
+        history.project_id,
+        history.nodes,
+        history.edges,
+        category || null,
+        tags ? JSON.stringify(tags) : null,
+      ]
+    )
 
     return NextResponse.json({
       success: true,
-      data: { workflow }
+      data: { templateId },
     })
   } catch (error) {
-    console.error('应用模板失败:', error)
+    console.error('❌ 从历史创建模板失败:', error)
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : '未知错误'
-      },
+      { success: false, error: error instanceof Error ? error.message : '未知错误' },
       { status: 500 }
     )
   }

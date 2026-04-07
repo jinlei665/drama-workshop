@@ -23,6 +23,12 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
+import { NodeFactory } from '@/lib/workflow/node/BaseNode'
+import { TextInputNode } from '@/lib/workflow/nodes/index'
+import { ImageInputNode } from '@/lib/workflow/nodes/index'
+import { ScriptInputNode } from '@/lib/workflow/nodes/ScriptInputNode'
+import { TextToImageNode } from '@/lib/workflow/nodes/index'
+import { ImageToVideoNode } from '@/lib/workflow/nodes/index'
 
 // 注册节点类型
 NodeFactory.registerNode('text-input', TextInputNode)

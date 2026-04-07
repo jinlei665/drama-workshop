@@ -86,7 +86,7 @@ export class WorkflowAgent {
               description: template.description,
               projectId,
               status: 'draft',
-              version: 1,
+              version: '1',
               nodes: template.nodes,
               edges: template.edges,
               createdAt: new Date().toISOString(),
@@ -170,7 +170,7 @@ export class WorkflowAgent {
     }
 
     // 4. 检查是否缺少错误处理
-    const nodesWithErrorHandling = workflow.nodes.filter(n => n.config?.errorHandling)
+    const nodesWithErrorHandling = workflow.nodes.filter(n => n.params?.errorHandling)
     if (nodesWithErrorHandling.length < workflow.nodes.length * 0.5) {
       suggestions.push({
         type: 'usability',
@@ -231,7 +231,7 @@ export class WorkflowAgent {
     const nodeMap = new Map<string, string[]>()
 
     workflow.nodes.forEach(node => {
-      const key = `${node.type}-${JSON.stringify(node.config)}`
+      const key = `${node.type}-${JSON.stringify(node.params)}`
       if (!nodeMap.has(key)) {
         nodeMap.set(key, [])
       }
@@ -277,9 +277,11 @@ export class WorkflowAgent {
       if (!workflow.nodes.find(n => n.id === input)) {
         updatedWorkflow.nodes.push({
           id: `auto_${input}`,
-          type: 'text_input',
+          type: 'text-input',
           name: '自动生成的输入',
-          config: { label: input },
+          inputs: [],
+          outputs: [{ id: 'output', name: 'Output', type: 'text', required: false, connected: false }],
+          params: { label: input },
           position: { x: 0, y: 0 }
         })
       }
@@ -334,7 +336,7 @@ export class WorkflowAgent {
 
     // 检查每个节点的输入需求
     workflow.nodes.forEach(node => {
-      if (node.type === 'text_to_image' || node.type === 'llm_analyze') {
+      if (node.type === 'text-to-image' || node.type === 'llm-process') {
         const hasTextInput = workflow.edges.some(
           e => e.to === node.id && e.toPort === 'prompt'
         )
@@ -343,7 +345,7 @@ export class WorkflowAgent {
         }
       }
 
-      if (node.type === 'image_to_image' || node.type === 'image_to_video') {
+      if (node.type === 'image-to-image' || node.type === 'image-to-video') {
         const hasImageInput = workflow.edges.some(
           e => e.to === node.id && e.toPort === 'reference_image'
         )

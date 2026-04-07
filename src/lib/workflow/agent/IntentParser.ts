@@ -3,7 +3,7 @@
  * 使用 LLM 解析用户的自然语言输入，识别创作意图
  */
 
-import { llm } from '../../ai/index'
+import { invokeLLM } from '../../ai/index'
 
 export interface Intent {
   type: 'create_scene' | 'create_character' | 'generate_image' | 'generate_video' | 'complex_workflow'
@@ -102,12 +102,11 @@ export class IntentParser {
    */
   async parse(userInput: string): Promise<ParsedRequest> {
     try {
-      const response = await llm.completions.create({
+      const response = await invokeLLM([
+        { role: 'system', content: this.systemPrompt },
+        { role: 'user', content: userInput }
+      ], {
         model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: this.systemPrompt },
-          { role: 'user', content: userInput }
-        ],
         temperature: 0.3,
         responseFormat: { type: 'json_object' }
       })

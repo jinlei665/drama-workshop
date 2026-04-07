@@ -3239,3 +3239,8 @@ export function getDefaultAIConfig(type: 'llm' | 'image' | 'video'): AIServiceCo
 export async function getAIConfig(type: 'llm' | 'image' | 'video'): Promise<AIServiceConfig> {
   return getDefaultAIConfig(type)
 }
+
+/**
+ * LLM 客户端实例（兼容旧代码）
+ */
+export const llm = createLLMClient()

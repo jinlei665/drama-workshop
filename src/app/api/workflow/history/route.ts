@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getDatabaseClient } from '@/storage/database/client'
+import { getSupabaseClient } from '@/storage/database/supabase-client'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const db = getDatabaseClient()
+    const db = getSupabaseClient()
 
     // 检查表是否存在，不存在则创建
     await db.execute(`
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(url.searchParams.get('limit') || '20')
     const offset = parseInt(url.searchParams.get('offset') || '0')
 
-    const db = getDatabaseClient()
+    const db = getSupabaseClient()
 
     let query = 'SELECT * FROM workflow_executions WHERE 1=1'
     const params: any[] = []

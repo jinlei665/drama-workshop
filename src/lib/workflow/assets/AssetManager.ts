@@ -4,7 +4,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import S3Storage from '@/lib/storage'
+import { createStorageClient, uploadFile } from '@/lib/storage'
+import { S3Storage } from 'coze-coding-dev-sdk'
 
 export enum AssetType {
   IMAGE = 'image',

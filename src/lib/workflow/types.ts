@@ -87,6 +87,7 @@ export interface Workflow {
   version: string
   system?: boolean  // 是否为系统工作流（只读）
   readonly?: boolean  // 是否只读
+  status?: 'draft' | 'active' | 'archived'  // 工作流状态
   metadata?: {
     createdAt: string
     updatedAt: string

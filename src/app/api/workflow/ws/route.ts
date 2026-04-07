@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic'
  * 用于实时推送工作流执行状态
  */
 
-// 存储活跃的 WebSocket 连接
-const connections = new Map<string, WebSocket>()
+// 存储活跃的 SSE 连接
+const connections = new Map<string, ReadableStreamDefaultController>()
 
 /**
  * GET /api/workflow/ws

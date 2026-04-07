@@ -390,12 +390,15 @@ export class WorkflowBuilder {
       name: 'AI 生成的工作流',
       description: '根据用户需求自动生成',
       projectId,
+      version: '1',
       status: 'draft',
-      version: 1,
       nodes,
       edges,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      metadata: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'AI Assistant',
+      },
     }
   }
 
