@@ -39,6 +39,8 @@ export default function WorkflowEditorV2({
   onExecute,
   readOnly = false,
 }: WorkflowEditorV2Props) {
+  console.log('🎬 WorkflowEditorV2 初始化:', { initialNodes, initialEdges, readOnly })
+
   // 状态管理
   const [nodes, setNodes] = useState<BaseNode[]>(initialNodes)
   const [edges, setEdges] = useState<Edge[]>(initialEdges)
@@ -87,10 +89,16 @@ export default function WorkflowEditorV2({
   // 计算端口位置
   const getPortPosition = useCallback((node: BaseNode, portId: string, type: 'input' | 'output') => {
     const portList = type === 'input' ? node.inputs : node.outputs
-    if (!portList) return null
+    if (!portList) {
+      console.warn(`⚠️ 节点 ${node.id} 没有 ${type} 端口列表`)
+      return null
+    }
 
     const portIndex = portList.findIndex(p => p.id === portId)
-    if (portIndex === -1) return null
+    if (portIndex === -1) {
+      console.warn(`⚠️ 端口 ${portId} 在节点 ${node.id} 中不存在`)
+      return null
+    }
 
     // 节点尺寸常量
     const nodeWidth = 280
@@ -103,10 +111,14 @@ export default function WorkflowEditorV2({
     const portX = type === 'input' ? 0 : nodeWidth
 
     // 转换为容器坐标
-    return {
+    const position = {
       x: node.position.x + portX,
       y: node.position.y + portY,
     }
+
+    console.log(`📍 端口位置计算:`, { node, portId, type, portIndex, position })
+
+    return position
   }, [])
 
   // 更新节点参数
@@ -169,7 +181,54 @@ export default function WorkflowEditorV2({
       status: 'idle',
     }
 
+    console.log('➕ 创建新节点:', newNode)
     setNodes(prev => [...prev, newNode])
+
+    // 初始化节点参数
+    const defaultParams = getDefaultParams(nodeType)
+    if (Object.keys(defaultParams).length > 0) {
+      setTimeout(() => {
+        setNodeParams(prev => ({
+          ...prev,
+          [newNode.id]: defaultParams,
+        }))
+      }, 0)
+    }
+  }
+
+  // 获取节点默认参数
+  const getDefaultParams = (nodeType: string) => {
+    const paramsMap: Record<string, any> = {
+      'script-input': {
+        script: '',
+        description: '',
+      },
+      'text-to-image': {
+        prompt: '',
+        style: 'realistic',
+      },
+      'image-to-video': {
+        duration: 5,
+        aspectRatio: '16:9',
+      },
+      'text-to-audio': {
+        text: '',
+        voice: 'zh_female_qingxin',
+      },
+      'text-to-character': {
+        description: '',
+      },
+      'script-to-scenes': {
+        script: '',
+      },
+      'llm-process': {
+        prompt: '',
+      },
+      'video-compose': {
+        videos: [],
+      },
+    }
+    return paramsMap[nodeType] || {}
   }
 
   // 获取节点名称
@@ -278,25 +337,34 @@ export default function WorkflowEditorV2({
 
   // 处理端口连接
   const handlePortConnect = (targetNodeId: string, targetPortId: string) => {
-    if (!connectingFrom) return
+    console.log('🔌 尝试连接端口:', { connectingFrom, targetNodeId, targetPortId })
+
+    if (!connectingFrom) {
+      console.warn('❌ connectingFrom 为空')
+      return
+    }
 
     // 禁止连接到同一节点的端口
     if (connectingFrom.nodeId === targetNodeId) {
+      console.warn('❌ 不能连接到同一节点')
       setConnectingFrom(null)
       return
     }
 
     // 禁止 input 连接到 input，output 连接到 output
     if (connectingFrom.type === 'input') {
+      console.warn('❌ 不能从 input 连接到 input')
       setConnectingFrom(null)
       return
     }
 
-    // 检查是否已存在连接
+    // 检查是否已存在连接（检查端口级别）
     const existingEdge = edges.find(
-      e => e.from === connectingFrom.nodeId && e.to === targetNodeId
+      e => e.from === connectingFrom.nodeId && e.to === targetNodeId &&
+          e.fromPort === connectingFrom.portId && e.toPort === targetPortId
     )
     if (existingEdge) {
+      console.warn('❌ 连接已存在:', existingEdge)
       setConnectingFrom(null)
       return
     }
@@ -310,7 +378,12 @@ export default function WorkflowEditorV2({
       toPort: targetPortId,
     }
 
-    setEdges(prev => [...prev, newEdge])
+    console.log('✅ 创建新连接:', newEdge)
+    setEdges(prev => {
+      const newEdges = [...prev, newEdge]
+      console.log('当前连线数量:', newEdges.length)
+      return newEdges
+    })
     setConnectingFrom(null)
   }
 
@@ -366,6 +439,8 @@ export default function WorkflowEditorV2({
 
   // 添加全局事件监听
   useEffect(() => {
+    console.log('📊 画布状态变化:', { isPanning, draggedNode, pan, zoom, nodesCount: nodes.length, edgesCount: edges.length })
+
     if (isPanning || draggedNode) {
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
@@ -374,7 +449,7 @@ export default function WorkflowEditorV2({
         window.removeEventListener('mouseup', handleMouseUp)
       }
     }
-  }, [isPanning, draggedNode, panStart, dragOffset, pan, zoom])
+  }, [isPanning, draggedNode, panStart, dragOffset, pan, zoom, nodes.length, edges.length])
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -695,6 +770,7 @@ export default function WorkflowEditorV2({
                   onMouseDown={(e) => {
                     if (readOnly) return
                     e.stopPropagation()
+                    console.log('🖱️ 点击节点:', node.name)
                     setSelectedNode(node)
                     setDraggedNode(node)
 
@@ -707,6 +783,14 @@ export default function WorkflowEditorV2({
                       setDragOffset({
                         x: mouseXInCanvas - node.position.x,
                         y: mouseYInCanvas - node.position.y,
+                      })
+                      console.log('📐 节点拖动初始化:', {
+                        mouseX: e.clientX,
+                        mouseY: e.clientY,
+                        mouseXInCanvas,
+                        mouseYInCanvas,
+                        nodePosition: node.position,
+                        dragOffset: { x: mouseXInCanvas - node.position.x, y: mouseYInCanvas - node.position.y }
                       })
                     }
                   }}
@@ -731,7 +815,7 @@ export default function WorkflowEditorV2({
                     )}
                   </div>
 
-                  {/* 输入端口 */}
+                          {/* 输入端口 */}
                   {node.inputs && node.inputs.length > 0 && (
                     <div className="px-3 py-2 space-y-1">
                       {node.inputs.map((port) => {
@@ -745,17 +829,21 @@ export default function WorkflowEditorV2({
                             className="relative flex items-center py-1 group"
                           >
                             <div
-                              className={`absolute -left-3 w-6 h-6 rounded-full border-2 bg-background transition-colors ${
+                              className={`absolute -left-3 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
                               onMouseDown={(e) => {
                                 if (readOnly) return
                                 e.stopPropagation()
+                                e.preventDefault()
+                                console.log('🔌 点击输入端口:', { nodeId: node.id, portId: port.id })
                                 setConnectingFrom({ nodeId: node.id, portId: port.id, type: 'input' })
                               }}
                               onMouseUp={(e) => {
                                 if (readOnly) return
                                 e.stopPropagation()
+                                e.preventDefault()
+                                console.log('🔌 释放到输入端口:', { nodeId: node.id, portId: port.id })
                                 handlePortConnect(node.id, port.id)
                               }}
                             />
@@ -781,17 +869,21 @@ export default function WorkflowEditorV2({
                           >
                             <span className="text-xs text-muted-foreground mr-3">{port.name}</span>
                             <div
-                              className={`absolute -right-3 w-6 h-6 rounded-full border-2 bg-background transition-colors ${
+                              className={`absolute -right-3 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
                               onMouseDown={(e) => {
                                 if (readOnly) return
                                 e.stopPropagation()
+                                e.preventDefault()
+                                console.log('🔌 点击输出端口:', { nodeId: node.id, portId: port.id })
                                 setConnectingFrom({ nodeId: node.id, portId: port.id, type: 'output' })
                               }}
                               onMouseUp={(e) => {
                                 if (readOnly) return
                                 e.stopPropagation()
+                                e.preventDefault()
+                                console.log('🔌 释放到输出端口:', { nodeId: node.id, portId: port.id })
                                 handlePortConnect(node.id, port.id)
                               }}
                             />
