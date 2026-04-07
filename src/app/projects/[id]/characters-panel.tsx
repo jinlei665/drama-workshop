@@ -1149,6 +1149,9 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                                         src={appearance.imageUrl}
                                         alt={appearance.name}
                                         className="w-full aspect-square object-cover"
+                                        onError={(e) => {
+                                          console.error('[Appearance Image] Failed to load imageUrl:', appearance.imageUrl)
+                                        }}
                                       />
                                     ) : appearance.imageKey?.trim() ? (
                                       // 如果没有 imageUrl 但有 imageKey，使用 /api/images 获取
@@ -1156,6 +1159,9 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                                         src={`/api/images?key=${appearance.imageKey}`}
                                         alt={appearance.name}
                                         className="w-full aspect-square object-cover"
+                                        onError={(e) => {
+                                          console.error('[Appearance Image] Failed to load imageKey:', appearance.imageKey)
+                                        }}
                                       />
                                     ) : (
                                       // 没有有效的图片，显示占位符
