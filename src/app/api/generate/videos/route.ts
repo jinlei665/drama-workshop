@@ -156,11 +156,10 @@ async function saveVideo(
       }
       
       console.log(`视频上传成功`);
-      
+
       // 生成公网 URL
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
-      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
-      const publicUrl = `${endpoint}/${bucket}/${key}`;
+      const publicUrl = `${endpoint}/${key}`;
       console.log(`视频公网 URL: ${publicUrl}`);
       return publicUrl;
     } catch (uploadErr) {
@@ -679,8 +678,7 @@ async function convertImageUrlForVideo(
 
       // 生成公网 URL
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
-      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
-      const newUrl = `${endpoint}/${bucket}/${key}`
+      const newUrl = `${endpoint}/${key}`
       console.log(`[convertImageUrl] 公网 URL 生成成功`)
       console.log(`[convertImageUrl] 完整 URL: ${newUrl}`)
 

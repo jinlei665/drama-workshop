@@ -242,8 +242,7 @@ export async function POST(request: NextRequest) {
 
       // 生成公网 URL
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
-      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
-      viewUrl = `${endpoint}/${bucket}/${fileKey}`
+      viewUrl = `${endpoint}/${fileKey}`
 
       console.log("Image uploaded to OSS:", fileKey)
     } catch (ossError) {

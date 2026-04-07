@@ -100,5 +100,7 @@ export function generateKey(type: 'character' | 'scene' | 'video' | 'audio', id:
 /** 获取文件公开 URL */
 export function getPublicUrl(key: string): string {
   const config = getStorageConfig()
-  return `${config.endpoint}/${config.bucket}/${key}`
+  // 注意：endpoint 已经包含了 bucket 名称（如 https://bucket.oss-region.aliyuncs.com）
+  // 所以只需要拼接 key 即可，不需要再添加 bucket
+  return `${config.endpoint}/${key}`
 }

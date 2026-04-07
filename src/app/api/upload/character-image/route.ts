@@ -55,8 +55,7 @@ export async function POST(request: NextRequest) {
 
       // 生成公网 URL
       const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
-      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
-      const url = `${endpoint}/${bucket}/${key}`
+      const url = `${endpoint}/${key}`
 
       return successResponse({
         key,
