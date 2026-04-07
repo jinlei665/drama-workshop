@@ -105,10 +105,16 @@ export default function WorkflowEditorV2({
     const headerHeight = 48
     const portItemHeight = 32
     const portListPadding = 12
+    const portPadding = 12 // 端口区域的内边距
 
     // 计算端口中心位置
+    // 端口实际位置：输入端口在 left: 0（节点左边缘），输出端口在 right: 0（节点右边缘）
+    // 端口圆点大小：w-6 h-6（24px），半径为 12px
+    // 端口圆点中心位置：
+    // - 输入端口：left: 0 + 12px = 12px
+    // - 输出端口：right: 0，即 width - 12px
     const portY = headerHeight + portListPadding + portIndex * portItemHeight + portItemHeight / 2
-    const portX = type === 'input' ? 0 : nodeWidth
+    const portX = type === 'input' ? 12 : nodeWidth - 12
 
     // 转换为容器坐标
     const position = {
@@ -116,7 +122,7 @@ export default function WorkflowEditorV2({
       y: node.position.y + portY,
     }
 
-    console.log(`📍 端口位置计算:`, { node, portId, type, portIndex, position })
+    console.log(`📍 端口位置计算:`, { node, portId, type, portIndex, position, portX, portY })
 
     return position
   }, [])
@@ -725,6 +731,7 @@ export default function WorkflowEditorV2({
                       stroke="hsl(var(--primary))"
                       strokeWidth="2"
                       strokeLinecap="round"
+                      markerEnd={`url(#arrowhead-${id})`}
                       onClick={(e) => {
                         e.stopPropagation()
                         if (!readOnly) deleteEdge(edge.id)
