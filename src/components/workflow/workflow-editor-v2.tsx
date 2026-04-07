@@ -514,6 +514,7 @@ export default function WorkflowEditorV2({
     })
 
     let eventSource: EventSource | null = null
+    let isSSEConnected = false
 
     const executeWorkflow = async () => {
       try {
@@ -534,6 +535,7 @@ export default function WorkflowEditorV2({
 
             if (data.type === 'connected') {
               console.log('✅ SSE 连接已建立')
+              isSSEConnected = true
             } else if (data.type === 'node:started') {
               setNodes(prev =>
                 prev.map(node =>
@@ -622,8 +624,16 @@ export default function WorkflowEditorV2({
         }
 
         eventSource.onerror = (error) => {
-          console.error('❌ SSE 连接错误:', error)
-          // 不立即关闭连接，让 EventSource 自动重连
+          // 只在连接真正失败时显示错误
+          if (eventSource?.readyState === EventSource.CLOSED && !isSSEConnected) {
+            console.error('❌ SSE 连接失败:', error)
+            toast.error('SSE 连接失败', {
+              description: '无法建立实时连接，请刷新页面重试',
+              duration: 5000,
+            })
+          } else if (eventSource?.readyState === EventSource.CONNECTING) {
+            console.log('⏳ SSE 正在重连...')
+          }
         }
 
         // 2. 调用后端 API 执行工作流
@@ -660,7 +670,11 @@ export default function WorkflowEditorV2({
         setIsRunning(false)
         // 关闭 SSE 连接
         setTimeout(() => {
-          eventSource?.close()
+          if (eventSource && eventSource.readyState !== EventSource.CLOSED) {
+            eventSource.close()
+          }
+          eventSource = null
+          isSSEConnected = false
         }, 1000)
       }
     }
