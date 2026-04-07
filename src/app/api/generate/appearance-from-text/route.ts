@@ -1,15 +1,16 @@
 /**
- * 项目人物 - 根据文字描述生成新形象
+ * 项目人物 - 根据旧形象和文字描述生成新形象（图生图）
  */
 
 import { NextRequest, NextResponse } from "next/server"
 import { HeaderUtils, S3Storage } from "coze-coding-dev-sdk"
-import { generateImage } from "@/lib/ai"
+import { generateImageFromImage } from "@/lib/ai"
 import { downloadFile } from "@/lib/utils"
+import { getSupabaseClient, isDatabaseConfigured } from "@/storage/database/supabase-client"
 
-// POST /api/generate/appearance-from-text - 根据文字描述生成新形象
+// POST /api/generate/appearance-from-text - 根据旧形象和文字描述生成新形象（图生图）
 export async function POST(request: NextRequest) {
-  const { characterId, characterName, appearance, changeDescription } = await request.json()
+  const { characterId, characterName, appearance, changeDescription, referenceImage } = await request.json()
 
   if (!characterId || !changeDescription) {
     return NextResponse.json(
@@ -24,20 +25,93 @@ export async function POST(request: NextRequest) {
   console.log('[Generate Appearance from Text] Starting generation for:', characterId, 'with description:', changeDescription)
 
   try {
-    // 构建生成新形象的提示词
+    // 获取参考图片（优先使用传入的参考图片，否则从角色的主形象获取）
+    let refImageUrl: string | undefined = referenceImage
+
+    // 如果没有传入参考图片，从角色的主形象获取
+    if (!refImageUrl && isDatabaseConfigured()) {
+      try {
+        const supabase = getSupabaseClient()
+
+        // 先从 appearances 表获取主形象
+        const { data: primaryAppearance } = await supabase
+          .from('character_appearances')
+          .select('image_url, image_key')
+          .eq('character_id', characterId)
+          .eq('is_primary', true)
+          .maybeSingle()
+
+        if (primaryAppearance?.image_url) {
+          refImageUrl = primaryAppearance.image_url
+          console.log('[Generate Appearance from Text] Using primary appearance image:', refImageUrl)
+        } else if (primaryAppearance?.image_key) {
+          // 如果只有 image_key，需要构造 URL
+          const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+          refImageUrl = `${domain}/api/images?key=${primaryAppearance.image_key}`
+          console.log('[Generate Appearance from Text] Using primary appearance image_key:', refImageUrl)
+        }
+
+        // 如果没有主形象，尝试从 characters 表获取 front_view_key 或 image_url
+        if (!refImageUrl) {
+          const { data: character } = await supabase
+            .from('characters')
+            .select('front_view_key, image_url')
+            .eq('id', characterId)
+            .single()
+
+          if (character?.image_url) {
+            refImageUrl = character.image_url
+          } else if (character?.front_view_key) {
+            const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+            refImageUrl = `${domain}/api/images?key=${character.front_view_key}`
+          }
+        }
+      } catch (dbError) {
+        console.warn('[Generate Appearance from Text] Failed to get reference image from database:', dbError)
+      }
+    }
+
+    if (!refImageUrl) {
+      console.warn('[Generate Appearance from Text] No reference image found, falling back to text-to-image')
+      // 如果没有参考图片，回退到文生图
+      const name = characterName || '角色'
+      const desc = appearance || '角色形象'
+      const change = changeDescription
+      const basePrompt = `${name}，${desc}，人物形象变成${change}，保持人物面部特征一致，高质量，细节丰富`
+
+      console.log('[Generate Appearance from Text] Falling back to text-to-image with prompt:', basePrompt.substring(0, 100))
+
+      const { generateImage } = await import('@/lib/ai')
+      const result = await generateImage(basePrompt, {
+        size: '2K',
+        watermark: false,
+      }, undefined, customHeaders)
+
+      const imageUrl = result.urls[0]
+      const imageBuffer = await downloadFile(imageUrl)
+      const { fileKey, viewUrl } = await uploadImage(imageBuffer, characterId)
+
+      return NextResponse.json({
+        success: true,
+        viewUrl,
+        fileKey,
+      })
+    }
+
+    // 使用图生图功能生成新形象
     const name = characterName || '角色'
     const desc = appearance || '角色形象'
     const change = changeDescription
 
-    // 提示词：根据文字描述生成新形象
+    // 提示词：保持角色特征，根据描述改变形象
     const basePrompt = `${name}，${desc}，人物形象变成${change}，保持人物面部特征一致，高质量，细节丰富`
 
-    console.log('Generating new appearance with prompt:', basePrompt.substring(0, 100))
+    console.log('[Generate Appearance from Text] Generating new appearance with prompt:', basePrompt.substring(0, 100))
+    console.log('[Generate Appearance from Text] Using reference image:', refImageUrl)
 
-    // 使用文生图功能生成新形象
     let imageUrl: string
     try {
-      const result = await generateImage(basePrompt, {
+      const result = await generateImageFromImage(basePrompt, refImageUrl, {
         size: '2K',
         watermark: false,
       }, undefined, customHeaders)
@@ -55,69 +129,8 @@ export async function POST(request: NextRequest) {
     // 下载图片
     const imageBuffer = await downloadFile(imageUrl)
 
-    // 尝试上传到对象存储（使用 S3Storage）
-    let fileKey: string | null = null
-    let viewUrl: string = imageUrl
-
-    try {
-      // 使用 ali-oss SDK 上传（支持设置 ACL）
-      const OSS = await import('ali-oss')
-      const ossClient = new OSS.default({
-        region: process.env.S3_REGION || 'oss-cn-chengdu',
-        accessKeyId: process.env.S3_ACCESS_KEY || '',
-        accessKeySecret: process.env.S3_SECRET_KEY || '',
-        bucket: process.env.S3_BUCKET || 'drama-studio',
-        secure: true,
-      })
-
-      // 上传到 OSS
-      const timestamp = Date.now()
-      fileKey = `character-appearances/${characterId}/appearance_${timestamp}.png`
-      await ossClient.put(fileKey, imageBuffer)
-
-      // 设置为公开读取
-      await ossClient.putACL(fileKey, 'public-read')
-
-      // 生成公网 URL
-      const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
-      viewUrl = `${endpoint}/${fileKey}`
-
-      console.log("Image uploaded to OSS:", fileKey)
-    } catch (ossError) {
-      console.warn("Failed to upload to OSS, saving to local:", ossError)
-
-      // 对象存储不可用，保存到本地 public 目录
-      try {
-        const fs = await import('fs')
-        const path = await import('path')
-
-        // 确保目录存在
-        const publicDir = path.join(process.cwd(), 'public', 'character-appearances', characterId)
-        if (!fs.existsSync(publicDir)) {
-          fs.mkdirSync(publicDir, { recursive: true })
-        }
-
-        // 保存图片
-        const timestamp = Date.now()
-        const localFileName = `appearance_${timestamp}.png`
-        const localFilePath = path.join(publicDir, localFileName)
-        fs.writeFileSync(localFilePath, imageBuffer)
-
-        // 使用本地相对路径作为 URL
-        fileKey = `character-appearances/${characterId}/${localFileName}`
-        viewUrl = `/character-appearances/${characterId}/${localFileName}`
-
-        console.log("Image saved to local:", localFilePath)
-      } catch (localError) {
-        console.warn("Failed to save to local:", localError)
-      }
-    }
-
-    // 如果 fileKey 仍然为 null，使用原始 URL 作为 fallback
-    if (!fileKey) {
-      fileKey = imageUrl
-      console.warn("Using original URL as fileKey fallback")
-    }
+    // 上传图片
+    const { fileKey, viewUrl } = await uploadImage(imageBuffer, characterId)
 
     return NextResponse.json({
       success: true,
@@ -130,5 +143,63 @@ export async function POST(request: NextRequest) {
       { error: error instanceof Error ? error.message : "生成新形象失败" },
       { status: 500 }
     )
+  }
+}
+
+/**
+ * 上传图片到存储
+ */
+async function uploadImage(imageBuffer: Buffer, characterId: string): Promise<{ fileKey: string | null; viewUrl: string }> {
+  // 尝试使用 ali-oss SDK 上传
+  try {
+    const OSS = await import('ali-oss')
+    const ossClient = new OSS.default({
+      region: process.env.S3_REGION || 'oss-cn-chengdu',
+      accessKeyId: process.env.S3_ACCESS_KEY || '',
+      accessKeySecret: process.env.S3_SECRET_KEY || '',
+      bucket: process.env.S3_BUCKET || 'drama-studio',
+      secure: true,
+    })
+
+    const timestamp = Date.now()
+    const fileKey = `character-appearances/${characterId}/appearance_${timestamp}.png`
+    await ossClient.put(fileKey, imageBuffer)
+
+    // 设置为公开读取
+    await ossClient.putACL(fileKey, 'public-read')
+
+    // 生成公网 URL
+    const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+    const viewUrl = `${endpoint}/${fileKey}`
+
+    console.log("Image uploaded to OSS:", fileKey)
+    return { fileKey, viewUrl }
+  } catch (ossError) {
+    console.warn("Failed to upload to OSS, saving to local:", ossError)
+
+    // 对象存储不可用，保存到本地 public 目录
+    try {
+      const fs = await import('fs')
+      const path = await import('path')
+
+      const publicDir = path.join(process.cwd(), 'public', 'character-appearances', characterId)
+      if (!fs.existsSync(publicDir)) {
+        fs.mkdirSync(publicDir, { recursive: true })
+      }
+
+      const timestamp = Date.now()
+      const localFileName = `appearance_${timestamp}.png`
+      const localFilePath = path.join(publicDir, localFileName)
+      fs.writeFileSync(localFilePath, imageBuffer)
+
+      const fileKey = `character-appearances/${characterId}/${localFileName}`
+      const viewUrl = `/character-appearances/${characterId}/${localFileName}`
+
+      console.log("Image saved to local:", localFilePath)
+      return { fileKey, viewUrl }
+    } catch (localError) {
+      console.warn("Failed to save to local:", localError)
+      return { fileKey: null, viewUrl: '' }
+    }
   }
 }

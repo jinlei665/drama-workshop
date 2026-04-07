@@ -408,11 +408,39 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
     setGeneratingAppearance(true)
     try {
+      // 获取参考图片（优先使用主形象，否则使用角色的正面视图）
+      let referenceImage: string | undefined
+
+      // 1. 优先使用 appearances 中的主形象
+      const primaryAppearance = appearances.find(a => a.is_primary)
+      if (primaryAppearance?.imageUrl) {
+        referenceImage = primaryAppearance.imageUrl
+        console.log('[Generate Appearance] Using primary appearance:', referenceImage)
+      }
+
+      // 2. 如果没有主形象，使用角色的 imageUrl
+      if (!referenceImage && selectedCharacterForAppearances.imageUrl) {
+        referenceImage = selectedCharacterForAppearances.imageUrl
+        console.log('[Generate Appearance] Using character imageUrl:', referenceImage)
+      }
+
+      // 3. 如果都没有，尝试使用 frontViewKey 构造 URL
+      if (!referenceImage && selectedCharacterForAppearances.frontViewKey) {
+        const domain = window.location.origin
+        referenceImage = `${domain}/api/images?key=${selectedCharacterForAppearances.frontViewKey}`
+        console.log('[Generate Appearance] Using frontViewKey:', referenceImage)
+      }
+
+      if (!referenceImage) {
+        toast.warn('未找到参考图片，将使用纯文字描述生成')
+      }
+
       console.log('[Generate Appearance] Request payload:', {
         characterId: selectedCharacterForAppearances.id,
         characterName: selectedCharacterForAppearances.name,
         appearance: selectedCharacterForAppearances.appearance,
-        changeDescription
+        changeDescription,
+        hasReferenceImage: !!referenceImage
       })
 
       const res = await fetch('/api/generate/appearance-from-text', {
@@ -422,7 +450,8 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
           characterId: selectedCharacterForAppearances.id,
           characterName: selectedCharacterForAppearances.name,
           appearance: selectedCharacterForAppearances.appearance,
-          changeDescription: changeDescription
+          changeDescription: changeDescription,
+          referenceImage
         })
       })
 

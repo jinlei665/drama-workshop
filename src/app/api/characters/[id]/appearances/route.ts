@@ -166,7 +166,7 @@ export async function POST(
       console.warn('[Add Appearance] Supabase failed, falling back to pg:', supabaseError)
     }
 
-    // Fallback to pg
+    // Fallback to pg (only in sandbox environment)
     try {
       const { getPool } = await import('@/storage/database/pg-client')
       const pool = await getPool()
@@ -222,6 +222,10 @@ export async function POST(
       }, 201)
     } catch (pgError) {
       console.error('[Add Appearance] PG error:', pgError)
+      // 如果 pg 失败且原因是 DATABASE_URL 未配置，返回友好的错误消息
+      if (pgError instanceof Error && pgError.message.includes('DATABASE_URL 未配置')) {
+        return errorResponse('数据库未配置，请在生产环境或沙箱环境中使用', 500)
+      }
       return errorResponse(pgError instanceof Error ? pgError.message : '添加失败', 500)
     }
   } catch (error) {
