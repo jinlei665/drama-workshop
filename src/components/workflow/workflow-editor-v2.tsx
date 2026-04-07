@@ -795,6 +795,9 @@ export default function WorkflowEditorV2({
                     }
                   }}
                 >
+                  {/* 调试：显示节点信息 */}
+                  {console.log(`🎨 渲染节点 ${node.id} (${node.name}):`, { inputs: node.inputs, outputs: node.outputs })}
+                  
                   {/* 节点头部 */}
                   <div className={`flex items-center justify-between px-4 py-3 border-b ${nodeColor} bg-opacity-20`}>
                     <div className="flex items-center gap-2">
@@ -816,20 +819,25 @@ export default function WorkflowEditorV2({
                   </div>
 
                           {/* 输入端口 */}
-                  {node.inputs && node.inputs.length > 0 && (
-                    <div className="px-3 py-2 space-y-1">
+                  {(() => {
+                    console.log(`🔍 渲染节点 ${node.id} 的输入端口:`, node.inputs)
+                    return node.inputs && node.inputs.length > 0 ? (
+                    <div className="px-3 py-2 space-y-1 relative">
                       {node.inputs.map((port) => {
                         const isConnected = edges.some(
                           e => e.to === node.id && e.toPort === port.id
                         )
 
+                        console.log(`🔍 渲染输入端口 ${port.id}:`, port)
+
                         return (
                           <div
                             key={port.id}
                             className="relative flex items-center py-1 group"
+                            style={{ paddingLeft: '24px' }}
                           >
                             <div
-                              className={`absolute left-0 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-10 ${
+                              className={`absolute left-0 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-20 hover:bg-primary hover:border-primary ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
                               onMouseDown={(e) => {
@@ -847,29 +855,35 @@ export default function WorkflowEditorV2({
                                 handlePortConnect(node.id, port.id)
                               }}
                             />
-                            <span className="text-xs text-muted-foreground ml-8">{port.name}</span>
+                            <span className="text-xs text-muted-foreground">{port.name}</span>
                           </div>
                         )
                       })}
                     </div>
-                  )}
+                    ) : null
+                  })()}
 
                   {/* 输出端口 */}
-                  {node.outputs && node.outputs.length > 0 && (
-                    <div className="px-3 py-2 space-y-1">
+                  {(() => {
+                    console.log(`🔍 渲染节点 ${node.id} 的输出端口:`, node.outputs)
+                    return node.outputs && node.outputs.length > 0 ? (
+                    <div className="px-3 py-2 space-y-1 relative">
                       {node.outputs.map((port) => {
                         const isConnected = edges.some(
                           e => e.from === node.id && e.fromPort === port.id
                         )
 
+                        console.log(`🔍 渲染输出端口 ${port.id}:`, port)
+
                         return (
                           <div
                             key={port.id}
                             className="relative flex items-center justify-end py-1 group"
+                            style={{ paddingRight: '24px' }}
                           >
-                            <span className="text-xs text-muted-foreground mr-8">{port.name}</span>
+                            <span className="text-xs text-muted-foreground">{port.name}</span>
                             <div
-                              className={`absolute right-0 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-10 ${
+                              className={`absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-20 hover:bg-primary hover:border-primary ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
                               onMouseDown={(e) => {
@@ -891,7 +905,8 @@ export default function WorkflowEditorV2({
                         )
                       })}
                     </div>
-                  )}
+                    ) : null
+                  })()}
                 </div>
               )
             })}
