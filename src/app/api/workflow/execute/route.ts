@@ -235,10 +235,7 @@ export async function POST(request: NextRequest) {
 
     // 保存执行历史
     try {
-      const db = getSupabaseClient()
-
-      await db.execute(
-        `
+      const sql = `
         INSERT INTO workflow_executions
         (id, workflow_id, project_id, nodes, edges, status, start_time, end_time, results, error)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -248,22 +245,22 @@ export async function POST(request: NextRequest) {
           results = EXCLUDED.results,
           error = EXCLUDED.error,
           updated_at = CURRENT_TIMESTAMP
-        `,
-        [
-          executionId,
-          workflowId,
-          projectId,
-          JSON.stringify(nodes),
-          JSON.stringify(edges),
-          execution.status,
-          new Date(startTime),
-          execution.endTime ? new Date(execution.endTime) : null,
-          results ? JSON.stringify(results) : null,
-          execution.error || null,
-        ]
-      )
+      `
+
+      await executeSql(sql, [
+        executionId,
+        workflowId,
+        projectId,
+        JSON.stringify(nodes),
+        JSON.stringify(edges),
+        execution.status,
+        new Date(startTime),
+        execution.endTime ? new Date(execution.endTime) : null,
+        results ? JSON.stringify(results) : null,
+        execution.error || null,
+      ])
     } catch (error) {
-      console.error('❌ 保存执行历史失败:', error)
+      console.warn('⚠️ 保存执行历史失败（可能为内存模式）:', error)
     }
 
     // 关闭 SSE 连接

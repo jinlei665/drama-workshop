@@ -19,7 +19,7 @@ export class ScriptInputNode extends BaseNodeClass {
     return {
       script: {
         type: 'string',
-        required: true,
+        required: false,
         default: '',
         description: '脚本内容'
       },

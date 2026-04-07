@@ -208,7 +208,7 @@ export default function WorkflowEditorV2({
   const getDefaultParams = (nodeType: string) => {
     const paramsMap: Record<string, any> = {
       'script-input': {
-        script: '',
+        script: '这是一个示例脚本内容，请替换为您的实际脚本。',
         description: '',
       },
       'text-to-image': {
