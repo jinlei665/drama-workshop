@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { HeaderUtils } from "coze-coding-dev-sdk"
+import { HeaderUtils, S3Storage } from "coze-coding-dev-sdk"
 import { generateImageFromImage } from "@/lib/ai"
 import { downloadFile } from "@/lib/utils"
 
@@ -55,28 +55,25 @@ export async function POST(request: NextRequest) {
     // 下载图片
     const imageBuffer = await downloadFile(imageUrl)
 
-    // 尝试上传到对象存储（使用阿里云 OSS）
+    // 尝试上传到对象存储（使用 S3Storage）
     let fileKey: string | null = null
     let viewUrl: string = imageUrl
 
     try {
-      const OSS = await import('ali-oss')
-      const ossClient = new OSS.default({
-        region: process.env.ALIYUN_OSS_REGION!,
-        accessKeyId: process.env.ALIYUN_OSS_ACCESS_KEY_ID!,
-        accessKeySecret: process.env.ALIYUN_OSS_ACCESS_KEY_SECRET!,
-        bucket: process.env.ALIYUN_OSS_BUCKET!,
+      const storage = new S3Storage({
+        endpointUrl: process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL,
+        accessKey: process.env.S3_ACCESS_KEY || '',
+        secretKey: process.env.S3_SECRET_KEY || '',
+        bucketName: process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME,
+        region: process.env.S3_REGION || 'us-east-1',
       })
 
       // 上传到 OSS
       fileKey = `character-appearances/${characterId}/appearance_${Date.now()}.png`
-      await ossClient.put(fileKey, imageBuffer)
-
-      // 设置为公开读取
-      await ossClient.putACL(fileKey, 'public-read')
+      await storage.uploadFile(fileKey, imageBuffer, 'image/png')
 
       // 生成公网 URL
-      viewUrl = ossClient.signatureUrl(fileKey, { expires: 86400 * 7 }) // 7天有效
+      viewUrl = storage.getPublicUrl(fileKey)
 
       console.log("Image uploaded to OSS:", fileKey)
     } catch (ossError) {
