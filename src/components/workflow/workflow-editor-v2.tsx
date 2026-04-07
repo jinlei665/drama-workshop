@@ -321,7 +321,7 @@ export default function WorkflowEditorV2({
     }
   }
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = (e: MouseEvent) => {
     if (isPanning) {
       setPan({
         x: e.clientX - panStart.x,
@@ -353,6 +353,18 @@ export default function WorkflowEditorV2({
     setIsPanning(false)
     setDraggedNode(null)
   }
+
+  // 添加全局事件监听
+  useEffect(() => {
+    if (isPanning || draggedNode) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [isPanning, draggedNode, panStart, dragOffset, pan, zoom])
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -552,8 +564,6 @@ export default function WorkflowEditorV2({
           ref={containerRef}
           className="flex-1 relative overflow-hidden bg-grid-pattern"
           onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
           onWheel={handleWheel}
           style={{
             cursor: isPanning ? 'grabbing' : 'default',
