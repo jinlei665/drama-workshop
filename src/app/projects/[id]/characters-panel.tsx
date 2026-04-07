@@ -391,22 +391,27 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
   // 根据文字描述生成新形象
   const handleGenerateAppearance = async () => {
+    console.log('[Generate Appearance] Function called')
     if (!selectedCharacterForAppearances) {
+      console.error('[Generate Appearance] No character selected')
       toast.error('未选择人物')
       return
     }
 
     if (!appearanceName.trim()) {
+      console.error('[Generate Appearance] No appearance name')
       toast.error('请输入形象名称')
       return
     }
 
     if (!changeDescription.trim()) {
+      console.error('[Generate Appearance] No change description')
       toast.error('请输入变更描述')
       return
     }
 
     setGeneratingAppearance(true)
+    console.log('[Generate Appearance] Starting generation process')
     try {
       // 获取参考图片（优先使用主形象，否则使用角色的正面视图）
       let referenceImage: string | undefined
