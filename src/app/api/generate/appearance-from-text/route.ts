@@ -98,6 +98,47 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 检查参考图片是否是 localhost URL，如果是，转换为公网 URL
+    if (refImageUrl.includes('localhost') || refImageUrl.includes('127.0.0.1')) {
+      console.log('[Generate Appearance from Text] Reference image is localhost URL, downloading and re-uploading to get public URL')
+      try {
+        // 下载图片
+        const refImageBuffer = await downloadFile(refImageUrl)
+
+        // 上传到 OSS 获取公网 URL
+        const { fileKey: refFileKey, viewUrl: refPublicUrl } = await uploadImage(refImageBuffer, `${characterId}_ref`)
+
+        if (refPublicUrl) {
+          refImageUrl = refPublicUrl
+          console.log('[Generate Appearance from Text] Reference image converted to public URL:', refImageUrl)
+        }
+      } catch (error) {
+        console.warn('[Generate Appearance from Text] Failed to convert reference image to public URL, falling back to text-to-image:', error)
+
+        // 转换失败，回退到文生图
+        const name = characterName || '角色'
+        const desc = appearance || '角色形象'
+        const change = changeDescription
+        const basePrompt = `${name}，${desc}，人物形象变成${change}，保持人物面部特征一致，高质量，细节丰富`
+
+        const { generateImage } = await import('@/lib/ai')
+        const result = await generateImage(basePrompt, {
+          size: '2K',
+          watermark: false,
+        }, undefined, customHeaders)
+
+        const imageUrl = result.urls[0]
+        const imageBuffer = await downloadFile(imageUrl)
+        const { fileKey, viewUrl } = await uploadImage(imageBuffer, characterId)
+
+        return NextResponse.json({
+          success: true,
+          viewUrl,
+          fileKey,
+        })
+      }
+    }
+
     // 使用图生图功能生成新形象
     const name = characterName || '角色'
     const desc = appearance || '角色形象'

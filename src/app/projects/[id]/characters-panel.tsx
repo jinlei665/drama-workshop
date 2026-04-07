@@ -424,11 +424,19 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
         console.log('[Generate Appearance] Using character imageUrl:', referenceImage)
       }
 
-      // 3. 如果都没有，尝试使用 frontViewKey 构造 URL
+      // 3. 如果都没有，尝试使用 frontViewKey 获取公网 URL
       if (!referenceImage && selectedCharacterForAppearances.frontViewKey) {
-        const domain = window.location.origin
-        referenceImage = `${domain}/api/images?key=${selectedCharacterForAppearances.frontViewKey}`
-        console.log('[Generate Appearance] Using frontViewKey:', referenceImage)
+        try {
+          const domain = window.location.origin
+          const imageUrlRes = await fetch(`${domain}/api/images?key=${selectedCharacterForAppearances.frontViewKey}`)
+          if (imageUrlRes.ok) {
+            const imageUrlData = await imageUrlRes.json()
+            referenceImage = imageUrlData.url
+            console.log('[Generate Appearance] Using frontViewKey -> public URL:', referenceImage)
+          }
+        } catch (error) {
+          console.warn('[Generate Appearance] Failed to get public URL for frontViewKey:', error)
+        }
       }
 
       if (!referenceImage) {
