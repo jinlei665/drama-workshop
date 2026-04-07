@@ -676,6 +676,22 @@ export default function WorkflowEditorV2({
         const { success, data } = await response.json()
         console.log('📊 执行 API 返回:', data)
 
+        // 如果 SSE 事件没有正确设置节点结果，使用 API 响应的结果作为兜底
+        if (data.results && Array.isArray(data.results)) {
+          data.results.forEach((resultItem: any) => {
+            // 提取实际的节点结果数据
+            const nodeResult = resultItem.result || resultItem
+            const actualResult = nodeResult.data || nodeResult.result || nodeResult
+
+            setNodes(prev =>
+              prev.map(node =>
+                node.id === resultItem.nodeId
+                  ? { ...node, status: nodeResult.status === 'error' || nodeResult.status === 'failed' ? 'failed' : 'completed', result: actualResult, error: nodeResult.error }
+                  : node
+              )
+            )
+          })
+        }
       } catch (error) {
         console.error('❌ 执行工作流时发生错误:', error)
         toast.error('执行失败', {
