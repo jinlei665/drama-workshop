@@ -62,6 +62,14 @@ export default function WorkflowEditorV2({
   const containerRef = useRef<HTMLDivElement>(null)
   const id = React.useId()
 
+  // 保存节点参数的 ref，用于执行工作流
+  const nodeParamsRef = useRef<Record<string, any>>({})
+
+  // 同步 nodeParams 到 ref
+  useEffect(() => {
+    nodeParamsRef.current = nodeParams
+  }, [nodeParams])
+
   // 初始化节点参数
   useEffect(() => {
     // 只有当 initialNodes 真正变化时才更新
@@ -637,13 +645,22 @@ export default function WorkflowEditorV2({
         }
 
         // 2. 调用后端 API 执行工作流
+        // 合并 nodeParams 到 nodes 中
+        const nodesWithParams = nodesRef.current.map(node => ({
+          ...node,
+          params: {
+            ...node.params,
+            ...(nodeParamsRef.current[node.id] || {})
+          }
+        }))
+
         const response = await fetch('/api/workflow/execute', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            nodes: nodesRef.current,
+            nodes: nodesWithParams,
             edges: edgesRef.current,
             workflowId: `workflow-${Date.now()}`,
             projectId: 'temp',

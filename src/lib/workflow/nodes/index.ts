@@ -38,6 +38,59 @@ export class TextInputNode extends BaseNodeClass {
     }
   }
 
+  validateParams(): { valid: boolean; errors: string[] } {
+    const schema = this.getParamSchema()
+    const errors: string[] = []
+
+    // 检查 prompt 是否有值（要么从参数，要么从输入端口）
+    const promptInput = this.inputs.find((inp: any) => inp.id === 'prompt')
+    const hasPromptInput = promptInput && promptInput.value !== undefined && promptInput.value !== null && promptInput.value !== ''
+    const hasPromptParam = this.params.prompt !== undefined && this.params.prompt !== null && this.params.prompt !== ''
+
+    if (!hasPromptInput && !hasPromptParam) {
+      errors.push('prompt 是必填的（请从输入端口连接或手动填写）')
+    }
+
+    // 检查其他参数
+    for (const [key, spec] of Object.entries(schema)) {
+      if (key === 'prompt') continue  // 已经在上面检查过了
+
+      const value = this.params[key]
+
+      // 检查必填参数
+      if (spec.required && (value === undefined || value === null || value === '')) {
+        errors.push(`参数 "${key}" 是必填的`)
+        continue
+      }
+
+      // 检查参数类型
+      if (value !== undefined && value !== null) {
+        if (spec.type === 'number' && typeof value !== 'number') {
+          errors.push(`参数 "${key}" 应该是数字类型`)
+        }
+        if (spec.type === 'string' && typeof value !== 'string') {
+          errors.push(`参数 "${key}" 应该是字符串类型`)
+        }
+        if (spec.type === 'boolean' && typeof value !== 'boolean') {
+          errors.push(`参数 "${key}" 应该是布尔类型`)
+        }
+        if (spec.type === 'array' && !Array.isArray(value)) {
+          errors.push(`参数 "${key}" 应该是数组类型`)
+        }
+      }
+
+      // 检查选项值
+      if ('enum' in spec && spec.enum && value !== undefined && !(spec.enum as any[]).includes(value)) {
+        errors.push(`参数 "${key}" 的值 "${value}" 不在允许的选项中: ${(spec.enum as any[]).join(', ')}`)
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors
+    }
+  }
+
   async process(context: ExecutionContext): Promise<any> {
     const text = this.params.text || ''
     return { type: 'text', content: text }
@@ -113,7 +166,7 @@ export class TextToImageNode extends BaseNodeClass3 {
     return {
       prompt: {
         type: 'string',
-        required: true,
+        required: false,  // 改为可选，因为可以从输入端口获取
         description: '提示词'
       },
       style: {
@@ -146,7 +199,16 @@ export class TextToImageNode extends BaseNodeClass3 {
   }
 
   async process(context: ExecutionContext): Promise<any> {
-    const prompt = this.params.prompt
+    // 优先从输入端口获取 prompt，如果没有则从参数获取
+    let prompt = this.params.prompt
+
+    // 检查输入端口是否有连接
+    const promptInput = this.inputs.find((inp: any) => inp.id === 'prompt')
+    if (promptInput && promptInput.value) {
+      // 如果输入端口有值（来自上游节点），使用输入值
+      prompt = promptInput.value
+    }
+
     const style = this.params.style || 'realistic'
     const size = this.params.size || '2K'
     const referenceImage = this.params.referenceImage
