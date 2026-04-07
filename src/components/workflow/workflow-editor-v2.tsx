@@ -242,6 +242,9 @@ export function WorkflowEditorV2({
   const canvasRef = useRef<HTMLDivElement>(null)
   const lastMousePos = useRef({ x: 0, y: 0 })
 
+  // 存储端口 DOM 元素的引用
+  const portRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+
   // 加载保存的工作流
   useEffect(() => {
     const saved = localStorage.getItem('savedWorkflows')
@@ -297,15 +300,20 @@ export function WorkflowEditorV2({
   // 初始化节点参数
   useEffect(() => {
     if (initialNodes && initialNodes.length > 0) {
+      console.log('初始化节点:', initialNodes)
       const initialParams: Record<string, NodeData> = {}
       initialNodes.forEach(node => {
+        console.log(`节点 ${node.id} (${node.type}):`, { inputs: node.inputs, outputs: node.outputs, params: node.params })
         if (node.params) {
           initialParams[node.id] = node.params
         }
       })
       setNodeParams(initialParams)
     }
-  }, [initialNodes])
+    if (initialEdges && initialEdges.length > 0) {
+      console.log('初始化连线:', initialEdges)
+    }
+  }, [initialNodes, initialEdges])
 
   // 获取选中的节点
   const selectedNode = nodes.find(n => n.id === selectedNodeId)
@@ -705,40 +713,46 @@ export function WorkflowEditorV2({
     type: 'input' | 'output'
   ): { x: number; y: number } | null => {
     if (!node.position) return null
-    const nodeConfig = NODE_TYPES[node.type as keyof typeof NODE_TYPES]
-    if (!nodeConfig) return null
 
-    const ports = type === 'input' ? nodeConfig.inputs : nodeConfig.outputs
-    const inputPorts = nodeConfig.inputs
-    const outputPorts = nodeConfig.outputs
+    // 使用节点的输入/输出端口数组
+    const ports = type === 'input' ? node.inputs : node.outputs
+    const inputPorts = node.inputs
+    const outputPorts = node.outputs
 
     // 查找端口索引
     const index = ports.findIndex(p => p.name === portName)
-    if (index === -1) return null
+    if (index === -1) {
+      console.warn(`端口 ${portName} 在节点 ${node.id} (${type}) 中未找到`, { ports, portName, type })
+      return null
+    }
 
     const NODE_WIDTH = 200
     const HEADER_HEIGHT = 40
-    const PORT_HEIGHT = 24
-    const PORT_PADDING = 8
+    const PORT_ITEM_HEIGHT = 32 // 每个端口项的高度
+    const PORT_GAP = 4 // 端口之间的间距（space-y-1）
+    const SECTION_PADDING_TOP = 8 // py-2
+    const SECTION_PADDING_BOTTOM = 8
+    const BORDER_TOP = 1 // border-t
+    const PORT_SIZE = 16 // 端口圆圈的大小（w-3 h-3 + border-2 * 2 = 12px + 4px = 16px）
+    const SECTION_PADDING_X = 8 // px-2
 
     // 计算端口位置
-    // 输入端口从 header 下方开始
-    // 输出端口从输入端口区域下方开始
+    let portX: number
     let portY: number
-    if (type === 'input') {
-      // 输入端口: HEADER_HEIGHT + padding + index * PORT_HEIGHT
-      portY = HEADER_HEIGHT + PORT_PADDING + index * PORT_HEIGHT
-    } else {
-      // 输出端口: HEADER_HEIGHT + padding + 输入端口区域高度 + padding + index * PORT_HEIGHT
-      const inputPortsHeight = inputPorts.length * PORT_HEIGHT
-      portY = HEADER_HEIGHT + PORT_PADDING + inputPortsHeight + PORT_PADDING + index * PORT_HEIGHT
-    }
 
     if (type === 'input') {
-      return { x: node.position.x, y: node.position.y + portY }
+      // 输入端口: X 在左侧，Y 垂直居中
+      portX = SECTION_PADDING_X + PORT_SIZE / 2
+      portY = HEADER_HEIGHT + SECTION_PADDING_TOP + index * (PORT_ITEM_HEIGHT + PORT_GAP) + PORT_ITEM_HEIGHT / 2
     } else {
-      return { x: node.position.x + NODE_WIDTH, y: node.position.y + portY }
+      // 输出端口: X 在右侧，Y 垂直居中
+      portX = NODE_WIDTH - SECTION_PADDING_X - PORT_SIZE / 2
+      // 输出端口: Y 计算
+      const inputPortsHeight = inputPorts.length > 0 ? inputPorts.length * (PORT_ITEM_HEIGHT + PORT_GAP) - PORT_GAP : 0
+      portY = HEADER_HEIGHT + SECTION_PADDING_TOP + inputPortsHeight + BORDER_TOP + SECTION_PADDING_TOP + index * (PORT_ITEM_HEIGHT + PORT_GAP) + PORT_ITEM_HEIGHT / 2
     }
+
+    return { x: node.position.x + portX, y: node.position.y + portY }
   }, [])
 
   return (
@@ -929,6 +943,22 @@ export function WorkflowEditorV2({
                 const startPos = getPortPosition(sourceNode, edge.fromPort || '', 'output')
                 const endPos = getPortPosition(targetNode, edge.toPort || '', 'input')
                 if (!startPos || !endPos) return null
+
+                // 调试日志
+                console.log(`连线 ${edge.id}:`, {
+                  from: edge.from,
+                  fromPort: edge.fromPort,
+                  to: edge.to,
+                  toPort: edge.toPort,
+                  sourceNode: { id: sourceNode.id, type: sourceNode.type, position: sourceNode.position },
+                  targetNode: { id: targetNode.id, type: targetNode.type, position: targetNode.position },
+                  startPos,
+                  endPos,
+                  sourceInputs: sourceNode.inputs,
+                  sourceOutputs: sourceNode.outputs,
+                  targetInputs: targetNode.inputs,
+                  targetOutputs: targetNode.outputs,
+                })
 
                 const midX = (startPos.x + endPos.x) / 2
 
