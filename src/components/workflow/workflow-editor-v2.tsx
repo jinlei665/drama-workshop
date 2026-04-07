@@ -933,16 +933,34 @@ export function WorkflowEditorV2({
               transformOrigin: '0 0',
             }}
           >
-            {/* 连接线 */}
-            <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>
+            {/* 连接线 SVG - 使用绝对定位覆盖整个画布 */}
+            <svg
+              className="absolute pointer-events-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '100%',
+                height: '100%',
+                minWidth: '10000px',
+                minHeight: '10000px',
+                overflow: 'visible',
+                zIndex: 0
+              }}
+            >
               {edges.map((edge) => {
                 const sourceNode = nodes.find(n => n.id === edge.from)
                 const targetNode = nodes.find(n => n.id === edge.to)
-                if (!sourceNode?.position || !targetNode?.position) return null
+                if (!sourceNode?.position || !targetNode?.position) {
+                  console.warn(`连线 ${edge.id}: 源或目标节点不存在`, { sourceNode, targetNode })
+                  return null
+                }
 
                 const startPos = getPortPosition(sourceNode, edge.fromPort || '', 'output')
                 const endPos = getPortPosition(targetNode, edge.toPort || '', 'input')
-                if (!startPos || !endPos) return null
+                if (!startPos || !endPos) {
+                  console.warn(`连线 ${edge.id}: 端口位置获取失败`, { startPos, endPos })
+                  return null
+                }
 
                 // 调试日志
                 console.log(`连线 ${edge.id}:`, {
@@ -954,18 +972,29 @@ export function WorkflowEditorV2({
                   targetNode: { id: targetNode.id, type: targetNode.type, position: targetNode.position },
                   startPos,
                   endPos,
-                  sourceInputs: sourceNode.inputs,
-                  sourceOutputs: sourceNode.outputs,
-                  targetInputs: targetNode.inputs,
-                  targetOutputs: targetNode.outputs,
                 })
 
                 const midX = (startPos.x + endPos.x) / 2
+                const midY = (startPos.y + endPos.y) / 2
+
+                // 使用更简单的贝塞尔曲线
+                const pathD = `M ${startPos.x} ${startPos.y} C ${midX} ${startPos.y}, ${midX} ${endPos.y}, ${endPos.x} ${endPos.y}`
+
+                console.log(`连线路径 ${edge.id}:`, { pathD, startPos, endPos, midX, midY })
 
                 return (
                   <g key={edge.id} className="cursor-pointer">
+                    {/* 先画一条直线测试 */}
                     <path
-                      d={`M ${startPos.x} ${startPos.y} C ${midX} ${startPos.y}, ${midX} ${endPos.y}, ${endPos.x} ${endPos.y}`}
+                      d={`M ${startPos.x} ${startPos.y} L ${endPos.x} ${endPos.y}`}
+                      fill="none"
+                      stroke="red"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    {/* 再画贝塞尔曲线 */}
+                    <path
+                      d={pathD}
                       fill="none"
                       stroke="hsl(var(--primary))"
                       strokeWidth="2"
