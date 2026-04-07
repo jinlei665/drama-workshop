@@ -758,7 +758,7 @@ export default function WorkflowEditorV2({
               return (
                 <div
                   key={node.id}
-                  className={`absolute pointer-events-auto rounded-lg border-2 bg-card shadow-lg ${
+                  className={`absolute pointer-events-auto rounded-lg border-2 bg-card shadow-lg overflow-visible ${
                     isSelected ? 'border-primary' : 'border-border'
                   }`}
                   style={{
@@ -829,7 +829,7 @@ export default function WorkflowEditorV2({
                             className="relative flex items-center py-1 group"
                           >
                             <div
-                              className={`absolute -left-3 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer ${
+                              className={`absolute left-0 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-10 ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
                               onMouseDown={(e) => {
@@ -847,7 +847,7 @@ export default function WorkflowEditorV2({
                                 handlePortConnect(node.id, port.id)
                               }}
                             />
-                            <span className="text-xs text-muted-foreground ml-3">{port.name}</span>
+                            <span className="text-xs text-muted-foreground ml-8">{port.name}</span>
                           </div>
                         )
                       })}
@@ -867,9 +867,9 @@ export default function WorkflowEditorV2({
                             key={port.id}
                             className="relative flex items-center justify-end py-1 group"
                           >
-                            <span className="text-xs text-muted-foreground mr-3">{port.name}</span>
+                            <span className="text-xs text-muted-foreground mr-8">{port.name}</span>
                             <div
-                              className={`absolute -right-3 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer ${
+                              className={`absolute right-0 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-10 ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
                               onMouseDown={(e) => {
