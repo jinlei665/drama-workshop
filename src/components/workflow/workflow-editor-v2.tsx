@@ -44,7 +44,8 @@ export default function WorkflowEditorV2({
   const [edges, setEdges] = useState<Edge[]>(initialEdges)
   const [selectedNode, setSelectedNode] = useState<BaseNode | null>(null)
   const [draggedNode, setDraggedNode] = useState<BaseNode | null>(null)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 }) // 节点拖动时的原始位置
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 }) // 鼠标相对于节点左上角的偏移
   const [connectingFrom, setConnectingFrom] = useState<{ nodeId: string; portId: string; type: 'input' | 'output' } | null>(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -330,13 +331,22 @@ export default function WorkflowEditorV2({
     }
 
     if (draggedNode) {
-      const newX = (e.clientX - dragOffset.x) / zoom - pan.x
-      const newY = (e.clientY - dragOffset.y) / zoom - pan.y
-      setNodes(prev =>
-        prev.map(n =>
-          n.id === draggedNode.id ? { ...n, position: { x: newX, y: newY } } : n
+      // 计算鼠标在画布上的位置（考虑平移和缩放）
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect()
+        const mouseXInCanvas = (e.clientX - rect.left - pan.x) / zoom
+        const mouseYInCanvas = (e.clientY - rect.top - pan.y) / zoom
+
+        // 新位置 = 鼠标在画布上的位置 - 鼠标相对于节点左上角的偏移
+        const newX = mouseXInCanvas - dragOffset.x
+        const newY = mouseYInCanvas - dragOffset.y
+
+        setNodes(prev =>
+          prev.map(n =>
+            n.id === draggedNode.id ? { ...n, position: { x: newX, y: newY } } : n
+          )
         )
-      )
+      }
     }
 
     // 更新鼠标位置
@@ -687,11 +697,18 @@ export default function WorkflowEditorV2({
                     e.stopPropagation()
                     setSelectedNode(node)
                     setDraggedNode(node)
-                    const rect = e.currentTarget.getBoundingClientRect()
-                    setDragOffset({
-                      x: e.clientX - rect.left,
-                      y: e.clientY - rect.top,
-                    })
+
+                    // 计算鼠标相对于节点左上角的偏移（在画布坐标系中）
+                    if (containerRef.current) {
+                      const containerRect = containerRef.current.getBoundingClientRect()
+                      const mouseXInCanvas = (e.clientX - containerRect.left - pan.x) / zoom
+                      const mouseYInCanvas = (e.clientY - containerRect.top - pan.y) / zoom
+
+                      setDragOffset({
+                        x: mouseXInCanvas - node.position.x,
+                        y: mouseYInCanvas - node.position.y,
+                      })
+                    }
                   }}
                 >
                   {/* 节点头部 */}
