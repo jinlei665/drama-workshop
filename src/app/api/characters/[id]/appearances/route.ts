@@ -161,6 +161,15 @@ export async function POST(
         }
 
         console.warn('[Add Appearance] Supabase error:', error)
+
+        // 如果是 schema cache 错误，给出具体的解决方案
+        if (error?.code === 'PGRST205' && error?.message?.includes('schema cache')) {
+          console.error('[Add Appearance] Schema cache error, table:', error.hint)
+          return errorResponse(
+            'Supabase schema cache 未刷新。请在 Supabase 控制台的 SQL Editor 中执行以下命令：\nNOTIFY pgrst, \'reload\';',
+            500
+          )
+        }
       }
     } catch (supabaseError) {
       console.warn('[Add Appearance] Supabase failed, falling back to pg:', supabaseError)
@@ -224,6 +233,15 @@ export async function POST(
       console.error('[Add Appearance] PG error:', pgError)
       // 如果 pg 失败且原因是 DATABASE_URL 未配置，返回友好的错误消息
       if (pgError instanceof Error && pgError.message.includes('DATABASE_URL 未配置')) {
+        // 检查是否是 Supabase schema cache 问题
+        const hasSchemaError = pgError.message.includes('Could not find the table') ||
+                               pgError.message.includes('PGRST205')
+        if (hasSchemaError) {
+          return errorResponse(
+            'Supabase schema cache 需要刷新。请在 Supabase 控制台的 SQL Editor 中执行：NOTIFY pgrst, \'reload\';',
+            500
+          )
+        }
         return errorResponse('数据库未配置，请在生产环境或沙箱环境中使用', 500)
       }
       return errorResponse(pgError instanceof Error ? pgError.message : '添加失败', 500)
