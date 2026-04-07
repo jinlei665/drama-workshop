@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import {
   Play,
   Save,
@@ -31,7 +32,8 @@ import {
   Image as ImageIcon,
   Video,
   Type,
-  FileText
+  FileText,
+  Users
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
@@ -54,6 +56,9 @@ interface NodeData {
   text?: string
   imageUrl?: string
   model?: string
+  description?: string
+  voice?: string
+  speed?: number
 }
 
 interface WorkflowEditorProps {
@@ -157,6 +162,43 @@ const NODE_TYPES = {
       prompt: { type: 'textarea', label: '处理指令', default: '请分析并总结以下内容：' },
       model: { type: 'select', label: '模型', options: ['deepseek-chat', 'gpt-4', 'claude-3'], default: 'deepseek-chat' }
     }
+  },
+  'text-to-character': {
+    name: '文生人物',
+    icon: Users,
+    color: 'bg-teal-500',
+    inputs: [{ name: 'description', type: 'string' }],
+    outputs: [{ name: 'image', type: 'image' }],
+    params: {
+      description: { type: 'textarea', label: '人物描述', default: '' },
+      style: { type: 'select', label: '风格', options: ['realistic', 'anime', 'cartoon', 'oil_painting'], default: 'realistic' }
+    }
+  },
+  'character-triple-views': {
+    name: '人物三视图',
+    icon: Users,
+    color: 'bg-teal-500',
+    inputs: [{ name: 'referenceImage', type: 'image' }],
+    outputs: [
+      { name: 'frontView', type: 'image' },
+      { name: 'sideView', type: 'image' },
+      { name: 'backView', type: 'image' }
+    ],
+    params: {
+      style: { type: 'select', label: '风格', options: ['realistic', 'anime', 'cartoon'], default: 'realistic' }
+    }
+  },
+  'text-to-voice': {
+    name: '文字转语音',
+    icon: Video,
+    color: 'bg-cyan-500',
+    inputs: [{ name: 'text', type: 'string' }],
+    outputs: [{ name: 'audio', type: 'audio' }],
+    params: {
+      text: { type: 'textarea', label: '要转换的文本', default: '' },
+      voice: { type: 'select', label: '音色', options: ['zh_female', 'zh_male', 'en_female', 'en_male'], default: 'zh_female' },
+      speed: { type: 'slider', label: '语速', default: 1.0, min: 0.5, max: 2.0, step: 0.1 }
+    }
   }
 }
 
@@ -188,9 +230,65 @@ export function WorkflowEditorV2({
   const [activePanel, setActivePanel] = useState<PanelType>('none')
   const [agentInput, setAgentInput] = useState('')
   const [isAgentProcessing, setIsAgentProcessing] = useState(false)
+  const [savedWorkflows, setSavedWorkflows] = useState<any[]>([])
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [workflowName, setWorkflowName] = useState('')
+  const [templates, setTemplates] = useState<any[]>([])
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const lastMousePos = useRef({ x: 0, y: 0 })
+
+  // 加载保存的工作流
+  useEffect(() => {
+    const saved = localStorage.getItem('savedWorkflows')
+    if (saved) {
+      setSavedWorkflows(JSON.parse(saved))
+    }
+    loadTemplates()
+  }, [])
+
+  // 加载模板
+  const loadTemplates = useCallback(() => {
+    const templateList = [
+      {
+        id: 'template-tti',
+        name: '文生图模板',
+        description: '快速生成图片',
+        nodes: [
+          { id: 'text1', type: 'text-input', position: { x: 100, y: 100 }, inputs: [], outputs: [{ name: 'text', type: 'string' }], params: { text: '' } },
+          { id: 'tti1', type: 'text-to-image', position: { x: 400, y: 100 }, inputs: [{ name: 'prompt', type: 'string' }], outputs: [{ name: 'image', type: 'image' }], params: { prompt: '', width: '1024', height: '1024', style: 'realistic' } }
+        ],
+        edges: [
+          { id: 'e1', from: 'text1', fromPort: 'text', to: 'tti1', toPort: 'prompt' }
+        ]
+      },
+      {
+        id: 'template-itv',
+        name: '图生视频模板',
+        description: '图片生成视频',
+        nodes: [
+          { id: 'img1', type: 'image-input', position: { x: 100, y: 100 }, inputs: [], outputs: [{ name: 'image', type: 'image' }], params: { imageUrl: '' } },
+          { id: 'itv1', type: 'image-to-video', position: { x: 400, y: 100 }, inputs: [{ name: 'referenceImage', type: 'image' }, { name: 'motionPrompt', type: 'string' }], outputs: [{ name: 'video', type: 'video' }], params: { motionPrompt: '', duration: 5, aspectRatio: '16:9', motionStrength: 5 } }
+        ],
+        edges: [
+          { id: 'e1', from: 'img1', fromPort: 'image', to: 'itv1', toPort: 'referenceImage' }
+        ]
+      },
+      {
+        id: 'template-char',
+        name: '人物三视图模板',
+        description: '生成人物正侧背三视图',
+        nodes: [
+          { id: 'img1', type: 'image-input', position: { x: 100, y: 100 }, inputs: [], outputs: [{ name: 'image', type: 'image' }], params: { imageUrl: '' } },
+          { id: 'triple1', type: 'character-triple-views', position: { x: 400, y: 100 }, inputs: [{ name: 'referenceImage', type: 'image' }], outputs: [{ name: 'frontView', type: 'image' }, { name: 'sideView', type: 'image' }, { name: 'backView', type: 'image' }], params: { style: 'realistic' } }
+        ],
+        edges: [
+          { id: 'e1', from: 'img1', fromPort: 'image', to: 'triple1', toPort: 'referenceImage' }
+        ]
+      }
+    ]
+    setTemplates(templateList)
+  }, [])
 
   // 获取选中的节点
   const selectedNode = nodes.find(n => n.id === selectedNodeId)
@@ -443,12 +541,109 @@ export function WorkflowEditorV2({
         const llmData = await llmRes.json()
         return { output: llmData.data?.output || '' }
 
+      case 'text-to-character':
+        const charRes = await fetch('/api/generate/appearance-from-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId: node.id,
+            description: params.description,
+            style: params.style
+          })
+        })
+        const charData = await charRes.json()
+        return { image: charData.data?.imageUrl || '' }
+
+      case 'character-triple-views':
+        const tripleRes = await fetch('/api/generate/character-triple-views', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            characterId: node.id,
+            referenceImageUrl: inputs.referenceImage,
+            style: params.style
+          })
+        })
+        const tripleData = await tripleRes.json()
+        return {
+          frontView: tripleData.data?.frontViewUrl || '',
+          sideView: tripleData.data?.sideViewUrl || '',
+          backView: tripleData.data?.backViewUrl || ''
+        }
+
+      case 'text-to-voice':
+        const voiceRes = await fetch('/api/generate/voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: params.text,
+            voice: params.voice,
+            speed: params.speed
+          })
+        })
+        const voiceData = await voiceRes.json()
+        return { audio: voiceData.data?.audioUrl || '' }
+
       default:
         return {}
     }
   }
 
-  // 处理缩放
+  // 保存工作流
+  const saveWorkflow = useCallback(() => {
+    if (!workflowName.trim()) {
+      toast.error('请输入工作流名称')
+      return
+    }
+
+    const workflow = {
+      id: Date.now().toString(),
+      name: workflowName,
+      nodes,
+      edges,
+      nodeParams,
+      createdAt: new Date().toISOString()
+    }
+
+    const updated = [...savedWorkflows, workflow]
+    setSavedWorkflows(updated)
+    localStorage.setItem('savedWorkflows', JSON.stringify(updated))
+    setSaveDialogOpen(false)
+    setWorkflowName('')
+    setHasChanges(false)
+    toast.success('工作流已保存')
+  }, [workflowName, nodes, edges, nodeParams, savedWorkflows])
+
+  // 加载工作流
+  const loadWorkflow = useCallback((workflow: any) => {
+    setNodes(workflow.nodes)
+    setEdges(workflow.edges)
+    setNodeParams(workflow.nodeParams || {})
+    setNodeResults({})
+    setNodeStatuses({})
+    setHasChanges(false)
+    toast.success(`已加载工作流：${workflow.name}`)
+  }, [])
+
+  // 删除工作流
+  const deleteWorkflow = useCallback((id: string) => {
+    const updated = savedWorkflows.filter(w => w.id !== id)
+    setSavedWorkflows(updated)
+    localStorage.setItem('savedWorkflows', JSON.stringify(updated))
+    toast.success('工作流已删除')
+  }, [savedWorkflows])
+
+  // 应用模板
+  const applyTemplate = useCallback((template: any) => {
+    setNodes(template.nodes)
+    setEdges(template.edges)
+    setNodeParams({})
+    setNodeResults({})
+    setNodeStatuses({})
+    setHasChanges(true)
+    toast.success(`已应用模板：${template.name}`)
+  }, [])
+
   const handleZoom = useCallback((delta: number) => {
     setZoom(prev => Math.min(2, Math.max(0.5, prev + delta)))
   }, [])
@@ -580,6 +775,15 @@ export function WorkflowEditorV2({
             {hasChanges && (
               <span className="text-xs text-muted-foreground">有未保存的更改</span>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSaveDialogOpen(true)}
+              disabled={nodes.length === 0}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              保存
+            </Button>
             <Button
               size="sm"
               onClick={executeWorkflow}
@@ -1015,19 +1219,20 @@ export function WorkflowEditorV2({
           {/* AI 面板 */}
           <TabsContent value="ai" className="flex-1 overflow-hidden">
             <ScrollArea className="h-full">
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-6">
+                {/* AI 生成 */}
                 <div>
                   <Label>描述您的需求</Label>
                   <Textarea
                     value={agentInput}
                     onChange={(e) => setAgentInput(e.target.value)}
                     placeholder="例如：创建一个文生图工作流，生成一张赛博朋克风格的城市夜景..."
-                    className="mt-2 min-h-[120px]"
+                    className="mt-2 min-h-[80px]"
                   />
                   <Button
                     className="w-full mt-2"
                     onClick={() => {
-                      toast.info('AI 功能开发中，敬请期待')
+                      toast.info('AI 智能生成功能开发中，敬请期待')
                     }}
                     disabled={isAgentProcessing || !agentInput.trim()}
                   >
@@ -1045,38 +1250,96 @@ export function WorkflowEditorV2({
                   </Button>
                 </div>
 
+                {/* 模板 */}
                 <div>
                   <Label>快捷模板</Label>
                   <div className="mt-2 space-y-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        toast.info('模板功能开发中，敬请期待')
-                      }}
-                    >
-                      <ImageIcon className="h-4 w-4 mr-2" />
-                      文生图工作流
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        toast.info('模板功能开发中，敬请期待')
-                      }}
-                    >
-                      <Video className="h-4 w-4 mr-2" />
-                      图生视频工作流
-                    </Button>
+                    {templates.map((template) => (
+                      <Button
+                        key={template.id}
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-between"
+                        onClick={() => applyTemplate(template)}
+                      >
+                        <span className="flex items-center">
+                          <Lightbulb className="h-4 w-4 mr-2" />
+                          {template.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{template.description}</span>
+                      </Button>
+                    ))}
                   </div>
                 </div>
+
+                {/* 保存的工作流 */}
+                {savedWorkflows.length > 0 && (
+                  <div>
+                    <Label>保存的工作流</Label>
+                    <div className="mt-2 space-y-2">
+                      {savedWorkflows.map((workflow) => (
+                        <div key={workflow.id} className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-accent/50">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{workflow.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {workflow.nodes.length} 个节点 · {new Date(workflow.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => loadWorkflow(workflow)}
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => deleteWorkflow(workflow.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* 保存工作流对话框 */}
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>保存工作流</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="workflow-name">工作流名称</Label>
+              <Input
+                id="workflow-name"
+                value={workflowName}
+                onChange={(e) => setWorkflowName(e.target.value)}
+                placeholder="输入工作流名称"
+                className="mt-2"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={saveWorkflow}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
