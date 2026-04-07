@@ -189,7 +189,20 @@ export class TextToImageNode extends BaseNodeClass3 {
       }
     )
 
-    const imageUrl = result.urls[0]
+    let imageUrl = result.urls[0]
+
+    // 将图片上传到阿里云 OSS（如果配置了 S3_ENDPOINT）
+    try {
+      const { uploadImageToStorage } = await import('@/lib/storage/image-storage')
+      const storageUrl = await uploadImageToStorage(imageUrl, `workflow/text-to-image/${Date.now()}.png`)
+      if (storageUrl) {
+        console.log('[TextToImageNode] Image uploaded to storage:', storageUrl)
+        imageUrl = storageUrl
+      }
+    } catch (storageError) {
+      console.warn('[TextToImageNode] Failed to upload image to storage:', storageError)
+      // 上传失败，继续使用原始 URL
+    }
 
     return {
       type: 'image',

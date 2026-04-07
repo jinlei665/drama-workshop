@@ -418,6 +418,28 @@ export default function WorkflowEditorV2({
     }
   }
 
+  // 下载文件（支持跨域）
+  const downloadFile = async (url: string, filename: string) => {
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = filename
+      link.click()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (error) {
+      console.error('下载失败:', error)
+      toast.error('下载失败', {
+        description: error instanceof Error ? error.message : '未知错误',
+        duration: 3000,
+      })
+      // 降级：在新标签页打开
+      window.open(url, '_blank')
+    }
+  }
+
   const handleMouseMove = (e: MouseEvent) => {
     if (isPanning) {
       setPan({
@@ -475,11 +497,11 @@ export default function WorkflowEditorV2({
   }, [isPanning, draggedNode, panStart, dragOffset, pan, zoom, nodes.length, edges.length])
 
   const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      const newZoom = Math.max(0.1, Math.min(2, zoom - e.deltaY * 0.001))
-      setZoom(newZoom)
-    }
+    e.preventDefault()
+    e.stopPropagation()
+    const delta = e.deltaY > 0 ? -0.1 : 0.1
+    const newZoom = Math.min(Math.max(0.1, zoom + delta), 3)
+    setZoom(newZoom)
   }
 
   // 保存工作流
@@ -1208,11 +1230,8 @@ export default function WorkflowEditorV2({
                             size="sm"
                             className="h-6 px-2 text-xs"
                             onClick={() => {
-                              const link = document.createElement('a')
-                              link.href = node.result.url
-                              link.download = `result-${node.id}.${node.result.type === 'image' ? 'png' : 'mp4'}`
-                              link.target = '_blank'
-                              link.click()
+                              const filename = `result-${node.id}.${node.result.type === 'image' ? 'png' : 'mp4'}`
+                              downloadFile(node.result.url, filename)
                             }}
                           >
                             <Download className="w-3 h-3 mr-1" />
