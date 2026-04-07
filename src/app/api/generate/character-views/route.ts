@@ -144,19 +144,20 @@ export async function POST(request: NextRequest) {
     if (isDatabaseConfigured()) {
       try {
         const supabase = getSupabaseClient()
-        // 存储相对路径或文件 key
+        // 存储相对路径或文件 key，同时更新 imageUrl 为 OSS 的完整 URL
         const { error } = await supabase
           .from("characters")
           .update({
             front_view_key: fileKey,  // 存储相对路径，更短
+            image_url: viewUrl,       // 存储 OSS 完整 URL 或本地路径
             updated_at: new Date().toISOString(),
           })
           .eq("id", characterId)
-        
+
         if (error) {
           console.warn("Database update error:", error.message)
         } else {
-          console.log("Database updated with front_view_key:", fileKey)
+          console.log("Database updated with front_view_key:", fileKey, "image_url:", viewUrl)
         }
       } catch (dbError) {
         console.warn("Failed to update database:", dbError)
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
     // 更新内存存储
     if (charIndex !== -1) {
       memoryCharacters[charIndex].frontViewKey = fileKey || undefined
-      memoryCharacters[charIndex].imageUrl = viewUrl
+      memoryCharacters[charIndex].imageUrl = viewUrl  // 使用 OSS 完整 URL 或本地路径
     }
 
     return NextResponse.json({
