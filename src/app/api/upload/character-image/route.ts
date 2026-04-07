@@ -4,6 +4,7 @@
  */
 
 import { NextRequest } from 'next/server'
+import { S3Storage } from 'coze-coding-dev-sdk'
 import { successResponse, errorResponse } from '@/lib/api/response'
 
 /**
@@ -30,13 +31,13 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      // 使用阿里云 OSS 上传
-      const OSS = await import('ali-oss')
-      const ossClient = new OSS.default({
-        region: process.env.ALIYUN_OSS_REGION!,
-        accessKeyId: process.env.ALIYUN_OSS_ACCESS_KEY_ID!,
-        accessKeySecret: process.env.ALIYUN_OSS_ACCESS_KEY_SECRET!,
-        bucket: process.env.ALIYUN_OSS_BUCKET!,
+      // 使用 S3Storage 上传
+      const storage = new S3Storage({
+        endpointUrl: process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL,
+        accessKey: process.env.S3_ACCESS_KEY || '',
+        secretKey: process.env.S3_SECRET_KEY || '',
+        bucketName: process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME,
+        region: process.env.S3_REGION || 'us-east-1',
       })
 
       // 生成唯一的文件名
@@ -50,13 +51,12 @@ export async function POST(request: NextRequest) {
       const buffer = Buffer.from(arrayBuffer)
 
       // 上传到 OSS
-      await ossClient.put(key, buffer)
+      await storage.uploadFile(key, buffer, file.type)
 
-      // 设置为公开读取
-      await ossClient.putACL(key, 'public-read')
-
-      // 获取公网 URL
-      const url = ossClient.signatureUrl(key, { expires: 86400 * 365 }) // 1年有效期
+      // 生成公网 URL
+      const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
+      const url = `${endpoint}/${bucket}/${key}`
 
       return successResponse({
         key,

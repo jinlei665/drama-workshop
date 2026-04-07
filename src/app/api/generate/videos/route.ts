@@ -136,58 +136,33 @@ async function saveVideo(
 
   console.log(`视频验证通过，大小: ${(buffer.length / 1024).toFixed(2)} KB`);
 
-  // 尝试上传到阿里云 OSS（使用阿里云 OSS SDK）
-  if (process.env.S3_ACCESS_KEY && process.env.S3_SECRET_KEY && process.env.S3_BUCKET) {
-    try {
-      const OSS = await import('ali-oss');
-
-      // 创建 OSS 客户端
-      const client = new OSS.default({
-        region: process.env.S3_REGION || 'oss-cn-chengdu',
-        bucket: process.env.S3_BUCKET || 'drama-studio',
-        accessKeyId: process.env.S3_ACCESS_KEY,
-        accessKeySecret: process.env.S3_SECRET_KEY,
-        secure: true,
-      });
-
-      // 上传视频
-      const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
-      console.log(`开始上传视频到 OSS，key: ${key}`);
-      const uploadResult = await client.put(key, buffer, {
-        headers: {
-          'Content-Type': 'video/mp4',
-        },
-      });
-      console.log(`视频上传成功，返回值: ${JSON.stringify(uploadResult)}`);
-
-      // 设置视频为公开读取
-      await client.putACL(key, 'public-read');
-      console.log(`视频已设置为公开读取`);
-
-      // 生成公网 URL
-      const publicUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${key}`;
-      console.log(`视频公网 URL: ${publicUrl}`);
-      return publicUrl;
-    } catch (uploadErr) {
-      console.warn(`阿里云 OSS 上传失败，尝试本地存储:`, uploadErr);
-    }
-  }
-
-  // 尝试使用 storage.uploadFile（如果有配置）
+  // 尝试使用 S3Storage 上传视频
   if (storage) {
     try {
       const key = `videos/${sceneId}/video_${Date.now()}.mp4`;
-      await storage.uploadFile({
-        fileContent: buffer,
-        fileName: key,
-        contentType: 'video/mp4'
-      });
-      const publicUrl = await storage.generatePresignedUrl({
-        key,
-        expireTime: 3600 * 24 * 7 // 7天有效期
-      });
-      console.log(`视频已上传到对象存储: ${key}`);
-      return typeof publicUrl === 'string' ? publicUrl : (publicUrl as any).url;
+      console.log(`开始上传视频到 OSS，key: ${key}`);
+      
+      // 检查 storage.uploadFile 的参数格式
+      if (typeof (storage as any).uploadFile === 'function') {
+        // 尝试新版 API: uploadFile(key, data, contentType)
+        await storage.uploadFile(key, buffer, 'video/mp4');
+      } else {
+        // 尝试旧版 API: uploadFile({ fileContent, fileName, contentType })
+        await (storage as any).uploadFile({
+          fileContent: buffer,
+          fileName: key,
+          contentType: 'video/mp4'
+        });
+      }
+      
+      console.log(`视频上传成功`);
+      
+      // 生成公网 URL
+      const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
+      const publicUrl = `${endpoint}/${bucket}/${key}`;
+      console.log(`视频公网 URL: ${publicUrl}`);
+      return publicUrl;
     } catch (uploadErr) {
       console.warn(`对象存储上传失败，尝试本地存储:`, uploadErr);
     }
@@ -689,9 +664,7 @@ async function convertImageUrlForVideo(
 
       console.log(`[convertImageUrl] 本地图片格式: ${format}, 大小: ${(buffer.length / 1024).toFixed(2)} KB`)
 
-      // 使用阿里云 OSS SDK 直接上传（确保使用正斜杠）
-      const OSS = await import('ali-oss')
-
+      // 使用 S3Storage 上传
       // 确保使用正斜杠作为路径分隔符
       const cleanedSceneId = sceneId.replace(/\\/g, '/')
       const key = `scenes/${cleanedSceneId}/image_${Date.now()}.${format}`.replace(/\\/g, '/')
@@ -699,31 +672,15 @@ async function convertImageUrlForVideo(
       console.log(`[convertImageUrl] 原始 sceneId: ${sceneId}`)
       console.log(`[convertImageUrl] 清理后 sceneId: ${cleanedSceneId}`)
 
-      // 创建 OSS 客户端
-      const client = new OSS.default({
-        region: process.env.S3_REGION || 'oss-cn-chengdu',
-        bucket: process.env.S3_BUCKET || 'drama-studio',
-        accessKeyId: process.env.S3_ACCESS_KEY || '',
-        accessKeySecret: process.env.S3_SECRET_KEY || '',
-        secure: true,
-      })
-
       // 上传图片
       console.log(`[convertImageUrl] 开始上传图片到 OSS...`)
-      const uploadResult = await client.put(key, buffer, {
-        headers: {
-          'Content-Type': `image/${format}`,
-        },
-      })
-      console.log(`[convertImageUrl] 上传成功，返回值: ${JSON.stringify(uploadResult)}`)
+      await storage.uploadFile(key, buffer, `image/${format}`)
+      console.log(`[convertImageUrl] 上传成功`)
 
-      // 设置图片为公开读取
-      console.log(`[convertImageUrl] 设置图片为公开读取...`)
-      await client.putACL(key, 'public-read')
-      console.log(`[convertImageUrl] 图片已设置为公开读取`)
-
-      // 使用公网 URL（不带签名）
-      const newUrl = `https://${process.env.S3_BUCKET}.${process.env.S3_REGION}.aliyuncs.com/${key}`
+      // 生成公网 URL
+      const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
+      const newUrl = `${endpoint}/${bucket}/${key}`
       console.log(`[convertImageUrl] 公网 URL 生成成功`)
       console.log(`[convertImageUrl] 完整 URL: ${newUrl}`)
 
