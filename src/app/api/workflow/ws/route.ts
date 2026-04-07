@@ -30,8 +30,6 @@ export async function GET(request: NextRequest) {
   // 创建 SSE 响应
   const encoder = new TextEncoder()
 
-  let heartbeatInterval: NodeJS.Timeout
-
   const stream = new ReadableStream({
     start(controller) {
       // 保存 controller 以便后续发送事件
@@ -40,23 +38,30 @@ export async function GET(request: NextRequest) {
       // 发送连接成功事件
       const event = `data: ${JSON.stringify({ type: 'connected', executionId })}\n\n`
       controller.enqueue(encoder.encode(event))
+      console.log('🔌 SSE 连接已建立:', executionId)
 
       // 设置心跳
-      heartbeatInterval = setInterval(() => {
+      const heartbeatInterval = setInterval(() => {
         const event = `: heartbeat\n\n`
         try {
           controller.enqueue(encoder.encode(event))
         } catch (error) {
+          console.error('心跳发送失败:', error)
           clearInterval(heartbeatInterval)
           connections.delete(executionId)
         }
       }, 30000)
+
+      // 将 interval 保存到 controller，以便 cancel 时清理
+      ;(controller as any)._heartbeatInterval = heartbeatInterval
     },
 
-    cancel() {
-      // 清理资源
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval)
+    cancel(reason) {
+      console.log('🔌 SSE 连接已关闭:', executionId, reason)
+      // 清理心跳
+      const interval = (this as any)?._heartbeatInterval
+      if (interval) {
+        clearInterval(interval)
       }
       connections.delete(executionId)
     },
