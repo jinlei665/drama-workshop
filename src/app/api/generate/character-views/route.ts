@@ -106,7 +106,9 @@ export async function POST(request: NextRequest) {
       await storage.uploadFile(fileKey, imageBuffer, 'image/png')
 
       // 生成公网 URL
-      viewUrl = storage.getPublicUrl(fileKey)
+      const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+      const bucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
+      viewUrl = `${endpoint}/${bucket}/${fileKey}`
 
       console.log("Image uploaded to OSS:", fileKey)
     } catch (ossError) {
