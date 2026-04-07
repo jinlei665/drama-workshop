@@ -34,7 +34,7 @@ import {
   FileText
 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { WorkflowNode, WorkflowEdge } from '@/lib/types'
+import type { BaseNode, Edge } from '@/lib/workflow/types'
 
 interface NodeData {
   prompt?: string
@@ -58,14 +58,14 @@ interface NodeData {
 
 interface WorkflowEditorProps {
   projectId: string
-  initialNodes?: WorkflowNode[]
-  initialEdges?: WorkflowEdge[]
+  initialNodes?: BaseNode[]
+  initialEdges?: Edge[]
   className?: string
 }
 
 // 节点类型定义
 const NODE_TYPES = {
-  text_input: {
+  'text-input': {
     name: '文本输入',
     icon: Type,
     color: 'bg-blue-500',
@@ -75,7 +75,7 @@ const NODE_TYPES = {
       text: { type: 'textarea', label: '文本内容', default: '' }
     }
   },
-  image_input: {
+  'image-input': {
     name: '图片输入',
     icon: ImageIcon,
     color: 'bg-green-500',
@@ -85,7 +85,7 @@ const NODE_TYPES = {
       imageUrl: { type: 'text', label: '图片 URL', default: '' }
     }
   },
-  text_to_image: {
+  'text-to-image': {
     name: '文生图',
     icon: ImageIcon,
     color: 'bg-purple-500',
@@ -102,7 +102,7 @@ const NODE_TYPES = {
       guidance: { type: 'slider', label: '引导强度', default: 7.5, min: 1, max: 20, step: 0.5 }
     }
   },
-  image_to_image: {
+  'image-to-image': {
     name: '图生图',
     icon: ImageIcon,
     color: 'bg-purple-500',
@@ -119,7 +119,7 @@ const NODE_TYPES = {
       guidance: { type: 'slider', label: '引导强度', default: 7.5, min: 1, max: 20, step: 0.5 }
     }
   },
-  image_to_video: {
+  'image-to-video': {
     name: '图生视频',
     icon: Video,
     color: 'bg-orange-500',
@@ -135,7 +135,7 @@ const NODE_TYPES = {
       motionStrength: { type: 'slider', label: '运动强度', default: 5, min: 1, max: 10, step: 1 }
     }
   },
-  text_to_video: {
+  'text-to-video': {
     name: '文生视频',
     icon: Video,
     color: 'bg-orange-500',
@@ -147,7 +147,7 @@ const NODE_TYPES = {
       aspectRatio: { type: 'select', label: '比例', options: ['16:9', '9:16', '1:1'], default: '16:9' }
     }
   },
-  llm_process: {
+  'llm-process': {
     name: 'LLM 处理',
     icon: FileText,
     color: 'bg-pink-500',
@@ -169,8 +169,8 @@ export function WorkflowEditorV2({
   initialEdges = [],
   className
 }: WorkflowEditorProps) {
-  const [nodes, setNodes] = useState<WorkflowNode[]>(initialNodes)
-  const [edges, setEdges] = useState<WorkflowEdge[]>(initialEdges)
+  const [nodes, setNodes] = useState<BaseNode[]>(initialNodes)
+  const [edges, setEdges] = useState<Edge[]>(initialEdges)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({})
   const [nodeResults, setNodeResults] = useState<Record<string, any>>({})
@@ -199,11 +199,15 @@ export function WorkflowEditorV2({
   // 添加节点
   const addNode = useCallback((type: string, x: number, y: number) => {
     const id = `${type}_${Date.now()}`
-    const newNode: WorkflowNode = {
+    const newNode: BaseNode = {
       id,
-      type,
+      type: type as any,
+      name: NODE_TYPES[type as keyof typeof NODE_TYPES]?.name || type,
       position: { x, y },
-      data: {}
+      inputs: [],
+      outputs: [],
+      params: {},
+      status: 'idle'
     }
     
     // 初始化节点参数
@@ -225,7 +229,7 @@ export function WorkflowEditorV2({
   // 删除节点
   const deleteNode = useCallback((nodeId: string) => {
     setNodes(prev => prev.filter(n => n.id !== nodeId))
-    setEdges(prev => prev.filter(e => e.source !== nodeId && e.target !== nodeId))
+    setEdges(prev => prev.filter(e => e.from !== nodeId && e.to !== nodeId))
     setNodeParams(prev => {
       const next = { ...prev }
       delete next[nodeId]
@@ -266,16 +270,16 @@ export function WorkflowEditorV2({
   // 连接节点
   const connectNodes = useCallback((fromNodeId: string, fromOutput: string, toNodeId: string, toInput: string) => {
     if (fromNodeId === toNodeId) return
-    
+
     const edgeId = `edge_${fromNodeId}_${fromOutput}_${toNodeId}_${toInput}`
-    const newEdge: WorkflowEdge = {
+    const newEdge: Edge = {
       id: edgeId,
-      source: fromNodeId,
-      sourceHandle: fromOutput,
-      target: toNodeId,
-      targetHandle: toInput
+      from: fromNodeId,
+      fromPort: fromOutput,
+      to: toNodeId,
+      toPort: toInput
     }
-    
+
     setEdges(prev => [...prev, newEdge])
     setHasChanges(true)
   }, [])
@@ -297,7 +301,7 @@ export function WorkflowEditorV2({
       const inDegree = new Map<string, number>()
       nodes.forEach(n => inDegree.set(n.id, 0))
       edges.forEach(e => {
-        inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1)
+        inDegree.set(e.to, (inDegree.get(e.to) || 0) + 1)
       })
       
       const queue = nodes.filter(n => inDegree.get(n.id) === 0).map(n => n.id)
@@ -314,11 +318,11 @@ export function WorkflowEditorV2({
           // 准备输入数据
           const inputs: Record<string, any> = {}
           edges
-            .filter(e => e.target === nodeId)
+            .filter(e => e.to === nodeId)
             .forEach(e => {
-              const sourceResult = results[e.source]
-              if (sourceResult && e.sourceHandle) {
-                inputs[e.targetHandle!] = sourceResult[e.sourceHandle]
+              const sourceResult = results[e.from]
+              if (sourceResult && e.fromPort) {
+                inputs[e.toPort!] = sourceResult[e.fromPort]
               }
             })
           
@@ -335,12 +339,12 @@ export function WorkflowEditorV2({
         
         // 更新后续节点
         edges
-          .filter(e => e.source === nodeId)
+          .filter(e => e.from === nodeId)
           .forEach(e => {
-            const newDegree = (inDegree.get(e.target) || 1) - 1
-            inDegree.set(e.target, newDegree)
+            const newDegree = (inDegree.get(e.to) || 1) - 1
+            inDegree.set(e.to, newDegree)
             if (newDegree === 0) {
-              queue.push(e.target)
+              queue.push(e.to)
             }
           })
       }
@@ -355,15 +359,15 @@ export function WorkflowEditorV2({
   }, [isExecuting, nodes, edges, nodeParams])
 
   // 单个节点执行
-  const executeNode = async (node: WorkflowNode, params: NodeData, inputs: Record<string, any>): Promise<any> => {
+  const executeNode = async (node: BaseNode, params: NodeData, inputs: Record<string, any>): Promise<any> => {
     switch (node.type) {
-      case 'text_input':
+      case 'text-input':
         return { text: params.text || '' }
 
-      case 'image_input':
+      case 'image-input':
         return { image: params.imageUrl || '' }
 
-      case 'text_to_image':
+      case 'text-to-image':
         const imageRes = await fetch('/api/generate/scene-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -382,7 +386,7 @@ export function WorkflowEditorV2({
         const imageData = await imageRes.json()
         return { image: imageData.data?.imageUrl || '' }
 
-      case 'image_to_image':
+      case 'image-to-image':
         const i2iRes = await fetch('/api/generate/appearance-from-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -396,7 +400,7 @@ export function WorkflowEditorV2({
         const i2iData = await i2iRes.json()
         return { image: i2iData.data?.imageUrl || '' }
 
-      case 'image_to_video':
+      case 'image-to-video':
         const i2vRes = await fetch('/api/generate/videos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -412,7 +416,7 @@ export function WorkflowEditorV2({
         const i2vData = await i2vRes.json()
         return { video: i2vData.data?.videoUrl || '' }
 
-      case 'text_to_video':
+      case 'text-to-video':
         const t2vRes = await fetch('/api/generate/videos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -426,7 +430,7 @@ export function WorkflowEditorV2({
         const t2vData = await t2vRes.json()
         return { video: t2vData.data?.videoUrl || '' }
 
-      case 'llm_process':
+      case 'llm-process':
         const llmRes = await fetch('/api/llm/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -484,7 +488,7 @@ export function WorkflowEditorV2({
 
   // 获取端口位置
   const getPortPosition = useCallback((
-    node: WorkflowNode,
+    node: BaseNode,
     portName: string,
     type: 'input' | 'output'
   ): { x: number; y: number } | null => {
@@ -651,12 +655,12 @@ export function WorkflowEditorV2({
             {/* 连接线 */}
             <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>
               {edges.map((edge) => {
-                const sourceNode = nodes.find(n => n.id === edge.source)
-                const targetNode = nodes.find(n => n.id === edge.target)
+                const sourceNode = nodes.find(n => n.id === edge.from)
+                const targetNode = nodes.find(n => n.id === edge.to)
                 if (!sourceNode?.position || !targetNode?.position) return null
 
-                const startPos = getPortPosition(sourceNode, edge.sourceHandle || '', 'output')
-                const endPos = getPortPosition(targetNode, edge.targetHandle || '', 'input')
+                const startPos = getPortPosition(sourceNode, edge.fromPort || '', 'output')
+                const endPos = getPortPosition(targetNode, edge.toPort || '', 'input')
                 if (!startPos || !endPos) return null
 
                 const midX = (startPos.x + endPos.x) / 2
@@ -773,7 +777,7 @@ export function WorkflowEditorV2({
                   {/* 输入端口 */}
                   <div className="px-2 py-2 space-y-1">
                     {nodeConfig.inputs.map((input) => {
-                      const isConnected = edges.some(e => e.target === node.id && e.targetHandle === input.name)
+                      const isConnected = edges.some(e => e.to === node.id && e.toPort === input.name)
                       return (
                         <div key={input.name} className="flex items-center gap-2 text-xs">
                           <div
@@ -797,7 +801,7 @@ export function WorkflowEditorV2({
                   {/* 输出端口 */}
                   <div className="px-2 py-2 border-t border-border/50 space-y-1">
                     {nodeConfig.outputs.map((output) => {
-                      const isConnected = edges.some(e => e.source === node.id && e.sourceHandle === output.name)
+                      const isConnected = edges.some(e => e.from === node.id && e.fromPort === output.name)
                       return (
                         <div key={output.name} className="flex items-center justify-end gap-2 text-xs">
                           <span className="text-muted-foreground">{output.name}</span>
