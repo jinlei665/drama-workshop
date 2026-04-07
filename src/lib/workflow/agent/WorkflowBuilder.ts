@@ -6,6 +6,7 @@
 import { Intent, ParsedRequest } from './IntentParser'
 import { Workflow } from '../types'
 import { v4 as uuidv4 } from 'uuid'
+import { getDefaultWorkflow } from '../default-workflow'
 
 export interface WorkflowTemplate {
   id: string
@@ -402,17 +403,22 @@ export class WorkflowBuilder {
    * 创建默认工作流
    */
   private createDefaultWorkflow(projectId: string): Workflow {
+    const defaultConfig = getDefaultWorkflow()
+
     return {
       id: uuidv4(),
-      name: '新工作流',
-      description: '空白工作流',
       projectId,
-      status: 'draft',
-      version: 1,
-      nodes: [],
-      edges: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      name: '短剧创作工作流',
+      description: '从文本描述到人物、场景、视频的完整创作流程',
+      nodes: defaultConfig.nodes,
+      edges: defaultConfig.edges,
+      isTemplate: false,
+      version: '2.0',
+      metadata: {
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        author: 'system',
+      },
     }
   }
 

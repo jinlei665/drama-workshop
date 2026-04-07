@@ -9,7 +9,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Workflow } from 'lucide-react'
-import { WorkflowEditor } from '@/components/workflow'
+import { WorkflowEditorV2 } from '@/components/workflow/workflow-editor-v2'
 
 export default function ProjectWorkflowPage({ 
   params 
@@ -45,7 +45,7 @@ export default function ProjectWorkflowPage({
 
       {/* 工作流编辑器 */}
       <div className="h-[calc(100vh-73px)]">
-        <WorkflowEditor projectId={id} />
+        <WorkflowEditorV2 projectId={id} />
       </div>
     </div>
   )
