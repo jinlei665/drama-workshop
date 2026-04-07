@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { WorkflowEngine } from '@/lib/workflow/engine/WorkflowEngine'
 import type { Workflow, BaseNode, Edge, NodeResult } from '@/lib/workflow/types'
 import { sendExecutionEvent, closeExecutionConnection } from '@/lib/workflow/sse'
-import { getSupabaseClient } from '@/storage/database/supabase-client'
+import { getSupabaseClient, executeSql } from '@/storage/database/supabase-client'
+// 确保节点已注册
+import '@/lib/workflow/register-nodes'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -43,23 +45,26 @@ async function flushLogs(executionId: string) {
   if (!logs || logs.length === 0) return
 
   try {
-    const db = getSupabaseClient()
-
     for (const log of logs) {
-      await db.execute(
-        `
-        INSERT INTO workflow_execution_logs
-        (execution_id, level, message, data, node_id)
-        VALUES ($1, $2, $3, $4, $5)
-        `,
-        [
-          log.executionId,
-          log.level,
-          log.message,
-          log.data ? JSON.stringify(log.data) : null,
-          log.nodeId || null,
-        ]
-      )
+      try {
+        await executeSql(
+          `
+          INSERT INTO workflow_execution_logs
+          (execution_id, level, message, data, node_id)
+          VALUES ($1, $2, $3, $4, $5)
+          `,
+          [
+            log.executionId,
+            log.level,
+            log.message,
+            log.data ? JSON.stringify(log.data) : null,
+            log.nodeId || null,
+          ]
+        )
+      } catch (sqlError) {
+        // 如果 SQL 执行失败（如内存模式），忽略错误
+        console.warn('⚠️ 日志保存失败（可能为内存模式）:', sqlError)
+      }
     }
 
     logBuffer.delete(executionId)
@@ -111,8 +116,7 @@ export async function POST(request: NextRequest) {
     let processedNodes = new Set<string>()
     if (resumeFrom) {
       try {
-        const db = getSupabaseClient()
-        const result = await db.query(
+        const result = await executeSql(
           `
           SELECT data->'results' as results
           FROM workflow_executions
@@ -121,7 +125,7 @@ export async function POST(request: NextRequest) {
           [resumeFrom]
         )
 
-        if (result.rows.length > 0) {
+        if (result.rows && result.rows.length > 0) {
           const results = result.rows[0].results
           results.forEach((r: any) => {
             processedNodes.add(r.nodeId)
