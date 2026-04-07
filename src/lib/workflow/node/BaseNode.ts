@@ -2,7 +2,7 @@
  * 节点基类和节点系统
  */
 
-import { BaseNode, NodeType, ExecutionContext, NodeResult } from './types'
+import { BaseNode, NodeType, ExecutionContext, NodeResult } from '../types'
 
 /**
  * 节点基类
@@ -162,14 +162,6 @@ export abstract class BaseNodeClass {
       result: this.result,
       error: this.error
     }
-  }
-
-  /**
-   * 从 JSON 反序列化
-   */
-  static fromJSON(json: BaseNode): BaseNodeClass {
-    const node = NodeFactory.createNode(json.type, json)
-    return node
   }
 }
 

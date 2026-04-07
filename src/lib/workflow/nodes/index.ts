@@ -2,7 +2,7 @@
  * 文本输入节点
  */
 
-import { BaseNodeClass } from '../BaseNode'
+import { BaseNodeClass } from '../node/BaseNode'
 import { ExecutionContext } from '../types'
 
 export class TextInputNode extends BaseNodeClass {
@@ -48,7 +48,7 @@ export class TextInputNode extends BaseNodeClass {
  * 图片输入节点
  */
 
-import { BaseNodeClass as BaseNodeClass2 } from '../BaseNode'
+import { BaseNodeClass as BaseNodeClass2 } from '../node/BaseNode'
 
 export class ImageInputNode extends BaseNodeClass2 {
   constructor(config: any) {
@@ -96,7 +96,7 @@ export class ImageInputNode extends BaseNodeClass2 {
  * 文生图节点
  */
 
-import { BaseNodeClass as BaseNodeClass3 } from '../BaseNode'
+import { BaseNodeClass as BaseNodeClass3 } from '../node/BaseNode'
 import { generateImage } from '@/lib/ai'
 
 export class TextToImageNode extends BaseNodeClass3 {
@@ -189,8 +189,8 @@ export class TextToImageNode extends BaseNodeClass3 {
  * 图生视频节点
  */
 
-import { BaseNodeClass as BaseNodeClass4 } from '../BaseNode'
-import { generateImageFromImage } from '@/lib/ai'
+import { BaseNodeClass as BaseNodeClass4 } from '../node/BaseNode'
+import { generateVideoFromImage } from '@/lib/ai'
 
 export class ImageToVideoNode extends BaseNodeClass4 {
   constructor(config: any) {
@@ -264,24 +264,20 @@ export class ImageToVideoNode extends BaseNodeClass4 {
     }
 
     // 生成视频
-    const result = await generateImageFromImage(
+    const result = await generateVideoFromImage(
       prompt || firstFrame,
-      lastFrame ? lastFrame : firstFrame,
+      firstFrame,
       {
-        mode: lastFrame ? 'image_to_video_with_first_and_last_frames' : 'single_frame',
-        firstFrame,
-        lastFrame,
-        prompt,
         duration: this.params.duration,
-        aspectRatio: this.params.ratio as '16:9' | '9:16'
+        ratio: this.params.ratio as '16:9' | '9:16',
+        generateAudio: true,
       }
     )
 
-    const videoUrl = result.urls[0]
-
     return {
       type: 'video',
-      url: videoUrl,
+      url: result.videoUrl,
+      lastFrameUrl: result.lastFrameUrl,
       duration: this.params.duration,
       ratio: this.params.ratio
     }

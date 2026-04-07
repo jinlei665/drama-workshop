@@ -20,9 +20,7 @@ import {
   Copy
 } from 'lucide-react'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
-
-// 导出类型
-export type { WorkflowEditorV2Props }
+import { WorkflowEngine } from '@/lib/workflow/engine/WorkflowEngine'
 
 export interface WorkflowEditorV2Props {
   initialNodes?: BaseNode[]
@@ -478,12 +476,25 @@ export default function WorkflowEditorV2({
   }
 
   // 执行工作流
-  const handleExecute = () => {
-    setIsRunning(true)
-    setTimeout(() => {
-      setIsRunning(false)
+  const handleExecute = async () => {
+    console.log('🚀 开始执行工作流:', { nodes: nodes.length, edges: edges.length })
+
+    try {
+      setIsRunning(true)
+
+      // TODO: 实现真正的工作流执行逻辑
+      // 目前先模拟执行过程
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      console.log('🎉 工作流执行完成')
+
+      // 通知外部组件执行完成
       onExecute?.()
-    }, 2000)
+    } catch (error) {
+      console.error('❌ 执行工作流时发生错误:', error)
+    } finally {
+      setIsRunning(false)
+    }
   }
 
   return (
@@ -802,9 +813,6 @@ export default function WorkflowEditorV2({
                     }
                   }}
                 >
-                  {/* 调试：显示节点信息 */}
-                  {console.log(`🎨 渲染节点 ${node.id} (${node.name}):`, { inputs: node.inputs, outputs: node.outputs })}
-                  
                   {/* 节点头部 */}
                   <div className={`flex items-center justify-between px-4 py-3 border-b ${nodeColor} bg-opacity-20`}>
                     <div className="flex items-center gap-2">
