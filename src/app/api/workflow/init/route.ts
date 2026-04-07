@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseClient } from '@/storage/database/supabase-client'
 
+// 导入节点注册器（确保在服务器端注册所有节点）
+import '@/lib/workflow/register-nodes'
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 

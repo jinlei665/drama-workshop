@@ -20,8 +20,19 @@ const devOrigins = [
 const nextConfig = {
   output: 'standalone',
   
-  // 将 pg 包外部化，避免 Turbopack 打包问题
-  serverExternalPackages: ['pg', 'pg-pool', 'pg-protocol', 'pg-types', 'pgpass', 'pg-connection-string'],
+  // 将 pg 包和 coze-coding-dev-sdk 外部化，避免 Turbopack 打包问题
+  serverExternalPackages: [
+    'pg', 'pg-pool', 'pg-protocol', 'pg-types', 'pgpass', 'pg-connection-string',
+    'coze-coding-dev-sdk',
+  ],
+  
+  // Turbopack 配置（Next.js 16 使用 Turbopack）
+  turbopack: {
+    // 排除 Node.js 特定模块在客户端打包
+    resolveAlias: {
+      // 可以在这里添加别名配置
+    },
+  },
   
   // 包含必要的依赖 (Next.js 16 移到顶层)
   outputFileTracingIncludes: {

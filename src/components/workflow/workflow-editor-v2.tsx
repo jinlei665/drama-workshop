@@ -23,19 +23,8 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
-import { NodeFactory } from '@/lib/workflow/node/BaseNode'
-import { TextInputNode } from '@/lib/workflow/nodes/index'
-import { ImageInputNode } from '@/lib/workflow/nodes/index'
-import { ScriptInputNode } from '@/lib/workflow/nodes/ScriptInputNode'
-import { TextToImageNode } from '@/lib/workflow/nodes/index'
-import { ImageToVideoNode } from '@/lib/workflow/nodes/index'
 
-// 注册节点类型
-NodeFactory.registerNode('text-input', TextInputNode)
-NodeFactory.registerNode('image-input', ImageInputNode)
-NodeFactory.registerNode('script-input', ScriptInputNode)
-NodeFactory.registerNode('text-to-image', TextToImageNode)
-NodeFactory.registerNode('image-to-video', ImageToVideoNode)
+// 节点注册在服务器端完成，客户端只使用类型定义
 
 export interface WorkflowEditorV2Props {
   initialNodes?: BaseNode[]
