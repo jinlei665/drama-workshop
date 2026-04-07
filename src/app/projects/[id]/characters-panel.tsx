@@ -637,6 +637,53 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
   const handleSetPrimary = async (appearanceId: string) => {
     if (!selectedCharacterForAppearances) return
 
+    // 检查是否是默认形象（临时 ID）
+    if (appearanceId.startsWith('default_')) {
+      // 对于默认形象，我们需要将其添加到数据库中
+      try {
+        const character = selectedCharacterForAppearances
+        const appearance = appearances.find(a => a.id === appearanceId)
+
+        if (!appearance) {
+          toast.error('找不到形象信息')
+          return
+        }
+
+        // 添加到数据库
+        const addRes = await fetch(`/api/characters/${character.id}/appearances`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: appearance.name,
+            imageKey: appearance.imageKey,
+            imageUrl: appearance.imageUrl,
+            description: appearance.description,
+            isPrimary: true
+          })
+        })
+
+        if (!addRes.ok) {
+          const errorText = await addRes.text()
+          console.error('[Set Primary] Add appearance error:', errorText)
+          throw new Error('添加失败')
+        }
+
+        toast.success('已设为默认形象')
+
+        // 重新加载形象列表
+        const listRes = await fetch(`/api/characters/${selectedCharacterForAppearances.id}/appearances`)
+        if (listRes.ok) {
+          const listData = await listRes.json()
+          setAppearances(listData.data?.appearances || [])
+        }
+      } catch (error) {
+        console.error('设置主形象失败:', error)
+        toast.error('设置失败')
+      }
+      return
+    }
+
+    // 对于数据库中的形象，正常更新
     try {
       const res = await fetch(`/api/character-appearances/${appearanceId}`, {
         method: 'PATCH',
@@ -665,6 +712,12 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
 
   // 删除形象
   const handleDeleteAppearance = async (appearanceId: string) => {
+    // 检查是否是默认形象（临时 ID）
+    if (appearanceId.startsWith('default_')) {
+      toast.error('默认形象不能删除')
+      return
+    }
+
     if (!confirm('确定要删除这个形象吗？')) return
 
     try {
@@ -1048,6 +1101,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                                 key={appearance.id}
                                 draggableId={appearance.id}
                                 index={index}
+                                isDragDisabled={appearance.id.startsWith('default_')} // 禁用默认形象的拖拽
                               >
                                 {(provided, snapshot) => (
                                   <div
@@ -1098,13 +1152,26 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                                           设为主形象
                                         </Button>
                                       )}
-                                      <Button
-                                        size="sm"
-                                        variant="destructive"
-                                        onClick={() => handleDeleteAppearance(appearance.id)}
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                      </Button>
+                                      {/* 默认形象不能删除 */}
+                                      {!appearance.id.startsWith('default_') && (
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
+                                          onClick={() => handleDeleteAppearance(appearance.id)}
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      )}
+                                      {appearance.id.startsWith('default_') && (
+                                        <Button
+                                          size="sm"
+                                          variant="secondary"
+                                          disabled
+                                          title="默认形象不能删除"
+                                        >
+                                          <Trash2 className="w-4 h-4 opacity-50" />
+                                        </Button>
+                                      )}
                                     </div>
                                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2">
                                       <p className="text-white text-sm font-medium">{appearance.name}</p>
