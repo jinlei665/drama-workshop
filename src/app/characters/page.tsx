@@ -155,24 +155,45 @@ export default function CharactersPage() {
       // 如果启用了自动生成图像，则生成图像
       if (autoGenerateImage) {
         try {
-          toast.info('正在自动生成人物图像...')
-          const genRes = await fetch('/api/generate/character-image', {
+          // 如果用户上传了参考图片，生成三视图；否则生成正面视图
+          const hasReferenceImage = !!createReferenceImage
+
+          if (hasReferenceImage) {
+            toast.info('正在根据参考图生成三视图...')
+          } else {
+            toast.info('正在自动生成人物图像...')
+          }
+
+          const apiUrl = hasReferenceImage
+            ? '/api/generate/character-triple-views'
+            : '/api/generate/character-image'
+
+          const genRes = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              characterId: newCharacter.id,
-              characterName: newCharacter.name,
-              appearance: newCharacter.appearance,
-              personality: newCharacter.personality,
-              style: newCharacter.style || 'realistic',
-              gender: formData.gender,
-              description: newCharacter.description
+              // 三视图需要的参数
+              ...(hasReferenceImage ? {
+                referenceImageUrl: createReferenceImage,
+                characterId: newCharacter.id,
+                characterName: newCharacter.name,
+                appearance: newCharacter.appearance
+              } : {
+                // 文生图需要的参数
+                characterId: newCharacter.id,
+                characterName: newCharacter.name,
+                appearance: newCharacter.appearance,
+                personality: newCharacter.personality,
+                style: newCharacter.style || 'realistic',
+                gender: formData.gender,
+                description: newCharacter.description
+              })
             })
           })
           const genResult = await genRes.json()
 
           if (genResult.success) {
-            toast.success('人物图像生成成功')
+            toast.success(hasReferenceImage ? '三视图生成成功' : '人物图像生成成功')
           } else {
             toast.error('图像生成失败，人物已创建')
           }
@@ -596,15 +617,15 @@ export default function CharactersPage() {
                         className="w-4 h-4 rounded border-gray-300"
                       />
                       <Label htmlFor="auto-generate-image" className="text-sm cursor-pointer">
-                        创建后自动生成图像
+                        创建后自动生成图像{createReferenceImage ? '（将生成三视图）' : ''}
                       </Label>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <HelpCircle className="w-4 h-4 text-muted-foreground" />
                           </TooltipTrigger>
-                          <TooltipContent>
-                            <p>勾选后，创建人物时会自动根据描述生成正面视图图像</p>
+                          <TooltipContent className="max-w-xs">
+                            <p>{createReferenceImage ? '已上传参考图，将生成三视图（正面、侧面、背面）' : '未上传参考图，将根据描述生成正面视图'}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
