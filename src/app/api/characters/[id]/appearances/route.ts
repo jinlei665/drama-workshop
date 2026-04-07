@@ -119,13 +119,29 @@ export async function POST(
       if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
 
-        // 检查是否是第一个形象，如果是则设为主形象
+        // 检查是否是第一个形象，如果是则自动设为主形象
+        // 但如果请求中明确指定了 isPrimary，则使用请求中的值
         const { data: existing } = await db
           .from('character_appearances')
           .select('id')
           .eq('character_id', characterId)
 
         const isFirst = !existing || existing.length === 0
+
+        // 如果请求中明确指定了 isPrimary，使用请求中的值
+        // 否则，如果是第一个形象，自动设为主形象
+        let isPrimaryValue = isFirst
+        if (body.isPrimary !== undefined) {
+          isPrimaryValue = body.isPrimary
+        }
+
+        // 如果设置为 true，需要先将其他形象设为 false
+        if (isPrimaryValue) {
+          await db
+            .from('character_appearances')
+            .update({ is_primary: false })
+            .eq('character_id', characterId)
+        }
 
         const { data, error } = await db
           .from('character_appearances')
@@ -134,7 +150,7 @@ export async function POST(
             name: body.name || '默认形象',
             image_key: body.imageKey,
             image_url: body.imageUrl,
-            is_primary: isFirst,
+            is_primary: isPrimaryValue,
             description: body.description,
             tags: body.tags || [],
           })
@@ -180,7 +196,8 @@ export async function POST(
       const { getPool } = await import('@/storage/database/pg-client')
       const pool = await getPool()
 
-      // 检查是否是第一个形象，如果是则设为主形象
+      // 检查是否是第一个形象，如果是则自动设为主形象
+      // 但如果请求中明确指定了 isPrimary，则使用请求中的值
       const existingResult = await pool.query(
         'SELECT COUNT(*) as count FROM character_appearances WHERE character_id = $1',
         [characterId]
@@ -188,7 +205,22 @@ export async function POST(
       const count = parseInt(existingResult.rows[0].count)
       const isFirst = count === 0
 
-      console.log('[Add Appearance] PG isFirst:', isFirst, 'count:', count)
+      // 如果请求中明确指定了 isPrimary，使用请求中的值
+      // 否则，如果是第一个形象，自动设为主形象
+      let isPrimaryValue = isFirst
+      if (body.isPrimary !== undefined) {
+        isPrimaryValue = body.isPrimary
+      }
+
+      console.log('[Add Appearance] PG isFirst:', isFirst, 'count:', count, 'isPrimaryValue:', isPrimaryValue)
+
+      // 如果设置为 true，需要先将其他形象设为 false
+      if (isPrimaryValue) {
+        await pool.query(
+          'UPDATE character_appearances SET is_primary = false WHERE character_id = $1',
+          [characterId]
+        )
+      }
 
       // 插入新形象
       const insertResult = await pool.query(
@@ -201,7 +233,7 @@ export async function POST(
           body.name || '默认形象',
           body.imageKey,
           body.imageUrl || null,
-          isFirst,
+          isPrimaryValue,
           body.description || null,
           body.tags || [],
         ]
