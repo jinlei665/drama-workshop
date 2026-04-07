@@ -55,7 +55,6 @@ import { EpisodesPanel } from "./episodes-panel-new"
 import { VideoGenerationProgress } from "@/components/video-generation-progress"
 import { VideoMergePanel } from "@/components/video-merge-panel"
 import { ModelConfigProvider } from "@/lib/model-config"
-import { WorkflowEditorV2 } from "@/components/workflow/workflow-editor-v2"
 
 interface Project {
   id: string
@@ -659,10 +658,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               <Video className="w-4 h-4" />
               分镜管理
             </TabsTrigger>
-            <TabsTrigger value="workflow" className="gap-2">
-              <Sparkles className="w-4 h-4" />
-              工作流
-            </TabsTrigger>
             <TabsTrigger value="preview" className="gap-2">
               <Play className="w-4 h-4" />
               视频预览
@@ -695,13 +690,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
               characters={characters}
               onUpdate={fetchData}
               episodes={episodes}
-            />
-          </TabsContent>
-
-          <TabsContent value="workflow">
-            <WorkflowEditorV2
-              projectId={id}
-              className="h-[calc(100vh-250px)]"
             />
           </TabsContent>
 
