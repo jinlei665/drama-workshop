@@ -146,12 +146,10 @@ export async function GET(
               sideViewKey: c.side_view_key,
               backViewKey: c.back_view_key,
               status: c.status,
-              // imageUrl 优先使用 front_view_key（可能是完整URL或文件key）
-              imageUrl: c.front_view_key
-                ? (c.front_view_key.startsWith('http')
-                    ? c.front_view_key
-                    : `/characters/${c.front_view_key}`)
-                : c.image_url,
+              // 优先使用 image_url（如果存在且是完整URL）
+              imageUrl: (c.image_url && c.image_url.startsWith('http'))
+                ? c.image_url
+                : null,  // 如果没有完整的 image_url，设为 null，让前端通过 /api/images 获取
               createdAt: c.created_at,
             })),
             scenes: (scenes || []).map((s: any) => ({
