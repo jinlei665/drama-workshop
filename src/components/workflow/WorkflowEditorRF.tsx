@@ -302,8 +302,15 @@ function renderNodeFields(data: any) {
                   src={data.fieldValues._resultUrl} 
                   alt="生成结果"
                   className="w-full h-32 object-cover"
+                  onError={(e) => { e.currentTarget.style.display = 'none' }}
                 />
               </div>
+            </div>
+          )}
+          {/* 调试信息 - 仅在已完成但无URL时显示 */}
+          {data.status === 'completed' && !data.fieldValues?._resultUrl && (
+            <div className="text-xs p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded text-yellow-800 dark:text-yellow-200">
+              状态: {String(data.status)}, URL: {String(data.fieldValues?._resultUrl || '无')}
             </div>
           )}
           {data.status === 'failed' && data.fieldValues?.error && (
@@ -827,6 +834,12 @@ export default function WorkflowEditorRF({
         } catch (e) {
           console.error('[WorkflowEditorRF] Parse event failed:', e)
         }
+      }
+
+      // 添加 onerror 处理，防止浏览器自动重试导致频繁请求
+      eventSource.onerror = () => {
+        console.log('[WorkflowEditorRF] EventSource error, closing connection')
+        eventSource.close()
       }
 
       const response = await fetch('/api/workflow/execute', {

@@ -80,25 +80,31 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/workflow/ws
  * 兼容某些客户端可能发送 POST 请求
+ * 注意：SSE 连接必须使用 GET 方法，此路由返回错误信息
  */
 export async function POST(request: NextRequest) {
   const url = new URL(request.url)
   const executionId = url.searchParams.get('executionId')
+
+  console.log('⚠️ 收到 POST 请求到 SSE 端点:', { 
+    executionId,
+    userAgent: request.headers.get('user-agent'),
+  })
 
   if (!executionId) {
     return new Response('Missing executionId parameter', { status: 400 })
   }
 
   // 返回提示信息，建议使用 GET 方法
+  // 返回 200 而不是 405，避免浏览器不断重试
   return new Response(JSON.stringify({
     error: 'Use GET method for SSE connection',
     executionId,
     message: 'Please establish SSE connection using GET request with EventSource'
   }), {
-    status: 405,
+    status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Allow': 'GET',
     },
   })
 }

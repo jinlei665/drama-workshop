@@ -680,15 +680,17 @@ export default function WorkflowEditorV2({
         }
 
         eventSource.onerror = (error) => {
-          // 只在连接真正失败时显示错误
-          if (eventSource?.readyState === EventSource.CLOSED && !isSSEConnected) {
-            console.error('❌ SSE 连接失败:', error)
+          console.error('❌ SSE 连接错误:', error)
+          // 立即关闭连接，防止浏览器自动重试
+          eventSource?.close()
+          eventSource = null
+          
+          // 只在连接真正失败且未连接成功时显示错误
+          if (!isSSEConnected) {
             toast.error('SSE 连接失败', {
               description: '无法建立实时连接，请刷新页面重试',
               duration: 5000,
             })
-          } else if (eventSource?.readyState === EventSource.CONNECTING) {
-            console.log('⏳ SSE 正在重连...')
           }
         }
 
