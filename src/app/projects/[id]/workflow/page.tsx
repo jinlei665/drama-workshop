@@ -34,81 +34,18 @@ export default function ProjectWorkflowPage({
     try {
       console.log('📥 开始加载系统工作流，项目ID:', id)
       setLoading(true)
-      
-      // 同时获取工作流和项目详情
-      const [workflowResponse, projectResponse] = await Promise.all([
-        fetch(`/api/projects/${id}/workflow`),
-        fetch(`/api/projects/${id}`)
-      ])
-      
-      console.log('📡 加载响应状态:', workflowResponse.status)
+      const response = await fetch(`/api/projects/${id}/workflow`)
+      console.log('📡 加载响应状态:', response.status)
 
-      if (workflowResponse.status === 404) {
+      if (response.status === 404) {
         console.error('❌ 项目不存在')
         toast.error('项目不存在，请返回项目列表')
         setLoading(false)
         return
       }
 
-      const data = await workflowResponse.json()
-      const projectData = await projectResponse.json()
+      const data = await response.json()
       console.log('📦 加载响应数据:', data)
-      console.log('📦 项目详情:', projectData)
-
-      // 从项目详情中提取可用于填充工作流的内容
-      let projectContent = ''
-      let projectCharacters: string[] = []
-      
-      if (projectData.success && projectData.data) {
-        const project = projectData.data.project
-        if (project) {
-          // 优先使用 sourceContent，其次使用 description
-          projectContent = project.sourceContent || project.description || ''
-        }
-        // 提取角色描述
-        if (projectData.data.characters && projectData.data.characters.length > 0) {
-          projectCharacters = projectData.data.characters.map((c: any) => 
-            `${c.name}: ${c.description || c.appearance || ''}`
-          )
-        }
-      }
-
-      // 填充工作流参数的函数
-      const fillNodeParams = (nodes: any[]) => {
-        return nodes.map((node: any) => {
-          const newParams = { ...node.params }
-          
-          switch (node.type) {
-            case 'text-input':
-              // 如果文本输入为空且有项目内容，使用项目内容填充
-              if (!newParams.text && projectContent) {
-                newParams.text = projectContent
-              }
-              break
-            case 'text-to-character':
-              // 如果角色描述为空且有角色列表，使用第一个角色填充
-              if (!newParams.description && projectCharacters.length > 0) {
-                newParams.description = projectCharacters[0]
-              }
-              break
-            case 'text-to-image':
-            case 'image-to-video':
-              // 如果提示词为空且有项目内容，使用项目内容作为基础提示词
-              if (!newParams.prompt && projectContent) {
-                newParams.prompt = projectContent
-              }
-              break
-            case 'script-to-scenes':
-              // 如果脚本为空且有项目内容，使用项目内容作为脚本
-              if (!newParams.script && projectContent) {
-                newParams.script = projectContent
-              }
-              break
-          }
-          
-          return { ...node, params: newParams }
-        })
-      }
 
       if (data.success) {
         // 检查是否有工作流数据
@@ -124,9 +61,8 @@ export default function ProjectWorkflowPage({
         if (hasWorkflow && !isSystem) {
           // 项目有自定义工作流
           console.log('✅ 项目有自定义工作流')
-          const filledNodes = fillNodeParams(data.data.workflow.nodes || [])
           setSystemWorkflow({
-            nodes: filledNodes,
+            nodes: data.data.workflow.nodes || [],
             edges: data.data.workflow.edges || []
           })
           setIsSystemReadonly(data.data.workflow.readonly !== false)
@@ -134,9 +70,8 @@ export default function ProjectWorkflowPage({
         } else if (hasWorkflow && isSystem) {
           // 项目有系统工作流
           console.log('✅ 项目有系统工作流')
-          const filledNodes = fillNodeParams(data.data.workflow.nodes || [])
           setSystemWorkflow({
-            nodes: filledNodes,
+            nodes: data.data.workflow.nodes || [],
             edges: data.data.workflow.edges || []
           })
           setIsSystemReadonly(true)

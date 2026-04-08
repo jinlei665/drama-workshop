@@ -1091,28 +1091,20 @@ export default function WorkflowEditorRF({
           <span className="px-2 py-0.5 text-xs rounded-full bg-primary/10 text-primary">React Flow</span>
         </div>
         <div className="flex items-center gap-2">
-          {!readOnly && (
-            <Button variant="outline" size="sm" onClick={handleSave}>
-              <Save className="w-4 h-4 mr-2" />
-              保存
-            </Button>
-          )}
+          <Button variant="outline" size="sm" onClick={handleSave}>
+            <Save className="w-4 h-4 mr-2" />
+            保存
+          </Button>
           <Button
             variant="default"
             size="sm"
             onClick={handleExecute}
-            disabled={isRunning || readOnly}
-            title={readOnly ? '只读模式无法执行工作流' : '运行工作流'}
+            disabled={isRunning}
           >
             {isRunning ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 运行中...
-              </>
-            ) : readOnly ? (
-              <>
-                <Play className="w-4 h-4 mr-2" />
-                运行（只读）
               </>
             ) : (
               <>
