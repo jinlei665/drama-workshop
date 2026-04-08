@@ -234,9 +234,14 @@ export default function WorkflowEditorV2({
       // },
       'text-to-character': {
         description: '',
+        name: '',
+        personality: '',
+        projectId: '',
       },
       'script-to-scenes': {
         script: '',
+        numScenes: 5,
+        projectId: '',
       },
       'llm-process': {
         prompt: '',
@@ -1429,6 +1434,76 @@ export default function WorkflowEditorV2({
                         <option value="16:9">16:9 (横屏)</option>
                         <option value="9:16">9:16 (竖屏)</option>
                       </select>
+                    </div>
+                  </>
+                )}
+
+                {/* 创建角色节点参数面板 */}
+                {selectedNode.type === 'text-to-character' && (
+                  <>
+                    <div>
+                      <Label>项目ID</Label>
+                      <Input
+                        value={nodeParams[selectedNode.id]?.projectId || ''}
+                        onChange={(e) => updateNodeParam(selectedNode.id, 'projectId', e.target.value)}
+                        placeholder="留空使用工作流项目ID"
+                        disabled={readOnly}
+                      />
+                    </div>
+                    <div>
+                      <Label>角色名称</Label>
+                      <Input
+                        value={nodeParams[selectedNode.id]?.name || ''}
+                        onChange={(e) => updateNodeParam(selectedNode.id, 'name', e.target.value)}
+                        placeholder="输入角色名称（可选）"
+                        disabled={readOnly}
+                      />
+                    </div>
+                    <div>
+                      <Label>角色描述</Label>
+                      <Textarea
+                        value={nodeParams[selectedNode.id]?.description || ''}
+                        onChange={(e) => updateNodeParam(selectedNode.id, 'description', e.target.value)}
+                        placeholder="描述角色的外貌、性格、服饰等..."
+                        className="mt-1 min-h-[100px] resize-none"
+                        rows={4}
+                        disabled={readOnly}
+                      />
+                    </div>
+                    <div>
+                      <Label>性格特点</Label>
+                      <Input
+                        value={nodeParams[selectedNode.id]?.personality || ''}
+                        onChange={(e) => updateNodeParam(selectedNode.id, 'personality', e.target.value)}
+                        placeholder="描述角色性格（可选）"
+                        disabled={readOnly}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* 分镜分析节点参数面板 */}
+                {selectedNode.type === 'script-to-scenes' && (
+                  <>
+                    <div>
+                      <Label>项目ID</Label>
+                      <Input
+                        value={nodeParams[selectedNode.id]?.projectId || ''}
+                        onChange={(e) => updateNodeParam(selectedNode.id, 'projectId', e.target.value)}
+                        placeholder="留空使用工作流项目ID"
+                        disabled={readOnly}
+                      />
+                    </div>
+                    <div>
+                      <Label>分镜数量</Label>
+                      <Input
+                        type="number"
+                        value={nodeParams[selectedNode.id]?.numScenes || 5}
+                        onChange={(e) => updateNodeParam(selectedNode.id, 'numScenes', parseInt(e.target.value))}
+                        min={1}
+                        max={20}
+                        disabled={readOnly}
+                      />
                     </div>
                   </>
                 )}

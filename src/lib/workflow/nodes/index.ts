@@ -12,6 +12,7 @@ import { generateImage, generateVideoFromImage, invokeLLM, parseLLMJson, getUser
 import { invokeCozeDirect, getCozeDirectConfig } from '@/lib/ai/coze-direct'
 import { OpenAICompatibleClient } from '@/lib/ai/openai-compatible'
 import { memoryScenes, memoryCharacters, generateId } from '@/lib/memory-storage'
+import { getSupabaseClient } from '@/storage/database/supabase-client'
 import { uploadImageToStorage } from '@/lib/storage/image-storage'
 import { exec } from 'child_process'
 import { promisify } from 'util'
@@ -587,6 +588,7 @@ export class ScriptToScenesNode extends BaseNodeClass {
     }
 
     const numScenes = this.params.numScenes || 5
+    const projectId = this.params.projectId || context.projectId || 'temp'
 
     // 获取配置
     const aiConfig = await getServerAIConfig()
@@ -676,24 +678,103 @@ export class ScriptToScenesNode extends BaseNodeClass {
     // 解析 JSON
     const result = parseLLMJson<{ scenes: any[] }>(responseContent || '{}')
 
-    // 生成场景 ID 并保存到内存
-    const scenes = (result?.scenes || []).map((scene: any) => {
+    // 获取现有分镜数量（用于计算 scene_number）
+    let existingSceneCount = 0
+    try {
+      const client = getSupabaseClient()
+      const { count } = await client
+        .from('scenes')
+        .select('*', { count: 'exact', head: true })
+        .eq('project_id', projectId)
+      existingSceneCount = count || 0
+    } catch (err) {
+      console.warn('[ScriptToScenesNode] Failed to get existing scene count:', err)
+      // 回退到内存计数
+      existingSceneCount = memoryScenes.filter(s => s.projectId === projectId).length
+    }
+
+    // 生成场景 ID 并尝试保存到数据库
+    const scenes: any[] = []
+    let dbSavedCount = 0
+
+    for (let i = 0; i < (result?.scenes || []).length; i++) {
+      const scene: Record<string, any> = result.scenes[i]
       const sceneId = `scene_${generateId()}`
-      const savedScene = {
+      const sceneNumber = existingSceneCount + i + 1
+
+      // 构建元数据
+      const metadata: Record<string, any> = {}
+      if (scene.shotType) {
+        metadata.shotType = scene.shotType
+      }
+      if (scene.cameraMovement) {
+        metadata.cameraMovement = scene.cameraMovement
+      }
+      if (scene.characterNames && Array.isArray(scene.characterNames)) {
+        metadata.characterNames = scene.characterNames
+      }
+
+      const savedScene: any = {
         id: sceneId,
-        ...scene,
+        projectId,
+        sceneNumber,
+        title: scene.title || `分镜 ${sceneNumber}`,
+        description: scene.description,
+        dialogue: scene.dialogue || '',
+        action: scene.action || '',
+        emotion: scene.emotion || '',
+        metadata,
         createdAt: new Date().toISOString(),
       }
-      memoryScenes.push(savedScene)
-      return savedScene
-    })
 
-    console.log(`[ScriptToScenesNode] Generated ${scenes.length} scenes`)
+      // 尝试保存到数据库
+      let sceneDbId: string | null = null
+      try {
+        const client = getSupabaseClient()
+        const dbData = {
+          id: sceneId,
+          project_id: projectId,
+          scene_number: sceneNumber,
+          title: savedScene.title,
+          description: savedScene.description,
+          dialogue: savedScene.dialogue,
+          action: savedScene.action,
+          emotion: savedScene.emotion,
+          character_ids: scene.characterNames || [],
+          metadata: metadata,
+          status: 'pending',
+        }
+
+        const { data: dbScene, error } = await client
+          .from('scenes')
+          .insert(dbData)
+          .select()
+          .single()
+
+        if (!error && dbScene) {
+          console.log(`[ScriptToScenesNode] Scene saved to database: ${dbScene.id}`)
+          sceneDbId = dbScene.id
+          savedScene.id = dbScene.id // 使用数据库 ID
+          dbSavedCount++
+        } else {
+          console.warn('[ScriptToScenesNode] Failed to save scene to database:', error?.message)
+        }
+      } catch (err) {
+        console.warn('[ScriptToScenesNode] Database save failed for scene:', err)
+      }
+
+      // 保存到内存（作为 fallback 或补充）
+      memoryScenes.push(savedScene)
+      scenes.push(savedScene)
+    }
+
+    console.log(`[ScriptToScenesNode] Generated ${scenes.length} scenes, ${dbSavedCount} saved to database`)
 
     return {
       type: 'scenes',
       scenes: scenes,
-      count: scenes.length
+      count: scenes.length,
+      dbSaved: dbSavedCount > 0,
     }
   }
 }
@@ -1095,6 +1176,7 @@ export class TextToCharacterNode extends BaseNodeClass {
     const style = this.params.style || 'realistic'
     const name = this.params.name || ''
     const personality = this.params.personality || ''
+    const projectId = this.params.projectId || context.projectId || 'temp'
 
     // 如果描述为空，尝试从输入生成
     if (!description) {
@@ -1109,6 +1191,7 @@ export class TextToCharacterNode extends BaseNodeClass {
 
     // 生成角色图像
     let imageUrl: string | undefined
+    let frontViewKey: string | undefined
 
     try {
       const result = await generateImage(
@@ -1122,6 +1205,10 @@ export class TextToCharacterNode extends BaseNodeClass {
         const storageUrl = await uploadImageToStorage(imageUrl, `workflow/character/${Date.now()}.png`)
         if (storageUrl) {
           imageUrl = storageUrl
+          // 提取 key
+          if (storageUrl.includes('workflow/character/')) {
+            frontViewKey = storageUrl.split('workflow/character/')[1]
+          }
         }
       } catch (err) {
         console.warn('[TextToCharacterNode] Failed to upload to storage')
@@ -1134,6 +1221,7 @@ export class TextToCharacterNode extends BaseNodeClass {
     const characterId = `char_${generateId()}`
     const character: any = {
       id: characterId,
+      projectId,
       name: name || `角色_${Date.now()}`,
       description,
       personality,
@@ -1142,14 +1230,51 @@ export class TextToCharacterNode extends BaseNodeClass {
       createdAt: new Date().toISOString(),
     }
 
-    memoryCharacters.push(character)
+    // 尝试保存到数据库
+    let dbSaved = false
+    try {
+      const client = getSupabaseClient()
+      const dbData = {
+        id: characterId,
+        project_id: projectId,
+        name: character.name,
+        description: description,
+        appearance: description,
+        personality: personality,
+        front_view_key: frontViewKey || imageUrl,
+        tags: [],
+      }
 
-    console.log(`[TextToCharacterNode] Created character: ${character.name}`)
+      const { data: dbCharacter, error } = await client
+        .from('characters')
+        .insert(dbData)
+        .select()
+        .single()
+
+      if (!error && dbCharacter) {
+        console.log(`[TextToCharacterNode] Character saved to database: ${dbCharacter.id}`)
+        character.dbId = dbCharacter.id
+        character.id = dbCharacter.id // 使用数据库 ID
+        dbSaved = true
+      } else {
+        console.warn('[TextToCharacterNode] Failed to save to database:', error?.message)
+      }
+    } catch (err) {
+      console.warn('[TextToCharacterNode] Database save failed, using memory storage:', err)
+    }
+
+    // 保存到内存（作为 fallback 或补充）
+    if (!dbSaved) {
+      memoryCharacters.push(character)
+    }
+
+    console.log(`[TextToCharacterNode] Created character: ${character.name} (${dbSaved ? 'database' : 'memory'})`)
 
     return {
       type: 'character',
       character: character,
-      image: imageUrl ? { type: 'image', url: imageUrl } : undefined
+      image: imageUrl ? { type: 'image', url: imageUrl } : undefined,
+      dbSaved,
     }
   }
 }
