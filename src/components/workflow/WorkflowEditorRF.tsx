@@ -551,6 +551,7 @@ export default function WorkflowEditorRF({
         id: `edge-${Date.now()}`,
         animated: true,
         style: { stroke: '#6366f1', strokeWidth: 2 },
+        label: '',
       } as any, eds))
     },
     [setEdges]
@@ -776,6 +777,12 @@ export default function WorkflowEditorRF({
             fitView
             deleteKeyCode={readOnly ? null : 'Delete'}
             className="bg-muted/30"
+            defaultEdgeOptions={{
+              animated: true,
+              style: { stroke: '#6366f1', strokeWidth: 2 },
+              labelStyle: { display: 'none' },
+              label: '',
+            }}
           >
             <Background gap={20} color="hsl(var(--border))" />
             <Controls />
