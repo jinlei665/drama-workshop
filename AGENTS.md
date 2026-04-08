@@ -235,6 +235,10 @@
 ### 6.6 提示词优化 API
 - **路径**: `src/app/api/create/optimize-prompt/route.ts`
 - **功能**: 使用 LLM 智能优化用户的提示词
+- **API 调用优先级**:
+  1. 先检查用户配置的 API Key（从内存或数据库）
+  2. 如果没有用户配置，使用沙盒系统自带的 LLM 模型（系统自动生成的 API Key）
+  3. SDK 会自动处理，无需手动指定
 - **参数**:
   - `prompt`: 原始提示词
   - `type`: 类型（`image` 或 `video`）

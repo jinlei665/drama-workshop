@@ -1,12 +1,11 @@
 /**
  * 提示词优化 API
  * 使用 LLM 优化用户的提示词
+ * 优先级：用户配置的 API Key > 沙盒系统自带的 API Key
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { Config, HeaderUtils, LLMClient } from 'coze-coding-dev-sdk'
-import { getCozeConfigFromMemory } from '@/lib/memory-store'
-import { getSupabaseClient, isDatabaseConfigured } from '@/storage/database/supabase-client'
+import { invokeLLM } from '@/lib/ai'
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,68 +51,29 @@ export async function POST(request: NextRequest) {
 
 请直接输出优化后的提示词，不要添加任何前缀说明。`
 
-    // 获取用户配置（从内存或数据库）
-    let apiKey: string | undefined
-    let baseUrl: string | undefined
-
-    // 优先从内存获取（最新的设置）
-    const memoryConfig = getCozeConfigFromMemory()
-    if (memoryConfig?.apiKey) {
-      apiKey = memoryConfig.apiKey
-      baseUrl = memoryConfig.baseUrl
-    } else {
-      // 再尝试从数据库获取
-      if (isDatabaseConfigured()) {
-        try {
-          const db = getSupabaseClient()
-          const { data, error } = await db
-            .from('user_settings')
-            .select('coze_api_key, coze_base_url')
-            .maybeSingle()
-          
-          if (!error && data?.coze_api_key) {
-            apiKey = data.coze_api_key
-            baseUrl = data.coze_base_url || undefined
-          }
-        } catch (err) {
-          console.log('[Optimize Prompt] Database error:', err instanceof Error ? err.message : String(err))
-        }
-      }
-    }
-
-    // 创建 LLM 客户端
-    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers)
-    const config = new Config({
-      apiKey,
-      baseUrl: baseUrl || process.env.COZE_BASE_URL || 'https://api.coze.cn',
-      timeout: 120000,
-    })
-    const client = new LLMClient(config, customHeaders)
-
-    // 调用 LLM 进行优化
-    const messages = [
-      { role: 'system' as const, content: systemPrompt },
-      { role: 'user' as const, content: prompt }
-    ]
-
-    const response = await client.invoke(messages, {
-      temperature: 0.7,
-    })
+    // 调用 LLM 优化提示词
+    const result = await invokeLLM(
+      [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: prompt }
+      ],
+      { temperature: 0.7 }
+    )
 
     return NextResponse.json({
       success: true,
       data: {
         original: prompt,
-        optimized: response.content.trim()
+        optimized: result.trim()
       }
     })
   } catch (error: unknown) {
     console.error('提示词优化失败:', error)
     // 检查是否是认证错误
     const err = error as { code?: string; message?: string }
-    if (err.code === 'ErrNoPermission' || err.message?.includes('Unauthorized')) {
+    if (err.code === 'ErrNoPermission' || err.message?.includes('Unauthorized') || err.message?.includes('权限')) {
       return NextResponse.json(
-        { success: false, error: '请先在设置中配置 Coze API Key' },
+        { success: false, error: 'LLM 调用权限不足，请检查 API Key 配置' },
         { status: 401 }
       )
     }
