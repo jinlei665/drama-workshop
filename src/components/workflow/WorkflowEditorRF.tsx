@@ -158,46 +158,38 @@ function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>)
       </div>
 
       {/* 节点参数内容 */}
-      <div className="p-3 space-y-3">
-        {/* 输入端口 */}
-        {inputs.length > 0 && (
-          <div className="flex flex-col gap-1 mb-2">
-            {inputs.map((port: { id: string; name: string }) => (
-              <div key={`input-${port.id}`} className="flex items-center gap-2">
-                <Handle
-                  type="target"
-                  position={Position.Left}
-                  id={port.id}
-                  className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
-                />
-                <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded border-l-2 border-primary">
-                  {port.name}
-                </span>
-              </div>
-            ))}
+      <div className="p-3 space-y-2 relative">
+        {/* 输入端口 - 绝对定位在内容区域左侧 */}
+        {inputs.map((port: { id: string; name: string }, index: number) => (
+          <div key={`input-${port.id}`} className="absolute left-0 flex items-center" style={{ top: `${16 + index * 28}px`, transform: 'translateY(-50%)' }}>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={port.id}
+              className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
+            />
+            <span className="ml-2 text-xs text-muted-foreground bg-background px-2 py-1 rounded border whitespace-nowrap">
+              {port.name}
+            </span>
           </div>
-        )}
+        ))}
 
         {renderNodeFields(data)}
 
-        {/* 输出端口 */}
-        {outputs.length > 0 && (
-          <div className="flex flex-col gap-1 mt-2 pt-2 border-t">
-            {outputs.map((port: { id: string; name: string }) => (
-              <div key={`output-${port.id}`} className="flex items-center justify-end gap-2">
-                <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded border-r-2 border-primary">
-                  {port.name}
-                </span>
-                <Handle
-                  type="source"
-                  position={Position.Right}
-                  id={port.id}
-                  className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
-                />
-              </div>
-            ))}
+        {/* 输出端口 - 绝对定位在内容区域右侧 */}
+        {outputs.map((port: { id: string; name: string }, index: number) => (
+          <div key={`output-${port.id}`} className="absolute right-0 flex items-center" style={{ top: `${16 + index * 28}px`, transform: 'translateY(-50%)' }}>
+            <span className="mr-2 text-xs text-muted-foreground bg-background px-2 py-1 rounded border whitespace-nowrap">
+              {port.name}
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={port.id}
+              className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
+            />
           </div>
-        )}
+        ))}
       </div>
 
       {/* 执行状态 */}
