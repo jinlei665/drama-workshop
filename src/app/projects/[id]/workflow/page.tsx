@@ -7,10 +7,10 @@
 
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, Workflow, Plus, Sparkles, RefreshCw } from 'lucide-react'
-import WorkflowEditorV2 from '@/components/workflow/workflow-editor-v2'
+import WorkflowEditorRF from '@/components/workflow/WorkflowEditorRF'
 import type { BaseNode, Edge } from '@/lib/workflow/types'
 import { toast } from 'sonner'
 
@@ -30,12 +30,7 @@ export default function ProjectWorkflowPage({
   const [needsSystemWorkflow, setNeedsSystemWorkflow] = useState(false)
   const [generating, setGenerating] = useState(false)
 
-  useEffect(() => {
-    console.log('🎬 Workflow 页面组件已挂载，项目ID:', id)
-    loadSystemWorkflow()
-  }, [id])
-
-  const loadSystemWorkflow = async () => {
+  const loadSystemWorkflow = useCallback(async () => {
     try {
       console.log('📥 开始加载系统工作流，项目ID:', id)
       setLoading(true)
@@ -58,7 +53,9 @@ export default function ProjectWorkflowPage({
                             Array.isArray(data.data.workflow.nodes) &&
                             data.data.workflow.nodes.length > 0
 
+        // 检查是否是默认/系统工作流
         const isSystem = data.data?.isSystem === true ||
+                         data.data?.isDefault === true ||
                          (data.data?.workflow?.system === true)
 
         if (hasWorkflow && !isSystem) {
@@ -96,7 +93,12 @@ export default function ProjectWorkflowPage({
       setLoading(false)
       console.log('✨ 加载流程完成')
     }
-  }
+  }, [id])
+
+  useEffect(() => {
+    console.log('🎬 Workflow 页面组件已挂载，项目ID:', id)
+    loadSystemWorkflow()
+  }, [id, loadSystemWorkflow])
 
   const handleGenerateSystemWorkflow = async () => {
     console.log('🎯 开始生成系统工作流，项目ID:', id)
@@ -303,13 +305,13 @@ export default function ProjectWorkflowPage({
       {/* 工作流编辑器 */}
       <div className="h-[calc(100vh-73px)]">
         {mode === 'system' ? (
-          <WorkflowEditorV2
+          <WorkflowEditorRF
             initialNodes={systemWorkflow?.nodes || []}
             initialEdges={systemWorkflow?.edges || []}
             readOnly={isSystemReadonly}
           />
         ) : (
-          <WorkflowEditorV2
+          <WorkflowEditorRF
             readOnly={false}
           />
         )}

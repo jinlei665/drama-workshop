@@ -13,7 +13,7 @@ import {
   Position,
   Connection,
 } from '@xyflow/react'
-import type { NodeProps, Node } from '@xyflow/react'
+import type { NodeProps, Node, Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,8 +41,8 @@ import {
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 
-// 节点数据类型
-interface WorkflowNodeData extends Record<string, unknown> {
+// 自定义节点类型
+type WorkflowNodeType = Node<{
   type: string
   fieldValues?: Record<string, unknown>
   status?: string
@@ -50,7 +50,7 @@ interface WorkflowNodeData extends Record<string, unknown> {
   onFieldChange?: (key: string, value: unknown) => void
   onPreview?: (type: 'image' | 'video', url: string, title: string) => void
   onDownload?: (url: string, filename?: string) => void
-}
+}>
 
 // 节点颜色映射
 const nodeColors: Record<string, string> = {
@@ -60,6 +60,7 @@ const nodeColors: Record<string, string> = {
   'text-to-image': '#ec4899',
   'image-to-video': '#ea580c',
   'text-to-character': '#16a34a',
+  'character-triple-views': '#16a34a',
   'script-to-scenes': '#9333ea',
   'llm-process': '#ca8a04',
   'video-compose': '#ea580c',
@@ -72,6 +73,7 @@ const nodeNames: Record<string, string> = {
   'text-to-image': '生成图像',
   'image-to-video': '生成视频',
   'text-to-character': '创建角色',
+  'character-triple-views': '人物三视图',
   'script-to-scenes': '分镜分析',
   'llm-process': 'LLM 处理',
   'video-compose': '视频合成',
@@ -85,6 +87,7 @@ const nodeIcons: Record<string, React.ReactNode> = {
   'text-to-image': <Wand2 className="w-4 h-4" />,
   'image-to-video': <Video className="w-4 h-4" />,
   'text-to-character': <Users className="w-4 h-4" />,
+  'character-triple-views': <Users className="w-4 h-4" />,
   'script-to-scenes': <Layers className="w-4 h-4" />,
   'llm-process': <Brain className="w-4 h-4" />,
   'video-compose': <Clapperboard className="w-4 h-4" />,
@@ -100,8 +103,10 @@ const inputPorts: Record<string, { id: string; name: string }[]> = {
     { id: 'prompt', name: '提示词' },
     { id: 'firstFrame', name: '首帧图像' },
     { id: 'lastFrame', name: '尾帧图像' },
+    { id: 'referenceImage', name: '参考图像' },
   ],
   'text-to-character': [{ id: 'description', name: '角色描述' }],
+  'character-triple-views': [{ id: 'referenceImage', name: '参考图像' }],
   'script-to-scenes': [{ id: 'script', name: '脚本' }],
   'llm-process': [{ id: 'input', name: '输入' }],
   'video-compose': [{ id: 'videos', name: '视频列表' }],
@@ -118,13 +123,18 @@ const outputPorts: Record<string, { id: string; name: string }[]> = {
     { id: 'character', name: '角色' },
     { id: 'image', name: '图像' },
   ],
+  'character-triple-views': [
+    { id: 'frontView', name: '正面' },
+    { id: 'sideView', name: '侧面' },
+    { id: 'backView', name: '背面' },
+  ],
   'script-to-scenes': [{ id: 'scenes', name: '分镜' }],
   'llm-process': [{ id: 'output', name: '输出' }],
   'video-compose': [{ id: 'video', name: '视频' }],
 }
 
 // 自定义节点组件
-function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>) {
+function WorkflowNode({ data, selected, id }: NodeProps<WorkflowNodeType>) {
   const nodeType = String(data.type)
   const nodeColor = nodeColors[nodeType] || '#6b7280'
   const inputs = inputPorts[nodeType] || []
@@ -697,8 +707,12 @@ export default function WorkflowEditorRF({
     }
   }, [])
 
+  // 初始化节点状态
+  const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNodeType>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+
   // 转换初始节点
-  const convertNode = (node: any) => ({
+  const convertNode = useCallback((node: any) => ({
     id: node.id,
     type: 'workflowNode',
     position: node.position || { x: 0, y: 0 },
@@ -706,20 +720,22 @@ export default function WorkflowEditorRF({
       type: node.type,
       fieldValues: node.params || {},
     },
-  })
+  }), [])
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(
-    initialNodes.map(convertNode)
-  )
-  const [edges, setEdges, onEdgesChange] = useEdgesState(
-    initialEdges.map((e: any) => ({
-      id: e.id,
-      source: e.from,
-      target: e.to,
-      sourceHandle: e.fromPort,
-      targetHandle: e.toPort,
-    }))
-  )
+  // 监听 initialNodes 变化
+  useEffect(() => {
+    if (initialNodes && initialNodes.length > 0) {
+      console.log('[WorkflowEditorRF] 初始化节点:', initialNodes.length, '个')
+      setNodes(initialNodes.map(convertNode))
+      setEdges(initialEdges?.map((e: any) => ({
+        id: e.id,
+        source: e.from,
+        target: e.to,
+        sourceHandle: e.fromPort,
+        targetHandle: e.toPort,
+      })) || [])
+    }
+  }, [initialNodes, initialEdges, convertNode])
 
   // Refs for execution
   const nodesRef = useRef(nodes)

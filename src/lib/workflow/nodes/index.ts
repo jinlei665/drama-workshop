@@ -16,6 +16,7 @@ import { getSupabaseClient } from '@/storage/database/supabase-client'
 import { uploadImageToStorage, uploadVideoToStorage } from '@/lib/storage/image-storage'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+const execAsync = promisify(exec)
 import * as fs from 'fs'
 import * as path from 'path'
 
