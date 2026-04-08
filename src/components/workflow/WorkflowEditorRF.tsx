@@ -791,7 +791,7 @@ export default function WorkflowEditorRF({
                         ...n.data, 
                         status: 'completed', 
                         progress: 100,
-                        result: resultData,
+                        result: actualData,  // 使用扁平化的 result
                         fieldValues: {
                           ...(n.data.fieldValues || {}),
                           _resultType: actualData.type,
@@ -824,6 +824,34 @@ export default function WorkflowEditorRF({
             console.log('[WorkflowEditorRF] Workflow completed:', data.data)
             toast.success('工作流执行完成')
             setIsRunning(false)
+            
+            // 使用 execution:completed 中的 results 更新节点结果（兜底逻辑）
+            if (data.data?.results && Array.isArray(data.data.results)) {
+              data.data.results.forEach((resultItem: any) => {
+                const nodeResult = resultItem.result || resultItem
+                const actualData = nodeResult.data || nodeResult.result || nodeResult
+                
+                setNodes((nds) => nds.map((n) =>
+                  n.id === resultItem.nodeId
+                    ? { 
+                        ...n, 
+                        data: { 
+                          ...n.data, 
+                          status: nodeResult.status === 'error' || nodeResult.status === 'failed' ? 'failed' : 'completed',
+                          result: actualData,
+                          fieldValues: {
+                            ...(n.data.fieldValues || {}),
+                            _resultType: actualData.type,
+                            _resultUrl: actualData.url,
+                            _resultData: actualData,
+                          }
+                        } 
+                      }
+                    : n
+                ))
+              })
+            }
+            
             setTimeout(() => eventSource.close(), 1000)
           } else if (data.type === 'execution:failed') {
             console.error('[WorkflowEditorRF] Workflow failed:', data.data.error)

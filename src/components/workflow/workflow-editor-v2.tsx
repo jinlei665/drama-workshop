@@ -609,17 +609,21 @@ export default function WorkflowEditorV2({
                 )
               )
             } else if (data.type === 'node:completed') {
+              // 提取实际的节点结果数据，确保 result 是扁平化的
+              const rawResult = data.data.result || {}
+              const actualResult = rawResult.data || rawResult.result || rawResult
+              
               setNodes(prev =>
                 prev.map(node =>
                   node.id === data.data.nodeId
-                    ? { ...node, status: 'completed', progress: 100, result: data.data.result }
+                    ? { ...node, status: 'completed', progress: 100, result: actualResult }
                     : node
                 )
               )
 
               // 如果是图像生成节点，显示生成的图像
-              if (data.data.result?.type === 'image' && data.data.result?.url) {
-                console.log('🖼️ 图像生成成功:', data.data.result.url)
+              if (actualResult?.type === 'image' && actualResult?.url) {
+                console.log('🖼️ 图像生成成功:', actualResult.url)
                 toast.success('图像生成成功', {
                   description: '查看右侧节点结果',
                   duration: 3000,
@@ -727,8 +731,10 @@ export default function WorkflowEditorV2({
         console.log('📊 执行 API 返回:', data)
 
         // 如果 SSE 事件没有正确设置节点结果，使用 API 响应的结果作为兜底
-        if (data.results && Array.isArray(data.results)) {
-          data.results.forEach((resultItem: any) => {
+        // 后端返回结构: { success, data: { results, ... } }
+        const results = data?.results || data?.data?.results
+        if (results && Array.isArray(results)) {
+          results.forEach((resultItem: any) => {
             // 提取实际的节点结果数据
             const nodeResult = resultItem.result || resultItem
             const actualResult = nodeResult.data || nodeResult.result || nodeResult
