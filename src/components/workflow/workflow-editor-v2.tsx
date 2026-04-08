@@ -286,8 +286,9 @@ export default function WorkflowEditorV2({
         { id: 'prompt', name: '提示词', type: 'text', required: true, connected: false },
       ],
       'image-to-video': [
-        { id: 'image', name: '首帧图像', type: 'image', required: true, connected: false },
-        { id: 'lastFrameImage', name: '尾帧图像', type: 'image', required: false, connected: false },
+        { id: 'prompt', name: '提示词', type: 'text', required: false, connected: false },
+        { id: 'firstFrame', name: '首帧图像', type: 'image', required: true, connected: false },
+        { id: 'lastFrame', name: '尾帧图像', type: 'image', required: false, connected: false },
       ],
       'text-to-audio': [
         { id: 'text', name: '文本', type: 'text', required: true, connected: false },

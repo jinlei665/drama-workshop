@@ -388,10 +388,11 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           name: '图生视频',
           position: { x: 700, y: 100 },
           inputs: [
-            { id: 'ref_in', name: 'referenceImage', type: 'image' as const, required: false, connected: false },
-            { id: 'motion_in', name: 'motionPrompt', type: 'text' as const, required: false, connected: false },
+            { id: 'firstFrame', name: '首帧图像', type: 'image' as const, required: true, connected: false },
+            { id: 'prompt', name: '提示词', type: 'text' as const, required: false, connected: false },
+            { id: 'lastFrame', name: '尾帧图像', type: 'image' as const, required: false, connected: false },
           ],
-          outputs: [{ id: 'video_out', name: 'video', type: 'video' as const, required: false, connected: false }],
+          outputs: [{ id: 'video', name: '视频', type: 'video' as const, required: false, connected: false }],
           params: {
             motionPrompt: '湖面微微泛起涟漪，雾气缓缓流动，阳光在水面上闪烁',
             duration: 5,
@@ -414,7 +415,7 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
           from: 'tti1',
           fromPort: 'image',
           to: 'itv1',
-          toPort: 'referenceImage',
+          toPort: 'firstFrame',
         },
       ],
       isTemplate: true,

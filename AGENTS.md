@@ -178,6 +178,17 @@
 - **路径**: `src/app/api/workflow/`
 - **功能**: 定义和执行自动化工作流
 
+### 7.1 工作流节点端口配置
+- **视频节点 (image-to-video)**:
+  - 输入端口: `prompt`(提示词), `firstFrame`(首帧图像), `lastFrame`(尾帧图像)
+  - 输出端口: `video`(视频)
+  - 后端执行逻辑支持多种端口 ID 映射（`image`/`firstFrame` → `firstFrame`，`lastFrameImage`/`lastFrame` → `lastFrame`）
+
+### 7.2 端口 ID 规范
+- 前端 `getNodeInputs` 和后端节点 `process` 方法中的端口 ID 必须保持一致
+- 统一使用规范的命名：`firstFrame`, `lastFrame`, `prompt` 等
+- 执行器根据 `edge.toPort` 匹配输入端口并设置值
+
 ## 数据库架构
 
 ### Supabase 连接配置
