@@ -123,7 +123,6 @@ function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>)
   const nodeColor = nodeColors[nodeType] || '#6b7280'
   const inputs = inputPorts[nodeType] || []
   const outputs = outputPorts[nodeType] || []
-  const fieldHeight = Math.max(inputs.length, outputs.length)
 
   return (
     <div
@@ -132,21 +131,6 @@ function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>)
       }`}
       style={{ borderTopWidth: 4, borderTopColor: nodeColor }}
     >
-      {/* 输入端口 */}
-      {inputs.map((port: { id: string; name: string }, index: number) => (
-        <div key={`input-${port.id}`} className="absolute left-0 flex items-center" style={{ top: `${52 + index * 36}px`, transform: 'translateY(-50%)' }}>
-          <Handle
-            type="target"
-            position={Position.Left}
-            id={port.id}
-            className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
-          />
-          <span className="ml-2 text-xs text-muted-foreground bg-background px-1.5 py-0.5 rounded border whitespace-nowrap">
-            {port.name}
-          </span>
-        </div>
-      ))}
-
       {/* 节点头部 */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
         <div className="flex items-center gap-2">
@@ -174,8 +158,46 @@ function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>)
       </div>
 
       {/* 节点参数内容 */}
-      <div className="p-3 space-y-2">
+      <div className="p-3 space-y-3">
+        {/* 输入端口 */}
+        {inputs.length > 0 && (
+          <div className="flex flex-col gap-1 mb-2">
+            {inputs.map((port: { id: string; name: string }) => (
+              <div key={`input-${port.id}`} className="flex items-center gap-2">
+                <Handle
+                  type="target"
+                  position={Position.Left}
+                  id={port.id}
+                  className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
+                />
+                <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded border-l-2 border-primary">
+                  {port.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {renderNodeFields(data)}
+
+        {/* 输出端口 */}
+        {outputs.length > 0 && (
+          <div className="flex flex-col gap-1 mt-2 pt-2 border-t">
+            {outputs.map((port: { id: string; name: string }) => (
+              <div key={`output-${port.id}`} className="flex items-center justify-end gap-2">
+                <span className="text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded border-r-2 border-primary">
+                  {port.name}
+                </span>
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={port.id}
+                  className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* 执行状态 */}
@@ -191,21 +213,6 @@ function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>)
           {data.status === 'pending' && <><span className="w-2 h-2 rounded-full bg-gray-400"></span> 等待</>}
         </div>
       )}
-
-      {/* 输出端口 */}
-      {outputs.map((port: { id: string; name: string }, index: number) => (
-        <div key={`output-${port.id}`} className="absolute right-0 flex items-center" style={{ top: `${52 + index * 36}px`, transform: 'translateY(-50%)' }}>
-          <span className="mr-2 text-xs text-muted-foreground bg-background px-1.5 py-0.5 rounded border whitespace-nowrap">
-            {port.name}
-          </span>
-          <Handle
-            type="source"
-            position={Position.Right}
-            id={port.id}
-            className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
-          />
-        </div>
-      ))}
     </div>
   )
 }
