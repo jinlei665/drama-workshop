@@ -11,9 +11,9 @@ import {
   addEdge,
   Handle,
   Position,
-  NodeProps,
   Connection,
 } from '@xyflow/react'
+import type { NodeProps, Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,6 +36,15 @@ import {
   Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
+
+// 节点数据类型
+interface WorkflowNodeData extends Record<string, unknown> {
+  type: string
+  fieldValues?: Record<string, unknown>
+  status?: string
+  onDelete?: (id: string) => void
+  onFieldChange?: (key: string, value: unknown) => void
+}
 
 // 节点颜色映射
 const nodeColors: Record<string, string> = {
@@ -109,10 +118,11 @@ const outputPorts: Record<string, { id: string; name: string }[]> = {
 }
 
 // 自定义节点组件
-function WorkflowNode({ data, selected, id }: NodeProps) {
-  const nodeColor = nodeColors[data.type] || '#6b7280'
-  const inputs = inputPorts[data.type] || []
-  const outputs = outputPorts[data.type] || []
+function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>) {
+  const nodeType = String(data.type)
+  const nodeColor = nodeColors[nodeType] || '#6b7280'
+  const inputs = inputPorts[nodeType] || []
+  const outputs = outputPorts[nodeType] || []
   const fieldHeight = Math.max(inputs.length, outputs.length)
 
   return (
@@ -123,7 +133,7 @@ function WorkflowNode({ data, selected, id }: NodeProps) {
       style={{ borderTopWidth: 4, borderTopColor: nodeColor }}
     >
       {/* 输入端口 */}
-      {inputs.map((port, index) => (
+      {inputs.map((port: { id: string; name: string }, index: number) => (
         <Handle
           key={`input-${port.id}`}
           type="target"
@@ -141,18 +151,18 @@ function WorkflowNode({ data, selected, id }: NodeProps) {
             className="w-6 h-6 rounded flex items-center justify-center"
             style={{ backgroundColor: nodeColor, color: 'white' }}
           >
-            {nodeIcons[data.type]}
+            <>{nodeIcons[nodeType] ?? <FileText className="w-4 h-4" />}</>
           </div>
-          <span className="font-medium text-sm">{nodeNames[data.type] || data.type}</span>
+          <span className="font-medium text-sm">{nodeNames[nodeType] || nodeType}</span>
         </div>
-        {data.onDelete && (
+        {typeof data.onDelete === 'function' && (
           <Button
             variant="ghost"
             size="icon"
             className="w-6 h-6"
             onClick={(e) => {
               e.stopPropagation()
-              data.onDelete(id)
+              ;(data.onDelete as (id: string) => void)(id)
             }}
           >
             <Trash2 className="w-3 h-3 text-destructive" />
@@ -166,7 +176,7 @@ function WorkflowNode({ data, selected, id }: NodeProps) {
       </div>
 
       {/* 执行状态 */}
-      {data.status && (
+      {data.status && typeof data.status === 'string' && (
         <div className={`px-3 py-2 border-t text-xs flex items-center gap-1 ${
           data.status === 'completed' ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400' :
           data.status === 'failed' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' :
@@ -180,7 +190,7 @@ function WorkflowNode({ data, selected, id }: NodeProps) {
       )}
 
       {/* 输出端口 */}
-      {outputs.map((port, index) => (
+      {outputs.map((port: { id: string; name: string }, index: number) => (
         <Handle
           key={`output-${port.id}`}
           type="source"
@@ -196,7 +206,7 @@ function WorkflowNode({ data, selected, id }: NodeProps) {
 
 // 根据节点类型渲染参数字段
 function renderNodeFields(data: any) {
-  const type = data.type
+  const type = data.type as string
   const values = data.fieldValues || {}
 
   const updateField = (key: string, value: any) => {
@@ -535,7 +545,7 @@ export default function WorkflowEditorRF({
         id: `edge-${Date.now()}`,
         animated: true,
         style: { stroke: '#6366f1', strokeWidth: 2 },
-      }, eds))
+      } as any, eds))
     },
     [setEdges]
   )
@@ -764,7 +774,7 @@ export default function WorkflowEditorRF({
             <Background gap={20} color="hsl(var(--border))" />
             <Controls />
             <MiniMap
-              nodeColor={(node) => nodeColors[node.data?.type] || '#6b7280'}
+              nodeColor={(node) => nodeColors[(node.data as any)?.type] || '#6b7280'}
               maskColor="rgba(0, 0, 0, 0.1)"
             />
           </ReactFlow>

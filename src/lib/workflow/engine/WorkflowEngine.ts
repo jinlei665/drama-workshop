@@ -210,7 +210,25 @@ export class WorkflowEngine {
             // 设置节点的输入参数
             const inputPort = nodeInstance.inputs.find((inp: any) => inp.id === edge.toPort)
             if (inputPort) {
-              inputPort.value = upstreamResult.data
+              // 正确处理上游输出的数据格式
+              let data = upstreamResult.data
+              
+              // 如果是数组，取第一个元素
+              if (Array.isArray(data)) {
+                data = data[0]
+              }
+              
+              // 保持原始对象格式，让节点内部处理
+              // 但同时设置 extractedUrl 供需要 URL 的节点使用
+              if (typeof data === 'object' && data !== null) {
+                // 提取 URL 或 content 字段
+                const extractedUrl = data.url || data.content || data.image || data.video || null
+                inputPort.value = data
+                inputPort.extractedUrl = extractedUrl
+              } else {
+                inputPort.value = data
+                inputPort.extractedUrl = data
+              }
             }
           }
         })

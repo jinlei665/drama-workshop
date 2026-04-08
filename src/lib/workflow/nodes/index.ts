@@ -23,12 +23,19 @@ const execAsync = promisify(exec)
 
 // ============ 文本输入节点 ============
 
+const TEXT_INPUT_PORTS = {
+  inputs: [],
+  outputs: [{ id: 'text', name: '文本' }]
+}
+
 export class TextInputNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'text-input',
       name: '文本输入',
       description: '输入文本内容',
+      inputs: TEXT_INPUT_PORTS.inputs,
+      outputs: TEXT_INPUT_PORTS.outputs,
       ...config
     })
   }
@@ -64,12 +71,19 @@ export class TextInputNode extends BaseNodeClass {
 
 // ============ 图片输入节点 ============
 
+const IMAGE_INPUT_PORTS = {
+  inputs: [],
+  outputs: [{ id: 'image', name: '图像' }]
+}
+
 export class ImageInputNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'image-input',
       name: '图片输入',
       description: '上传或选择图片',
+      inputs: IMAGE_INPUT_PORTS.inputs,
+      outputs: IMAGE_INPUT_PORTS.outputs,
       ...config
     })
   }
@@ -108,12 +122,19 @@ export class ImageInputNode extends BaseNodeClass {
 
 // ============ 文生图节点 ============
 
+const TEXT_TO_IMAGE_PORTS = {
+  inputs: [{ id: 'prompt', name: '提示词' }],
+  outputs: [{ id: 'image', name: '图像' }]
+}
+
 export class TextToImageNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'text-to-image',
       name: '文生图',
       description: '根据文本生成图片',
+      inputs: TEXT_TO_IMAGE_PORTS.inputs,
+      outputs: TEXT_TO_IMAGE_PORTS.outputs,
       ...config
     })
   }
@@ -165,8 +186,13 @@ export class TextToImageNode extends BaseNodeClass {
         console.log(`[TextToImageNode] Input port '${input.id}' has value:`, typeof inputValue === 'object' ? JSON.stringify(inputValue) : inputValue)
 
         if (typeof inputValue === 'object') {
-          this.params.prompt = inputValue.content || inputValue.text || inputValue.prompt || JSON.stringify(inputValue)
-          if (inputValue.url) {
+          // 优先使用 extractedUrl
+          if (input.extractedUrl) {
+            // 如果有 extractedUrl，可能是参考图片
+            this.params.referenceImage = input.extractedUrl
+          }
+          this.params.prompt = inputValue.content || inputValue.text || inputValue.prompt || this.params.prompt || ''
+          if (inputValue.url && !this.params.referenceImage) {
             this.params.referenceImage = inputValue.url
           }
         } else if (typeof inputValue === 'string') {
@@ -233,12 +259,23 @@ export class TextToImageNode extends BaseNodeClass {
 
 // ============ 图生视频节点 ============
 
+const IMAGE_TO_VIDEO_PORTS = {
+  inputs: [
+    { id: 'prompt', name: '提示词' },
+    { id: 'firstFrame', name: '首帧图像' },
+    { id: 'lastFrame', name: '尾帧图像' }
+  ],
+  outputs: [{ id: 'video', name: '视频' }]
+}
+
 export class ImageToVideoNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'image-to-video',
       name: '图生视频',
       description: '根据图片生成视频',
+      inputs: IMAGE_TO_VIDEO_PORTS.inputs,
+      outputs: IMAGE_TO_VIDEO_PORTS.outputs,
       ...config
     })
   }
@@ -306,12 +343,16 @@ export class ImageToVideoNode extends BaseNodeClass {
         const inputValue = input.value
         console.log(`[ImageToVideoNode] Input port '${input.id}' has value:`, typeof inputValue === 'object' ? JSON.stringify(inputValue) : inputValue)
 
-        let extractedValue: string = ''
+        // 优先使用 extractedUrl（已从对象中提取的 URL）
+        let extractedValue = input.extractedUrl
 
-        if (typeof inputValue === 'object' && inputValue !== null) {
-          extractedValue = inputValue.url || inputValue.content || inputValue.text || JSON.stringify(inputValue)
-        } else if (typeof inputValue === 'string') {
-          extractedValue = inputValue
+        // 如果没有 extractedUrl，则从对象中提取
+        if (!extractedValue) {
+          if (typeof inputValue === 'object' && inputValue !== null) {
+            extractedValue = inputValue.url || inputValue.content || inputValue.text || JSON.stringify(inputValue)
+          } else if (typeof inputValue === 'string') {
+            extractedValue = inputValue
+          }
         }
 
         // 根据端口 ID 设置对应的参数
@@ -361,12 +402,19 @@ export class ImageToVideoNode extends BaseNodeClass {
 
 // ============ 文字转语音节点 ============
 
+const TEXT_TO_AUDIO_PORTS = {
+  inputs: [{ id: 'text', name: '文本' }],
+  outputs: [{ id: 'audio', name: '音频' }]
+}
+
 export class TextToAudioNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'text-to-audio',
       name: '文字转语音',
       description: '将文本转换为语音',
+      inputs: TEXT_TO_AUDIO_PORTS.inputs,
+      outputs: TEXT_TO_AUDIO_PORTS.outputs,
       ...config
     })
   }
@@ -536,12 +584,19 @@ export class TextToAudioNode extends BaseNodeClass {
 
 // ============ 脚本分析生成分镜节点 ============
 
+const SCRIPT_TO_SCENES_PORTS = {
+  inputs: [{ id: 'script', name: '脚本' }],
+  outputs: [{ id: 'scenes', name: '分镜' }]
+}
+
 export class ScriptToScenesNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'script-to-scenes',
       name: '脚本分析',
       description: '分析脚本生成分镜',
+      inputs: SCRIPT_TO_SCENES_PORTS.inputs,
+      outputs: SCRIPT_TO_SCENES_PORTS.outputs,
       ...config
     })
   }
@@ -781,12 +836,19 @@ export class ScriptToScenesNode extends BaseNodeClass {
 
 // ============ LLM 处理节点 ============
 
+const LLM_PROCESS_PORTS = {
+  inputs: [{ id: 'input', name: '输入' }],
+  outputs: [{ id: 'output', name: '输出' }]
+}
+
 export class LLMProcessNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'llm-process',
       name: 'LLM 处理',
       description: '使用大语言模型处理输入',
+      inputs: LLM_PROCESS_PORTS.inputs,
+      outputs: LLM_PROCESS_PORTS.outputs,
       ...config
     })
   }
@@ -924,12 +986,19 @@ export class LLMProcessNode extends BaseNodeClass {
 
 // ============ 视频合成节点 ============
 
+const VIDEO_COMPOSE_PORTS = {
+  inputs: [{ id: 'videos', name: '视频列表' }],
+  outputs: [{ id: 'video', name: '视频' }]
+}
+
 export class VideoComposeNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'video-compose',
       name: '视频合成',
       description: '合并多个视频片段',
+      inputs: VIDEO_COMPOSE_PORTS.inputs,
+      outputs: VIDEO_COMPOSE_PORTS.outputs,
       ...config
     })
   }
@@ -1109,12 +1178,22 @@ export class VideoComposeNode extends BaseNodeClass {
 
 // ============ 角色生成节点 ============
 
+const TEXT_TO_CHARACTER_PORTS = {
+  inputs: [{ id: 'description', name: '角色描述' }],
+  outputs: [
+    { id: 'character', name: '角色' },
+    { id: 'image', name: '图像' }
+  ]
+}
+
 export class TextToCharacterNode extends BaseNodeClass {
   constructor(config: any) {
     super({
       type: 'text-to-character',
       name: '角色生成',
       description: '根据描述创建角色',
+      inputs: TEXT_TO_CHARACTER_PORTS.inputs,
+      outputs: TEXT_TO_CHARACTER_PORTS.outputs,
       ...config
     })
   }
