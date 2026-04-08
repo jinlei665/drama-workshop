@@ -44,9 +44,10 @@ export default function WorkflowEditorV2({
 }: WorkflowEditorV2Props) {
   console.log('🎬 WorkflowEditorV2 初始化:', { initialNodes, initialEdges, readOnly })
 
-  // 状态管理
-  const [nodes, setNodes] = useState<BaseNode[]>(initialNodes)
-  const [edges, setEdges] = useState<Edge[]>(initialEdges)
+  // 状态管理 - 使用 ref 来跟踪是否已初始化
+  const initializedRef = useRef(false)
+  const [nodes, setNodes] = useState<BaseNode[]>([])
+  const [edges, setEdges] = useState<Edge[]>([])
   const [selectedNode, setSelectedNode] = useState<BaseNode | null>(null)
   const [draggedNode, setDraggedNode] = useState<BaseNode | null>(null)
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 }) // 节点拖动时的原始位置
@@ -71,31 +72,28 @@ export default function WorkflowEditorV2({
     nodeParamsRef.current = nodeParams
   }, [nodeParams])
 
-  // 初始化节点参数
+  // 监听 initialNodes 和 initialEdges 变化，更新状态
   useEffect(() => {
-    // 只有当 initialNodes 真正变化时才更新
-    const newParams: Record<string, any> = {}
-    let hasChanged = false
-
-    // 检查是否有新的节点或参数变化
-    initialNodes.forEach(node => {
-      if (node.params) {
-        // 深度比较，避免不必要的更新
-        const existingParams = nodeParams[node.id]
-        const paramsString = JSON.stringify(node.params)
-        const existingParamsString = existingParams ? JSON.stringify(existingParams) : null
-
-        if (paramsString !== existingParamsString) {
+    // 只有当有数据且未初始化过时才设置
+    if (initialNodes && initialNodes.length > 0) {
+      console.log('🔄 更新工作流节点:', initialNodes.length, '个节点')
+      setNodes(initialNodes)
+      setEdges(initialEdges || [])
+      
+      // 初始化节点参数
+      const newParams: Record<string, any> = {}
+      initialNodes.forEach(node => {
+        if (node.params) {
           newParams[node.id] = { ...node.params }
-          hasChanged = true
         }
+      })
+      if (Object.keys(newParams).length > 0) {
+        setNodeParams(newParams)
       }
-    })
-
-    if (hasChanged) {
-      setNodeParams(prev => ({ ...prev, ...newParams }))
+      
+      initializedRef.current = true
     }
-  }, [JSON.stringify(initialNodes)]) // 使用字符串化后的值作为依赖
+  }, [JSON.stringify(initialNodes), JSON.stringify(initialEdges)])
 
   // 计算端口位置
   const getPortPosition = useCallback((node: BaseNode, portId: string, type: 'input' | 'output') => {
