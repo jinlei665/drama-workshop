@@ -969,7 +969,12 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
               )}
             </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 flex-col sm:flex-row">
+              {imageGenerateFormData.characterIds.length === 0 && (
+                <p className="text-xs text-muted-foreground mr-auto py-2">
+                  提示：环境描写分镜可以没有人物
+                </p>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setImageGenerateDialogOpen(false)}
@@ -978,7 +983,7 @@ export function ScenesPanel({ projectId, scenes, characters, onUpdate, onScriptS
               </Button>
               <Button
                 onClick={handleConfirmGenerateImage}
-                disabled={imageGenerateFormData.characterIds.length === 0 || !imageGenerateFormData.description.trim()}
+                disabled={!imageGenerateFormData.description.trim()}
                 className="amber-gradient text-white border-0"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
