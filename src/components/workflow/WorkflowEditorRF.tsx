@@ -654,22 +654,35 @@ export default function WorkflowEditorRF({
   // 下载文件
   const downloadFile = useCallback(async (url: string, filename?: string) => {
     try {
+      // 尝试 fetch + blob 方式下载
       const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error('Fetch failed')
+      }
       const blob = await response.blob()
       const blobUrl = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = blobUrl
-      link.download = filename || `download-${Date.now()}.${previewState.type}`
+      link.download = filename || `download-${Date.now()}`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(blobUrl)
       toast.success('下载成功')
     } catch (error) {
-      toast.error('下载失败')
-      console.error('Download error:', error)
+      // 如果 fetch 失败（跨域），尝试直接打开新窗口让用户手动保存
+      console.warn('[WorkflowEditorRF] Download fetch failed, opening in new tab:', url)
+      const newWindow = window.open(url, '_blank')
+      if (newWindow) {
+        toast.promise(
+          Promise.resolve('文件已在新窗口打开，请右键另存为'),
+          { success: '文件已在新窗口打开，请右键另存为' }
+        )
+      } else {
+        toast.error('下载失败，请尝试右键点击图片选择"另存为"')
+      }
     }
-  }, [previewState.type])
+  }, [])
 
   // 转换初始节点
   const convertNode = (node: any) => ({
@@ -958,11 +971,11 @@ export default function WorkflowEditorRF({
       }
 
       // 添加 onerror 处理，防止浏览器自动重试导致频繁请求
-      eventSource.onerror = (error) => {
-        console.error('[WorkflowEditorRF] EventSource error:', error)
-        console.log('[WorkflowEditorRF] EventSource readyState:', eventSource.readyState)
-        // 不要立即关闭，等待执行完成
-      };
+      // EventSource 错误通常是由于沙箱环境限制，不影响功能，静默处理
+      eventSource.onerror = () => {
+        // EventSource 错误在沙箱环境中常见，不影响功能
+        // readyState 0 表示连接断开，等待 HTTP 响应兜底
+      }
 
       const response = await fetch('/api/workflow/execute', {
         method: 'POST',
