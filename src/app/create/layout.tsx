@@ -8,7 +8,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
-import { Wand2, Image, Video, Sparkles } from 'lucide-react'
+import { Wand2, Image, Video, Sparkles, ArrowLeft } from 'lucide-react'
 
 const navItems = [
   {
@@ -67,6 +67,12 @@ export default function CreateLayout({
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center gap-3">
+            <Link 
+              href="/" 
+              className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-accent transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
             <div className="w-10 h-10 rounded-xl bg-pink-500/10 flex items-center justify-center">
               <Wand2 className="w-5 h-5 text-pink-500" />
             </div>
