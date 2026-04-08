@@ -292,6 +292,25 @@ function renderNodeFields(data: any) {
               <option value="oil_painting">油画风格</option>
             </select>
           </div>
+          
+          {/* 结果展示区域 */}
+          {data.status === 'completed' && data.fieldValues?._resultUrl && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">生成结果</Label>
+              <div className="border rounded-lg overflow-hidden">
+                <img 
+                  src={data.fieldValues._resultUrl} 
+                  alt="生成结果"
+                  className="w-full h-32 object-cover"
+                />
+              </div>
+            </div>
+          )}
+          {data.status === 'failed' && data.fieldValues?.error && (
+            <div className="text-xs text-red-500 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+              {data.fieldValues.error}
+            </div>
+          )}
         </div>
       )
 
@@ -331,6 +350,25 @@ function renderNodeFields(data: any) {
               </select>
             </div>
           </div>
+          
+          {/* 结果展示区域 */}
+          {data.status === 'completed' && data.fieldValues?._resultUrl && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">生成结果</Label>
+              <div className="border rounded-lg overflow-hidden">
+                <video 
+                  src={data.fieldValues._resultUrl} 
+                  controls
+                  className="w-full h-32 object-cover"
+                />
+              </div>
+            </div>
+          )}
+          {data.status === 'failed' && data.fieldValues?.error && (
+            <div className="text-xs text-red-500 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+              {data.fieldValues.error}
+            </div>
+          )}
         </div>
       )
 
@@ -364,6 +402,30 @@ function renderNodeFields(data: any) {
               className="text-sm"
             />
           </div>
+          
+          {/* 结果展示区域 */}
+          {data.status === 'completed' && data.fieldValues?._resultUrl && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">生成结果</Label>
+              <div className="border rounded-lg overflow-hidden">
+                <img 
+                  src={data.fieldValues._resultUrl} 
+                  alt="角色形象"
+                  className="w-full h-32 object-cover"
+                />
+              </div>
+            </div>
+          )}
+          {data.status === 'completed' && data.fieldValues?._resultData?.character && (
+            <div className="text-xs p-2 bg-green-50 dark:bg-green-900/20 rounded text-green-600 dark:text-green-400">
+              角色已创建: {data.fieldValues._resultData.character.name}
+            </div>
+          )}
+          {data.status === 'failed' && data.fieldValues?.error && (
+            <div className="text-xs text-red-500 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+              {data.fieldValues.error}
+            </div>
+          )}
         </div>
       )
 
@@ -393,6 +455,31 @@ function renderNodeFields(data: any) {
               <option value="documentary">纪录片风格</option>
             </select>
           </div>
+          
+          {/* 结果展示区域 */}
+          {data.status === 'completed' && data.fieldValues?._resultContent && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">分镜列表</Label>
+              <div className="border rounded-lg p-2 bg-muted/30 max-h-32 overflow-y-auto">
+                {Array.isArray(data.fieldValues._resultContent) ? (
+                  <div className="text-xs space-y-1">
+                    {data.fieldValues._resultContent.map((scene: any, idx: number) => (
+                      <div key={idx} className="p-1 border-b last:border-b-0">
+                        <span className="font-medium">分镜 {idx + 1}:</span> {scene.title || scene.description || '未命名'}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs whitespace-pre-wrap">{String(data.fieldValues._resultContent)}</div>
+                )}
+              </div>
+            </div>
+          )}
+          {data.status === 'failed' && data.fieldValues?.error && (
+            <div className="text-xs text-red-500 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+              {data.fieldValues.error}
+            </div>
+          )}
         </div>
       )
 
@@ -417,6 +504,26 @@ function renderNodeFields(data: any) {
               className="text-sm min-h-[60px] resize-none"
             />
           </div>
+          
+          {/* 结果展示区域 */}
+          {data.status === 'completed' && data.fieldValues?._resultContent && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">AI 输出</Label>
+              <div className="border rounded-lg p-2 bg-muted/30 max-h-32 overflow-y-auto">
+                <div className="text-xs whitespace-pre-wrap">
+                  {typeof data.fieldValues._resultContent === 'object' 
+                    ? JSON.stringify(data.fieldValues._resultContent, null, 2)
+                    : String(data.fieldValues._resultContent)
+                  }
+                </div>
+              </div>
+            </div>
+          )}
+          {data.status === 'failed' && data.fieldValues?.error && (
+            <div className="text-xs text-red-500 p-2 bg-red-50 dark:bg-red-900/20 rounded">
+              {data.fieldValues.error}
+            </div>
+          )}
         </div>
       )
 
@@ -633,32 +740,73 @@ export default function WorkflowEditorRF({
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
+          console.log('[WorkflowEditorRF] SSE event:', data.type, data.data)
 
           if (data.type === 'node:started') {
             setNodes((nds) => nds.map((n) =>
               n.id === data.data.nodeId
-                ? { ...n, data: { ...n.data, status: 'running' } }
+                ? { ...n, data: { ...n.data, status: 'running', progress: 0 } }
+                : n
+            ))
+          } else if (data.type === 'node:progress') {
+            setNodes((nds) => nds.map((n) =>
+              n.id === data.data.nodeId
+                ? { ...n, data: { ...n.data, progress: data.data.progress } }
                 : n
             ))
           } else if (data.type === 'node:completed') {
+            // 保存节点结果到 fieldValues，用于显示
+            const resultData = data.data.result || {}
             setNodes((nds) => nds.map((n) =>
               n.id === data.data.nodeId
-                ? { ...n, data: { ...n.data, status: 'completed' } }
+                ? { 
+                    ...n, 
+                    data: { 
+                      ...n.data, 
+                      status: 'completed', 
+                      progress: 100,
+                      result: resultData,
+                      // 将结果保存到 fieldValues 供组件显示
+                      fieldValues: {
+                        ...n.data.fieldValues,
+                        _resultType: resultData.type,
+                        _resultUrl: resultData.url,
+                        _resultContent: resultData.content || resultData.scenes,
+                        _resultData: resultData,
+                      }
+                    } 
+                  }
                 : n
             ))
+            
+            // 显示 toast 提示
+            if (resultData.type === 'image' && resultData.url) {
+              toast.success('图像生成成功')
+            } else if (resultData.type === 'video' && resultData.url) {
+              toast.success('视频生成成功')
+            } else if (resultData.type === 'scenes' && resultData.scenes) {
+              toast.success(`生成了 ${resultData.scenes.length} 个分镜`)
+            }
           } else if (data.type === 'node:failed') {
             setNodes((nds) => nds.map((n) =>
               n.id === data.data.nodeId
-                ? { ...n, data: { ...n.data, status: 'failed' } }
+                ? { ...n, data: { ...n.data, status: 'failed', error: data.data.error } }
                 : n
             ))
-          } else if (data.type === 'execution:completed' || data.type === 'execution:failed') {
+            toast.error(`节点执行失败: ${data.data.error}`)
+          } else if (data.type === 'execution:completed') {
+            console.log('[WorkflowEditorRF] Workflow completed:', data.data)
             toast.success('工作流执行完成')
+            setIsRunning(false)
+            setTimeout(() => eventSource.close(), 1000)
+          } else if (data.type === 'execution:failed') {
+            console.error('[WorkflowEditorRF] Workflow failed:', data.data.error)
+            toast.error('工作流执行失败')
             setIsRunning(false)
             setTimeout(() => eventSource.close(), 1000)
           }
         } catch (e) {
-          console.error('解析事件失败:', e)
+          console.error('[WorkflowEditorRF] Parse event failed:', e)
         }
       }
 
