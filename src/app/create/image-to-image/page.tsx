@@ -177,11 +177,12 @@ export default function ImageToImagePage() {
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" asChild>
-                <Link href="/create">
-                  <ArrowLeft className="h-4 w-4" />
-                </Link>
-              </Button>
+              <Link 
+                href="/create" 
+                className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-accent transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
               <div className="w-10 h-10 rounded-xl bg-pink-500/10 flex items-center justify-center">
                 <Wand2 className="w-5 h-5 text-pink-500" />
               </div>
