@@ -174,6 +174,56 @@
   - 参考图片上传到阿里云 OSS，生成公网 URL
   - 三视图使用 image-to-image 生成，保持人物特征一致
 
+### 6.5 AI 独立生成模块 (AI Create)
+- **路径**: `src/app/create/`, `src/app/api/create/`
+- **功能**: 提供独立的 AI 生成功能（不存入数据库，直接生成和下载）
+- **页面结构**:
+  - `/create` - AI 生成首页（重定向到文生图）
+  - `/create/text-to-image` - 文生图页面
+  - `/create/image-to-image` - 图生图页面
+  - `/create/text-to-video` - 文生视频页面
+  - `/create/image-to-video` - 图生视频页面
+
+#### 6.5.1 文生图 (Text-to-Image)
+- **路径**: `src/app/api/create/text-to-image/route.ts`
+- **前端页面**: `src/app/create/text-to-image/page.tsx`
+- **功能**:
+  - 输入文本提示词和反向提示词
+  - 选择图像风格（写实、动漫、卡通、油画等）
+  - 选择图像尺寸（512x512 到 1536x1024）
+  - 生成图像并支持预览、下载、复制链接
+- **存储**: 生成结果优先上传到阿里 OSS，失败则保存到本地 `public/ai-create/`
+
+#### 6.5.2 图生图 (Image-to-Image)
+- **路径**: `src/app/api/create/image-to-image/route.ts`
+- **前端页面**: `src/app/create/image-to-image/page.tsx`
+- **功能**:
+  - 上传参考图片
+  - 输入目标描述
+  - 选择风格和尺寸
+  - 调整变换强度
+  - 生成新图像并支持对比预览
+
+#### 6.5.3 文生视频 (Text-to-Video)
+- **路径**: `src/app/api/create/text-to-video/route.ts`
+- **前端页面**: `src/app/create/text-to-video/page.tsx`
+- **功能**:
+  - 输入视频描述提示词
+  - 选择视频时长（4-12 秒）
+  - 选择视频比例（16:9、9:16、1:1）
+  - 可选生成配套音频
+  - 视频预览和下载
+
+#### 6.5.4 图生视频 (Image-to-Video)
+- **路径**: `src/app/api/create/image-to-video/route.ts`
+- **前端页面**: `src/app/create/image-to-video/page.tsx`
+- **功能**:
+  - 上传静态图片
+  - 可选输入运动描述
+  - 选择视频时长和比例
+  - 生成动态视频
+  - 视频预览和下载
+
 ### 7. 工作流 (Workflow)
 - **路径**: `src/app/api/workflow/`
 - **功能**: 定义和执行自动化工作流
@@ -316,6 +366,43 @@ ALIYUN_OSS_BUCKET=
   - 编辑人物信息
   - 上传参考图生成三视图（图生图）
   - 删除人物
+
+### 6. AI 独立生成模块
+- **路径**: `src/app/create/`
+- **布局**: `src/app/create/layout.tsx`
+- **功能**: 提供独立的 AI 生成功能入口
+
+#### 6.1 文生图页面
+- **路径**: `src/app/create/text-to-image/page.tsx`
+- **功能**:
+  - 输入提示词和反向提示词
+  - 选择图像风格和尺寸
+  - 生成图像并预览、下载、复制链接
+
+#### 6.2 图生图页面
+- **路径**: `src/app/create/image-to-image/page.tsx`
+- **功能**:
+  - 上传参考图片
+  - 输入目标描述
+  - 选择风格和尺寸
+  - 调整变换强度
+  - 生成并对比预览
+
+#### 6.3 文生视频页面
+- **路径**: `src/app/create/text-to-video/page.tsx`
+- **功能**:
+  - 输入视频描述
+  - 选择时长和比例
+  - 可选生成音频
+  - 视频预览和下载
+
+#### 6.4 图生视频页面
+- **路径**: `src/app/create/image-to-video/page.tsx`
+- **功能**:
+  - 上传静态图片
+  - 输入运动描述
+  - 选择时长和比例
+  - 视频预览和下载
 
 ## 构建和测试命令
 

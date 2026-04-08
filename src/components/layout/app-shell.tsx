@@ -19,7 +19,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Workflow
+  Workflow,
+  Wand2
 } from 'lucide-react'
 
 interface AppShellProps {
@@ -30,6 +31,7 @@ const navItems = [
   { href: '/', label: '首页', icon: Home },
   { href: '/projects', label: '项目', icon: FolderOpen },
   { href: '/characters', label: '人物库', icon: Users },
+  { href: '/create', label: 'AI 生成', icon: Wand2 },
   { href: '/workflow', label: '工作流（测试版）', icon: Workflow },
 ]
 
