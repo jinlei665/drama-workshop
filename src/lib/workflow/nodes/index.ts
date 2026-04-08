@@ -146,26 +146,43 @@ export class TextToImageNode extends BaseNodeClass3 {
   }
 
   async process(context: ExecutionContext): Promise<any> {
-    // 优先从输入端口获取 prompt，如果没有则从参数获取
-    let prompt = this.params.prompt
+    // 统一处理所有输入端口，自动提取值
+    console.log('[TextToImageNode] Processing inputs:', JSON.stringify(this.inputs, null, 2))
 
-    // 检查输入端口是否有连接
-    const promptInput = this.inputs.find((inp: any) => inp.id === 'prompt')
-    if (promptInput && promptInput.value) {
-      // 如果输入端口有值（来自上游节点），使用输入值
-      const inputValue = promptInput.value
+    // 从输入端口获取值
+    for (const input of this.inputs) {
+      if (input.value !== undefined && input.value !== null) {
+        const inputValue = input.value
+        console.log(`[TextToImageNode] Input port '${input.id}' has value:`, typeof inputValue === 'object' ? JSON.stringify(inputValue) : inputValue)
 
-      // 如果输入值是对象（如 {type: 'text', content: '...'}），提取 content 字段
-      if (typeof inputValue === 'object' && inputValue.content) {
-        prompt = inputValue.content
-      } else {
-        prompt = inputValue
+        // 根据输入类型提取值
+        let extractedValue: string = ''
+
+        if (typeof inputValue === 'object' && inputValue !== null) {
+          // 对象类型：提取 url 或 content 字段
+          extractedValue = inputValue.content || inputValue.text || inputValue.url || JSON.stringify(inputValue)
+        } else if (typeof inputValue === 'string') {
+          extractedValue = inputValue
+        }
+
+        // 根据端口 ID 设置对应的参数
+        if (input.id === 'prompt' || input.id === 'text') {
+          this.params.prompt = extractedValue
+        } else if (input.id === 'referenceImage' || input.id === 'image') {
+          this.params.referenceImage = extractedValue
+        } else {
+          // 其他端口，设置到 params 中
+          this.params[input.id] = extractedValue
+        }
       }
     }
 
+    const prompt = this.params.prompt || ''
     const style = this.params.style || 'realistic'
     const size = this.params.size || '2K'
     const referenceImage = this.params.referenceImage
+
+    console.log('[TextToImageNode] Final params:', { prompt: prompt?.substring(0, 50), style, size, referenceImage })
 
     // 构建完整提示词
     let fullPrompt = prompt
@@ -284,51 +301,47 @@ export class ImageToVideoNode extends BaseNodeClass4 {
   }
 
   async process(context: ExecutionContext): Promise<any> {
-    // 优先从输入端口获取 firstFrame，如果没有则从参数获取
-    // 注意：端口 ID 可能是 'image'（前端定义的）或 'firstFrame'
-    let firstFrame = this.params.firstFrame || this.params.image
+    // 统一处理所有输入端口，自动提取值
+    // 遍历所有输入端口，如果有值就设置到对应的参数中
+    console.log('[ImageToVideoNode] Processing inputs:', JSON.stringify(this.inputs, null, 2))
+    console.log('[ImageToVideoNode] Processing params:', JSON.stringify(this.params, null, 2))
 
-    // 检查输入端口是否有连接
-    console.log('[ImageToVideoNode] inputs:', JSON.stringify(this.inputs))
-    const firstFrameInput = this.inputs.find((inp: any) => inp.id === 'image' || inp.id === 'firstFrame')
-    console.log('[ImageToVideoNode] firstFrameInput:', JSON.stringify(firstFrameInput))
+    // 从输入端口获取值
+    for (const input of this.inputs) {
+      if (input.value !== undefined && input.value !== null) {
+        const inputValue = input.value
+        console.log(`[ImageToVideoNode] Input port '${input.id}' has value:`, typeof inputValue === 'object' ? JSON.stringify(inputValue) : inputValue)
 
-    if (firstFrameInput && firstFrameInput.value !== undefined) {
-      const inputValue = firstFrameInput.value
-      console.log('[ImageToVideoNode] inputValue:', JSON.stringify(inputValue))
-      // 如果输入值是对象（如 {type: 'image', url: '...'}），提取 url 字段
-      if (typeof inputValue === 'object' && inputValue !== null) {
-        firstFrame = inputValue.url || inputValue.content || JSON.stringify(inputValue)
-      } else if (typeof inputValue === 'string') {
-        firstFrame = inputValue
+        // 根据输入类型提取值
+        let extractedValue: string = ''
+
+        if (typeof inputValue === 'object' && inputValue !== null) {
+          // 对象类型：提取 url 或 content 字段
+          extractedValue = inputValue.url || inputValue.content || inputValue.text || JSON.stringify(inputValue)
+        } else if (typeof inputValue === 'string') {
+          extractedValue = inputValue
+        }
+
+        // 根据端口 ID 设置对应的参数
+        if (input.id === 'image' || input.id === 'firstFrame') {
+          this.params.firstFrame = extractedValue
+        } else if (input.id === 'lastFrameImage' || input.id === 'lastFrame') {
+          this.params.lastFrame = extractedValue
+        } else if (input.id === 'prompt' || input.id === 'text') {
+          this.params.prompt = extractedValue
+        } else {
+          // 其他端口，设置到 params 中
+          this.params[input.id] = extractedValue
+        }
       }
     }
 
-    // 同样处理 lastFrame
-    let lastFrame = this.params.lastFrame || this.params.lastFrameImage
-    const lastFrameInput = this.inputs.find((inp: any) => inp.id === 'lastFrameImage' || inp.id === 'lastFrame')
-    if (lastFrameInput && lastFrameInput.value !== undefined) {
-      const inputValue = lastFrameInput.value
-      if (typeof inputValue === 'object' && inputValue !== null) {
-        lastFrame = inputValue.url || inputValue.content || JSON.stringify(inputValue)
-      } else if (typeof inputValue === 'string') {
-        lastFrame = inputValue
-      }
-    }
+    // 最终参数值
+    const firstFrame = this.params.firstFrame || this.params.image
+    const lastFrame = this.params.lastFrame || this.params.lastFrameImage
+    const prompt = this.params.prompt || ''
 
-    // 同样处理 prompt
-    let prompt = this.params.prompt || ''
-    const promptInput = this.inputs.find((inp: any) => inp.id === 'prompt')
-    if (promptInput && promptInput.value !== undefined) {
-      const inputValue = promptInput.value
-      if (typeof inputValue === 'object' && inputValue !== null) {
-        prompt = inputValue.content || inputValue.text || JSON.stringify(inputValue)
-      } else if (typeof inputValue === 'string') {
-        prompt = inputValue
-      }
-    }
-
-    console.log('[ImageToVideoNode] Final values:', { firstFrame, lastFrame, prompt })
+    console.log('[ImageToVideoNode] Final params:', { firstFrame, lastFrame, prompt })
 
     if (!firstFrame) {
       throw new Error('首帧图片 URL 是必填的')
