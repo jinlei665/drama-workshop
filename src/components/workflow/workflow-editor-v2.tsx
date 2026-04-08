@@ -161,7 +161,7 @@ export default function WorkflowEditorV2({
       'image-to-image': 'bg-pink-600',
       'image-to-video': 'bg-orange-500',
       'text-to-video': 'bg-orange-600',
-      'text-to-audio': 'bg-teal-500',
+      // 'text-to-audio': 'bg-teal-500',  // TODO: 出沙盒后无法使用，暂隐藏
       'llm-process': 'bg-violet-500',
       'text-to-character': 'bg-green-600',
       'character-triple-views': 'bg-green-700',
@@ -228,10 +228,10 @@ export default function WorkflowEditorV2({
         duration: 5,
         aspectRatio: '16:9',
       },
-      'text-to-audio': {
-        text: '',
-        voice: 'zh_female_qingxin',
-      },
+      // 'text-to-audio': {  // TODO: 出沙盒后无法使用，暂隐藏
+      //   text: '',
+      //   voice: 'zh_female_qingxin',
+      // },
       'text-to-character': {
         description: '',
       },
@@ -254,7 +254,7 @@ export default function WorkflowEditorV2({
       'script-input': '脚本输入',
       'text-to-image': '生成图像',
       'image-to-video': '生成视频',
-      'text-to-audio': '生成语音',
+      // 'text-to-audio': '生成语音',  // TODO: 出沙盒后无法使用，暂隐藏
       'text-to-character': '创建角色',
       'script-to-scenes': '分镜分析',
       'llm-process': 'LLM 处理',
@@ -269,7 +269,7 @@ export default function WorkflowEditorV2({
       'script-input': '输入脚本内容',
       'text-to-image': '根据描述生成图像',
       'image-to-video': '根据图像生成视频',
-      'text-to-audio': '根据文本生成语音',
+      // 'text-to-audio': '根据文本生成语音',  // TODO: 出沙盒后无法使用，暂隐藏
       'text-to-character': '根据描述创建角色',
       'script-to-scenes': '分析脚本生成分镜',
       'llm-process': '使用大语言模型处理',
@@ -290,9 +290,9 @@ export default function WorkflowEditorV2({
         { id: 'firstFrame', name: '首帧图像', type: 'image', required: true, connected: false },
         { id: 'lastFrame', name: '尾帧图像', type: 'image', required: false, connected: false },
       ],
-      'text-to-audio': [
-        { id: 'text', name: '文本', type: 'text', required: true, connected: false },
-      ],
+      // 'text-to-audio': [  // TODO: 出沙盒后无法使用，暂隐藏
+      //   { id: 'text', name: '文本', type: 'text', required: true, connected: false },
+      // ],
       'text-to-character': [
         { id: 'description', name: '描述', type: 'text', required: true, connected: false },
       ],
@@ -321,9 +321,9 @@ export default function WorkflowEditorV2({
       'image-to-video': [
         { id: 'video', name: '视频', type: 'video', required: false, connected: false },
       ],
-      'text-to-audio': [
-        { id: 'audio', name: '语音', type: 'audio', required: false, connected: false },
-      ],
+      // 'text-to-audio': [  // TODO: 出沙盒后无法使用，暂隐藏
+      //   { id: 'audio', name: '语音', type: 'audio', required: false, connected: false },
+      // ],
       'text-to-character': [
         { id: 'character', name: '角色', type: 'any', required: false, connected: false },
         { id: 'image', name: '图像', type: 'image', required: false, connected: false },
@@ -867,7 +867,7 @@ export default function WorkflowEditorV2({
                 <p className="text-xs text-muted-foreground">根据图像生成视频</p>
               </div>
 
-              {/* 语音生成节点 */}
+              {/* TODO: 语音生成节点 - 出沙盒后无法使用，暂时隐藏
               <div
                 className="p-3 text-left rounded-lg border bg-card hover:bg-accent transition-colors cursor-pointer"
                 onClick={() => addNode('text-to-audio')}
@@ -878,6 +878,7 @@ export default function WorkflowEditorV2({
                 </div>
                 <p className="text-xs text-muted-foreground">根据文本生成语音</p>
               </div>
+              */}
 
               {/* 角色创建节点 */}
               <div
@@ -1432,6 +1433,7 @@ export default function WorkflowEditorV2({
                   </>
                 )}
 
+                {/* TODO: 语音生成节点参数面板 - 出沙盒后无法使用，暂时隐藏
                 {selectedNode.type === 'text-to-audio' && (
                   <>
                     <div>
@@ -1456,6 +1458,7 @@ export default function WorkflowEditorV2({
                     </div>
                   </>
                 )}
+                */}
               </div>
             </Card>
           </div>
