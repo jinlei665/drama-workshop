@@ -116,27 +116,25 @@ export default function WorkflowEditorV2({
     const headerHeight = 48
     const portItemHeight = 32
     const portListPadding = 12
-    const portPadding = 12 // 端口区域的内边距
+    const portRadius = 12 // 端口圆点半径
 
-    // 计算端口中心位置
-    // 端口实际位置：输入端口在 left: 0（节点左边缘），输出端口在 right: 0（节点右边缘）
-    // 端口圆点大小：w-6 h-6（24px），半径为 12px
-    // 端口圆点中心位置：
-    // - 输入端口：left: 0 + 12px = 12px
-    // - 输出端口：right: 0，即 width - 12px
+    // 计算端口中心位置（变换后的坐标）
+    // 端口圆点位于节点边缘外侧：
+    // - 输入端口：left: -portRadius（左边缘外侧）
+    // - 输出端口：right: -portRadius（右边缘外侧）
     const portY = headerHeight + portListPadding + portIndex * portItemHeight + portItemHeight / 2
-    const portX = type === 'input' ? 12 : nodeWidth - 12
+    const portX = type === 'input' ? -portRadius : nodeWidth + portRadius
 
-    // 转换为容器坐标
+    // 转换为变换后的屏幕坐标
     const position = {
-      x: node.position.x + portX,
-      y: node.position.y + portY,
+      x: pan.x + (node.position.x + portX) * zoom,
+      y: pan.y + (node.position.y + portY) * zoom,
     }
 
-    console.log(`📍 端口位置计算:`, { node, portId, type, portIndex, position, portX, portY })
+    console.log(`📍 端口位置计算:`, { node, portId, type, portIndex, position, portX, portY, pan, zoom })
 
     return position
-  }, [])
+  }, [pan, zoom])
 
   // 更新节点参数
   const updateNodeParam = (nodeId: string, key: string, value: any) => {
@@ -969,8 +967,6 @@ export default function WorkflowEditorV2({
             {/* 连线 SVG */}
             <svg
               className="absolute inset-0 pointer-events-none overflow-visible"
-              width="100%"
-              height="100%"
               style={{
                 position: 'absolute',
                 left: 0,
@@ -1055,10 +1051,11 @@ export default function WorkflowEditorV2({
                     isSelected ? 'border-primary' : 'border-border'
                   }`}
                   style={{
-                    left: node.position.x,
-                    top: node.position.y,
-                    width: 280,
+                    left: pan.x + node.position.x * zoom,
+                    top: pan.y + node.position.y * zoom,
+                    width: 280 * zoom,
                     zIndex: isSelected ? 100 : 1,
+                    transformOrigin: 'left top',
                   }}
                   onMouseDown={(e) => {
                     if (readOnly) return
@@ -1089,20 +1086,21 @@ export default function WorkflowEditorV2({
                   }}
                 >
                   {/* 节点头部 */}
-                  <div className={`flex items-center justify-between px-4 py-3 border-b ${nodeColor} bg-opacity-20`}>
+                  <div className={`flex items-center justify-between border-b ${nodeColor} bg-opacity-20`} style={{ padding: `${12 * zoom}px ${16 * zoom}px` }}>
                     <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${nodeColor}`} />
-                      <span className="font-medium text-sm">{node.name}</span>
+                      <div className="rounded-full" style={{ width: `${12 * zoom}px`, height: `${12 * zoom}px`, backgroundColor: 'currentColor' }} />
+                      <span className="font-medium" style={{ fontSize: `${14 * zoom}px` }}>{node.name}</span>
                     </div>
                     {!readOnly && (
                       <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="w-6 h-6"
+                          className="hover:bg-accent"
+                          style={{ width: `${24 * zoom}px`, height: `${24 * zoom}px` }}
                           onClick={() => deleteNode(node.id)}
                         >
-                          <Trash2 className="w-3 h-3 text-destructive" />
+                          <Trash2 className="text-destructive" style={{ width: `${12 * zoom}px`, height: `${12 * zoom}px` }} />
                         </Button>
                       </div>
                     )}
@@ -1112,7 +1110,7 @@ export default function WorkflowEditorV2({
                   {(() => {
                     console.log(`🔍 渲染节点 ${node.id} 的输入端口:`, node.inputs)
                     return node.inputs && node.inputs.length > 0 ? (
-                    <div className="px-3 py-2 space-y-1 relative">
+                    <div className="space-y-1 relative" style={{ padding: `${8 * zoom}px ${12 * zoom}px` }}>
                       {node.inputs.map((port) => {
                         const isConnected = edges.some(
                           e => e.to === node.id && e.toPort === port.id
@@ -1123,13 +1121,14 @@ export default function WorkflowEditorV2({
                         return (
                           <div
                             key={port.id}
-                            className="relative flex items-center py-1 group"
-                            style={{ paddingLeft: '24px' }}
+                            className="relative flex items-center group"
+                            style={{ height: `${32 * zoom}px` }}
                           >
                             <div
-                              className={`absolute left-0 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-20 hover:bg-primary hover:border-primary ${
+                              className={`absolute left-0 top-1/2 -translate-y-1/2 rounded-full border-2 bg-background transition-colors cursor-pointer z-20 hover:bg-primary hover:border-primary ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
+                              style={{ width: `${24 * zoom}px`, height: `${24 * zoom}px` }}
                               onMouseDown={(e) => {
                                 if (readOnly) return
                                 e.stopPropagation()
@@ -1145,7 +1144,7 @@ export default function WorkflowEditorV2({
                                 handlePortConnect(node.id, port.id)
                               }}
                             />
-                            <span className="text-xs text-muted-foreground">{port.name}</span>
+                            <span className="text-muted-foreground" style={{ fontSize: `${12 * zoom}px` }}>{port.name}</span>
                           </div>
                         )
                       })}
@@ -1157,7 +1156,7 @@ export default function WorkflowEditorV2({
                   {(() => {
                     console.log(`🔍 渲染节点 ${node.id} 的输出端口:`, node.outputs)
                     return node.outputs && node.outputs.length > 0 ? (
-                    <div className="px-3 py-2 space-y-1 relative">
+                    <div className="space-y-1 relative" style={{ padding: `${8 * zoom}px ${12 * zoom}px` }}>
                       {node.outputs.map((port) => {
                         const isConnected = edges.some(
                           e => e.from === node.id && e.fromPort === port.id
@@ -1168,14 +1167,15 @@ export default function WorkflowEditorV2({
                         return (
                           <div
                             key={port.id}
-                            className="relative flex items-center justify-end py-1 group"
-                            style={{ paddingRight: '24px' }}
+                            className="relative flex items-center justify-end group"
+                            style={{ height: `${32 * zoom}px` }}
                           >
-                            <span className="text-xs text-muted-foreground">{port.name}</span>
+                            <span className="text-muted-foreground" style={{ fontSize: `${12 * zoom}px` }}>{port.name}</span>
                             <div
-                              className={`absolute right-0 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-2 bg-background transition-colors cursor-pointer z-20 hover:bg-primary hover:border-primary ${
+                              className={`absolute right-0 top-1/2 -translate-y-1/2 rounded-full border-2 bg-background transition-colors cursor-pointer z-20 hover:bg-primary hover:border-primary ${
                                 isConnected ? 'border-primary' : 'border-border'
                               }`}
+                              style={{ width: `${24 * zoom}px`, height: `${24 * zoom}px` }}
                               onMouseDown={(e) => {
                                 if (readOnly) return
                                 e.stopPropagation()
