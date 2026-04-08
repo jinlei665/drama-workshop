@@ -31,7 +31,7 @@ const navItems = [
   { href: '/', label: '首页', icon: Home },
   { href: '/projects', label: '项目', icon: FolderOpen },
   { href: '/characters', label: '人物库', icon: Users },
-  { href: '/workflow', label: '工作流', icon: Workflow },
+  { href: '/workflow', label: '工作流（测试版）', icon: Workflow },
   { href: '/settings', label: '设置', icon: Settings },
 ]
 
