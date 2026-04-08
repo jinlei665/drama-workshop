@@ -433,36 +433,103 @@ export class TextToAudioNode extends BaseNodeClass {
 
     const speaker = VOICE_STYLE_MAP[style] || VOICE_STYLE_MAP['natural']
 
+    // 获取 Coze 配置 - 优先从内存获取
+    let apiKey: string | undefined
+    let baseUrl = process.env.COZE_BASE_URL || 'https://api.coze.cn'
+
+    // 尝试从内存获取配置
+    try {
+      const { getCozeConfigFromMemory } = await import('@/lib/memory-store')
+      const cozeConfig = getCozeConfigFromMemory()
+      if (cozeConfig?.apiKey) {
+        apiKey = cozeConfig.apiKey
+        baseUrl = cozeConfig.baseUrl || baseUrl
+        console.log('[TextToAudioNode] Using Coze config from memory, baseUrl:', baseUrl)
+      } else {
+        console.log('[TextToAudioNode] No Coze config in memory')
+      }
+    } catch (err) {
+      console.log('[TextToAudioNode] Memory config not available:', err)
+    }
+
+    // 如果内存没有，尝试从 getServerAIConfig 获取
+    if (!apiKey) {
+      try {
+        const aiConfig = await getServerAIConfig()
+        if (aiConfig.apiKey) {
+          apiKey = aiConfig.apiKey
+          baseUrl = aiConfig.baseUrl || baseUrl
+          console.log('[TextToAudioNode] Using Coze config from getServerAIConfig, baseUrl:', baseUrl)
+        } else {
+          console.log('[TextToAudioNode] No API Key in getServerAIConfig, useSystemDefault:', aiConfig.useSystemDefault)
+        }
+      } catch (err) {
+        console.log('[TextToAudioNode] getServerAIConfig error:', err)
+      }
+    }
+
+    // 检查环境变量
+    if (!apiKey) {
+      apiKey = process.env.COZE_API_KEY
+      if (apiKey) {
+        console.log('[TextToAudioNode] Using API Key from environment variable')
+      }
+    }
+
+    // 检查是否有 API Key
+    if (!apiKey) {
+      console.error('[TextToAudioNode] No API Key configured!')
+      console.error('[TextToAudioNode] Current config only has Bot ID, but TTS requires API Key.')
+      console.error('[TextToAudioNode] Please configure your Coze API Key in settings > Coze API Configuration > API Key')
+      throw new Error('TTS 语音生成需要配置 Coze API Key（不是 Bot ID）。请在设置中配置您的 Coze API Key（位于"Coze API 配置"-"API Key"中）。')
+    }
+
+    console.log(`[TextToAudioNode] Config: apiKey=***${apiKey.slice(-4)}, baseUrl=${baseUrl}`)
+    console.log(`[TextToAudioNode] Generating audio with style: ${style}, speaker: ${speaker}`)
+
     // 使用 Coze TTS
-    const aiConfig = await getServerAIConfig()
     const config = new Config({
-      apiKey: aiConfig.apiKey,
-      baseUrl: aiConfig.baseUrl,
+      apiKey: apiKey,
+      baseUrl: baseUrl,
       timeout: 60000,
     })
 
     const ttsClient = new TTSClient(config)
 
-    console.log(`[TextToAudioNode] Generating audio with style: ${style}, speed: ${speed}`)
+    try {
+      console.log(`[TextToAudioNode] Calling TTS API with text length: ${text.length}`)
 
-    const response = await ttsClient.synthesize({
-      uid: `workflow_${Date.now()}`,
-      text: text,
-      speaker: speaker,
-      audioFormat: 'mp3',
-      sampleRate: 24000,
-    })
+      const response = await ttsClient.synthesize({
+        uid: `workflow_${Date.now()}`,
+        text: text,
+        speaker: speaker,
+        audioFormat: 'mp3',
+        sampleRate: 24000,
+      })
 
-    const voiceUrl = response.audioUri
+      console.log(`[TextToAudioNode] TTS response:`, response)
 
-    console.log(`[TextToAudioNode] Audio generated: ${voiceUrl}`)
+      if (!response.audioUri) {
+        throw new Error('TTS 返回的音频 URI 为空')
+      }
 
-    return {
-      type: 'audio',
-      url: voiceUrl,
-      text,
-      style,
-      speed
+      const voiceUrl = response.audioUri
+      const voiceSize = response.audioSize
+
+      console.log(`[TextToAudioNode] Audio generated: ${voiceUrl}, size: ${voiceSize} bytes`)
+
+      return {
+        type: 'audio',
+        url: voiceUrl,
+        text,
+        style,
+        speed,
+        size: voiceSize
+      }
+    } catch (ttsError) {
+      console.error('[TextToAudioNode] TTS error:', ttsError)
+      const errorMessage = ttsError instanceof Error ? ttsError.message : '未知错误'
+      throw new Error(`语音生成失败: ${errorMessage}`)
     }
   }
 }
