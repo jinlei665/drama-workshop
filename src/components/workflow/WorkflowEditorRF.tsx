@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useRef, useEffect } from 'react'
 import {
   ReactFlow,
   Background,
@@ -31,6 +31,7 @@ import {
   RotateCcw,
   CheckCircle2,
   XCircle,
+  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -179,21 +180,20 @@ export default function WorkflowEditorRF({
   onExecute,
   readOnly = false,
 }: WorkflowEditorRFProps) {
-  // 转换初始节点到 React Flow 格式
-  const convertToRFNode = (node: any): Node => ({
-    id: node.id,
-    type: 'workflowNode',
-    position: node.position || { x: 0, y: 0 },
-    data: {
-      ...node.data,
-      inputs: node.inputs || [],
-      outputs: node.outputs || [],
-      onDelete: readOnly ? undefined : deleteNode,
-    },
-  })
-
+  const [isRunning, setIsRunning] = useState(false)
+  const [runningNodeId, setRunningNodeId] = useState<string | null>(null)
+  
   const [nodes, setNodes, onNodesChange] = useNodesState(
-    initialNodes.map(convertToRFNode)
+    initialNodes.map((node: any) => ({
+      id: node.id,
+      type: 'workflowNode',
+      position: node.position || { x: 0, y: 0 },
+      data: {
+        ...node.data,
+        inputs: node.inputs || [],
+        outputs: node.outputs || [],
+      },
+    }))
   )
   const [edges, setEdges, onEdgesChange] = useEdgesState(
     initialEdges.map((e: any) => ({
@@ -204,6 +204,18 @@ export default function WorkflowEditorRF({
       targetHandle: e.toPort,
     }))
   )
+  
+  // 节点 refs 用于执行时获取最新数据
+  const nodesRef = useRef(nodes)
+  const edgesRef = useRef(edges)
+  
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
+  
+  useEffect(() => {
+    edgesRef.current = edges
+  }, [edges])
 
   // 删除节点
   const deleteNode = useCallback((nodeId: string) => {
@@ -271,9 +283,131 @@ export default function WorkflowEditorRF({
   }
 
   // 执行工作流
-  const handleExecute = () => {
-    toast.success('开始执行工作流')
-    onExecute?.()
+  const handleExecute = async () => {
+    if (isRunning) return
+    
+    setIsRunning(true)
+    const executionId = `exec-${Date.now()}`
+    
+    // 构建执行数据
+    const workflowNodes = nodesRef.current.map((n) => ({
+      id: n.id,
+      type: n.data.type,
+      name: n.data.type,
+      inputs: n.data.inputs?.map((i: any) => ({ ...i, value: undefined })) || [],
+      outputs: n.data.outputs?.map((o: any) => ({ ...o, value: undefined })) || [],
+      params: buildNodeParams(n.data),
+    }))
+    
+    const workflowEdges = edgesRef.current.map((e) => ({
+      id: e.id,
+      from: e.source,
+      to: e.target,
+      fromPort: e.sourceHandle,
+      toPort: e.targetHandle,
+    }))
+
+    // 设置所有节点为待执行状态
+    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: 'pending' } })))
+
+    try {
+      // 启动 SSE 连接监听执行状态
+      const eventSource = new EventSource(`/api/workflow/ws?executionId=${executionId}`)
+      
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          console.log('📨 收到事件:', data.type, data.data)
+          
+          if (data.type === 'node:started') {
+            setRunningNodeId(data.data.nodeId)
+            setNodes((nds) => nds.map((n) => 
+              n.id === data.data.nodeId 
+                ? { ...n, data: { ...n.data, status: 'running' } }
+                : n
+            ))
+          } else if (data.type === 'node:completed') {
+            setNodes((nds) => nds.map((n) => 
+              n.id === data.data.nodeId 
+                ? { ...n, data: { ...n.data, status: 'completed', result: data.data.result?.data } }
+                : n
+            ))
+          } else if (data.type === 'node:failed') {
+            setNodes((nds) => nds.map((n) => 
+              n.id === data.data.nodeId 
+                ? { ...n, data: { ...n.data, status: 'failed', error: data.data.error } }
+                : n
+            ))
+          } else if (data.type === 'execution:completed') {
+            toast.success('工作流执行完成')
+            setIsRunning(false)
+            setRunningNodeId(null)
+            setTimeout(() => eventSource.close(), 1000)
+          } else if (data.type === 'execution:failed') {
+            toast.error('工作流执行失败')
+            setIsRunning(false)
+            setRunningNodeId(null)
+            setTimeout(() => eventSource.close(), 1000)
+          }
+        } catch (e) {
+          console.error('解析事件失败:', e)
+        }
+      }
+
+      // 发送执行请求
+      const response = await fetch('/api/workflow/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodes: workflowNodes,
+          edges: workflowEdges,
+          workflowId: `workflow-${Date.now()}`,
+          projectId: 'temp',
+          executionId,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || '执行失败')
+      }
+      
+      const result = await response.json()
+      console.log('执行结果:', result)
+      
+      // 如果没有 SSE 事件，使用 API 返回的结果
+      if (result.data?.results) {
+        result.data.results.forEach((r: any) => {
+          setNodes((nds) => nds.map((n) => 
+            n.id === r.nodeId 
+              ? { ...n, data: { ...n.data, status: 'completed', result: r.result?.data } }
+              : n
+          ))
+        })
+      }
+      
+    } catch (error) {
+      console.error('执行失败:', error)
+      toast.error('执行失败', {
+        description: error instanceof Error ? error.message : '未知错误',
+      })
+      // 标记所有节点为失败
+      setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: 'failed' } })))
+    } finally {
+      setIsRunning(false)
+      setRunningNodeId(null)
+    }
+  }
+
+  // 根据节点类型构建参数字典
+  const buildNodeParams = (data: any) => {
+    const params: Record<string, any> = {}
+    if (data.fields) {
+      data.fields.forEach((field: any) => {
+        params[field.key] = field.value
+      })
+    }
+    return params
   }
 
   return (
@@ -295,10 +429,19 @@ export default function WorkflowEditorRF({
             variant="default"
             size="sm"
             onClick={handleExecute}
-            disabled={readOnly}
+            disabled={readOnly || isRunning}
           >
-            <Play className="w-4 h-4 mr-2" />
-            运行
+            {isRunning ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                运行中...
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 mr-2" />
+                运行
+              </>
+            )}
           </Button>
         </div>
       </div>
