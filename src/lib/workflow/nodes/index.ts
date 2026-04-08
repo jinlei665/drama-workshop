@@ -478,18 +478,17 @@ export class TextToAudioNode extends BaseNodeClass {
 
     // 检查是否有 API Key
     if (!apiKey) {
-      console.error('[TextToAudioNode] No API Key configured!')
-      console.error('[TextToAudioNode] Current config only has Bot ID, but TTS requires API Key.')
-      console.error('[TextToAudioNode] Please configure your Coze API Key in settings > Coze API Configuration > API Key')
-      throw new Error('TTS 语音生成需要配置 Coze API Key（不是 Bot ID）。请在设置中配置您的 Coze API Key（位于"Coze API 配置"-"API Key"中）。')
+      console.log('[TextToAudioNode] No user API Key configured, will use sandbox default credentials')
+    } else {
+      console.log(`[TextToAudioNode] Using user API Key: ***${apiKey.slice(-4)}`)
     }
 
-    console.log(`[TextToAudioNode] Config: apiKey=***${apiKey.slice(-4)}, baseUrl=${baseUrl}`)
+    // 设置 baseUrl（沙盒默认使用 api.coze.cn）
+    console.log(`[TextToAudioNode] Using baseUrl: ${baseUrl}`)
     console.log(`[TextToAudioNode] Generating audio with style: ${style}, speaker: ${speaker}`)
 
-    // 使用 Coze TTS
+    // 使用 Coze TTS - 不传入 apiKey 让 SDK 使用沙盒默认凭证
     const config = new Config({
-      apiKey: apiKey,
       baseUrl: baseUrl,
       timeout: 60000,
     })
