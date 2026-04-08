@@ -558,15 +558,16 @@ export default function WorkflowEditorRF({
 
   // 添加节点
   const addNode = useCallback((type: string) => {
+    const nodeId = `node-${Date.now()}` // 先创建 ID，确保 onFieldChange 使用同一个 ID
     const newNode = {
-      id: `node-${Date.now()}`,
+      id: nodeId,
       type: 'workflowNode',
       position: { x: Math.random() * 400 + 100, y: Math.random() * 300 + 100 },
       data: {
         type,
         fieldValues: {},
         onDelete: deleteNode,
-        onFieldChange: (key: string, value: any) => updateNodeField(`node-${Date.now()}`, key, value),
+        onFieldChange: (key: string, value: any) => updateNodeField(nodeId, key, value),
       },
     }
     setNodes((nds) => [...nds, newNode])
