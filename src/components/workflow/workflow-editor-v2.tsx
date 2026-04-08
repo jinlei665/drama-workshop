@@ -111,21 +111,23 @@ export default function WorkflowEditorV2({
       return null
     }
 
-    // 节点尺寸常量
+    // 节点尺寸常量（与 CSS 中的 width: 280 * zoom 对应）
     const nodeWidth = 280
     const headerHeight = 48
     const portItemHeight = 32
     const portListPadding = 12
-    const portRadius = 12 // 端口圆点半径
+    const portSize = 24 // 端口圆点大小
 
-    // 计算端口中心位置（变换后的坐标）
-    // 端口圆点位于节点边缘外侧：
-    // - 输入端口：left: -portRadius（左边缘外侧）
-    // - 输出端口：right: -portRadius（右边缘外侧）
+    // 计算端口中心位置（变换后的屏幕坐标，与节点和 CSS 定位一致）
+    // 端口圆点位于节点边缘：
+    // - 输入端口：left: 0，圆心在 left + portSize/2
+    // - 输出端口：right: 0，圆心在 width - portSize/2
     const portY = headerHeight + portListPadding + portIndex * portItemHeight + portItemHeight / 2
-    const portX = type === 'input' ? -portRadius : nodeWidth + portRadius
+    const portX = type === 'input' 
+      ? portSize / 2  // 左边缘内侧，圆心向右偏移 portSize/2
+      : nodeWidth - portSize / 2  // 右边缘内侧，圆心向左偏移 portSize/2
 
-    // 转换为变换后的屏幕坐标
+    // 转换为变换后的屏幕坐标（与节点 CSS left/top 一致）
     const position = {
       x: pan.x + (node.position.x + portX) * zoom,
       y: pan.y + (node.position.y + portY) * zoom,
@@ -486,12 +488,12 @@ export default function WorkflowEditorV2({
       }
     }
 
-    // 更新鼠标位置
+    // 更新鼠标位置（屏幕坐标系，与节点和连线一致）
     if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect()
       setMousePos({
-        x: (e.clientX - rect.left - pan.x) / zoom,
-        y: (e.clientY - rect.top - pan.y) / zoom,
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
       })
     }
   }
@@ -1028,13 +1030,21 @@ export default function WorkflowEditorV2({
               {/* 连接预览线 */}
               {connectingFrom && (
                 <g>
-                  <path
-                    d={`M ${mousePos.x} ${mousePos.y} L ${mousePos.x} ${mousePos.y}`}
-                    fill="none"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth="2"
-                    strokeDasharray="4,4"
-                  />
+                  {(() => {
+                    const sourceNode = nodes.find(n => n.id === connectingFrom.nodeId)
+                    if (!sourceNode) return null
+                    const startPos = getPortPosition(sourceNode, connectingFrom.portId, 'output')
+                    if (!startPos) return null
+                    return (
+                      <path
+                        d={`M ${startPos.x} ${startPos.y} L ${mousePos.x} ${mousePos.y}`}
+                        fill="none"
+                        stroke="hsl(var(--primary))"
+                        strokeWidth="2"
+                        strokeDasharray="4,4"
+                      />
+                    )
+                  })()}
                 </g>
               )}
             </svg>
