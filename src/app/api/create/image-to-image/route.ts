@@ -73,10 +73,7 @@ export async function POST(request: NextRequest) {
     const {
       prompt,
       imageUrl,
-      negativePrompt,
-      style = 'realistic',
       size = '1024x1024',
-      strength = 0.7,
     } = body
 
     if (!prompt) {
@@ -100,10 +97,7 @@ export async function POST(request: NextRequest) {
     const result = await generateImage(prompt, {
       size,
       watermark: false,
-      style,
       image: [imageUrl], // 参考图片
-      image_strength: strength, // 图像变换强度
-      negativePrompt,
     })
 
     const resultUrl = result.urls[0]
@@ -132,7 +126,6 @@ export async function POST(request: NextRequest) {
         url: finalUrl,
         originalUrl: resultUrl,
         prompt,
-        style,
         size,
         referenceImage: imageUrl,
       }

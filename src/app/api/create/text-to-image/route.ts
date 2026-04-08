@@ -6,7 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateImage } from '@/lib/ai'
 import { downloadFile } from '@/lib/utils'
-import { getSettingsFromMemory } from '@/lib/memory-store'
 
 /**
  * 上传图片到 OSS
@@ -61,10 +60,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const {
       prompt,
-      negativePrompt,
-      style = 'realistic',
       size = '1024x1024',
-      seed = -1,
     } = body
 
     if (!prompt) {
@@ -80,9 +76,6 @@ export async function POST(request: NextRequest) {
     const result = await generateImage(prompt, {
       size,
       watermark: false,
-      style,
-      seed: seed === -1 ? undefined : seed,
-      negativePrompt,
     })
 
     const imageUrl = result.urls[0]
@@ -111,7 +104,6 @@ export async function POST(request: NextRequest) {
         url: finalUrl,
         originalUrl: imageUrl,
         prompt,
-        style,
         size,
       }
     })

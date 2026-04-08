@@ -85,12 +85,12 @@ async function rehostVideo(videoUrl: string): Promise<string> {
       'Referer': 'https://www.coze.cn/',
     },
     { 'User-Agent': 'Mozilla/5.0 (compatible; VideoBot/1.0)' },
-    {},
+    { 'User-Agent': '*' },
   ]
   
   for (const headers of headerStrategies) {
     try {
-      const response = await fetch(videoUrl, { headers, redirect: 'follow' })
+      const response = await fetch(videoUrl, { headers: headers as Record<string, string>, redirect: 'follow' })
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer()
         const buffer = Buffer.from(arrayBuffer)
@@ -144,12 +144,14 @@ export async function POST(request: NextRequest) {
     console.log('[Image-to-Video] Prompt:', prompt)
 
     // 生成视频
-    const result = await generateVideoFromImage({
+    const result = await generateVideoFromImage(
+      prompt || '画面自然流畅',
       imageUrl,
-      prompt: prompt || '画面自然流畅',
-      duration,
-      aspectRatio,
-    })
+      {
+        duration,
+        ratio: aspectRatio as '16:9' | '9:16' | '1:1',
+      }
+    )
 
     const videoUrl = result.videoUrl
     console.log('[Image-to-Video] Generated video URL:', videoUrl)

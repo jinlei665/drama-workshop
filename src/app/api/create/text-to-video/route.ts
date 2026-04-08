@@ -85,12 +85,12 @@ async function rehostVideo(videoUrl: string): Promise<string> {
       'Referer': 'https://www.coze.cn/',
     },
     { 'User-Agent': 'Mozilla/5.0 (compatible; VideoBot/1.0)' },
-    {},
+    { 'User-Agent': '*' },
   ]
   
   for (const headers of headerStrategies) {
     try {
-      const response = await fetch(videoUrl, { headers, redirect: 'follow' })
+      const response = await fetch(videoUrl, { headers: headers as Record<string, string>, redirect: 'follow' })
       if (response.ok) {
         const arrayBuffer = await response.arrayBuffer()
         const buffer = Buffer.from(arrayBuffer)

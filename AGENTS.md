@@ -183,6 +183,7 @@
   - `/create/image-to-image` - 图生图页面
   - `/create/text-to-video` - 文生视频页面
   - `/create/image-to-video` - 图生视频页面
+- **页面导航**: 所有 AI 生成子页面都包含返回按钮，方便用户返回 AI 生成首页
 
 #### 6.5.1 文生图 (Text-to-Image)
 - **路径**: `src/app/api/create/text-to-image/route.ts`

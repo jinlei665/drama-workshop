@@ -5,6 +5,7 @@
 
 'use client'
 
+import Link from 'next/link'
 import { useState, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { Video, Loader2, Download, Play, Upload, Image, X, Copy, Check, Sparkles } from 'lucide-react'
+import { Video, Loader2, Download, Play, Upload, Image, X, Copy, Check, Sparkles, ArrowLeft } from 'lucide-react'
 
 const DURATION_OPTIONS = [
   { value: '4', label: '4 秒' },
@@ -166,13 +167,20 @@ export default function ImageToVideoPage() {
       {/* 头部 */}
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
-              <Video className="w-5 h-5 text-orange-500" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold">图生视频</h1>
-              <p className="text-xs text-muted-foreground">基于图片生成动态视频</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" asChild>
+                <Link href="/create">
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+              </Button>
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center">
+                <Video className="w-5 h-5 text-orange-500" />
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold">图生视频</h1>
+                <p className="text-xs text-muted-foreground">基于图片生成动态视频</p>
+              </div>
             </div>
           </div>
         </div>
