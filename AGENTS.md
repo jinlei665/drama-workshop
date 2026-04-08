@@ -178,12 +178,15 @@
 - **路径**: `src/app/create/`, `src/app/api/create/`
 - **功能**: 提供独立的 AI 生成功能（不存入数据库，直接生成和下载）
 - **页面结构**:
-  - `/create` - AI 生成首页（重定向到文生图）
+  - `/create` - AI 生成首页（导航卡片展示四种生成功能）
   - `/create/text-to-image` - 文生图页面
   - `/create/image-to-image` - 图生图页面
   - `/create/text-to-video` - 文生视频页面
   - `/create/image-to-video` - 图生视频页面
-- **页面导航**: 所有 AI 生成子页面都包含返回按钮，方便用户返回 AI 生成首页
+- **页面导航**: 
+  - AI 生成首页显示导航卡片，点击进入对应功能页面
+  - 首页包含返回主页按钮
+  - 所有子页面都包含返回按钮，方便用户返回 AI 生成首页
 
 #### 6.5.1 文生图 (Text-to-Image)
 - **路径**: `src/app/api/create/text-to-image/route.ts`
