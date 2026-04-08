@@ -19,7 +19,46 @@ import { promisify } from 'util'
 import * as fs from 'fs'
 import * as path from 'path'
 
-const execAsync = promisify(exec)
+/**
+ * 获取人物库专用的 Supabase 客户端（与服务端 API 保持一致）
+ */
+function getCharacterLibraryClientForNode() {
+  const userUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  console.log('[TextToCharacterNode] Env check:', {
+    hasUserUrl: !!userUrl,
+    hasServiceKey: !!serviceKey,
+    userUrlPrefix: userUrl?.substring(0, 30),
+    serviceKeyPrefix: serviceKey?.substring(0, 30),
+  })
+  
+  if (userUrl && serviceKey) {
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    const client = createClient(userUrl, serviceKey)
+    console.log('[TextToCharacterNode] Created Supabase client with service_role key')
+    return client
+  }
+  
+  // 回退到沙箱环境
+  const cozeUrl = process.env.COZE_SUPABASE_URL
+  const cozeKey = process.env.COZE_SUPABASE_ANON_KEY
+  
+  console.log('[TextToCharacterNode] Falling back to sandbox:', {
+    hasCozeUrl: !!cozeUrl,
+    hasCozeKey: !!cozeKey,
+  })
+  
+  if (cozeUrl && cozeKey) {
+    // eslint-disable-next-line no-eval
+    const createClient = eval("require('@supabase/supabase-js')").createClient
+    return createClient(cozeUrl, cozeKey)
+  }
+  
+  console.log('[TextToCharacterNode] Falling back to getSupabaseClient()')
+  return getSupabaseClient()
+}
 
 // ============ 文本输入节点 ============
 
@@ -1339,61 +1378,42 @@ export class TextToCharacterNode extends BaseNodeClass {
       createdAt: new Date().toISOString(),
     }
 
-    // 尝试保存到人物库表（character_library）
+    // 通过 API 保存到人物库（复用 character-library API 路由）
     let dbSaved = false
     let savedToLibrary = false
     try {
-      const client = getSupabaseClient()
+      const apiUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:5000'
+      console.log('[TextToCharacterNode] Saving to character library via API...')
       
-      // 保存到人物库
-      const libraryData = {
-        id: characterId,
-        name: characterName,
-        description: description,
-        appearance: description,
-        personality: personality,
-        style: style,
-        front_view_key: frontViewKey || imageUrl,
-        image_url: imageUrl,
-        tags: [],
-        created_at: new Date().toISOString(),
-      }
-
-      const { data: dbCharacter, error } = await client
-        .from('character_library')
-        .insert(libraryData)
-        .select()
-        .single()
-
-      if (!error && dbCharacter) {
-        console.log(`[TextToCharacterNode] Character saved to character_library: ${dbCharacter.id}`)
-        character.dbId = dbCharacter.id
-        character.id = dbCharacter.id // 使用数据库 ID
+      const response = await fetch(`${apiUrl}/api/character-library`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: characterName,
+          description: description,
+          appearance: description,
+          personality: personality,
+          style: style,
+          imageUrl: imageUrl,
+          frontViewKey: frontViewKey,
+          tags: [],
+        }),
+      })
+      
+      const result = await response.json()
+      console.log('[TextToCharacterNode] API response:', result)
+      
+      if (result.success && result.data?.character) {
+        console.log(`[TextToCharacterNode] Character saved to character_library via API: ${result.data.character.id}`)
+        character.dbId = result.data.character.id
+        character.id = result.data.character.id
         savedToLibrary = true
-        
-        // 同时保存到项目角色表
-        try {
-          await client
-            .from('characters')
-            .insert({
-              id: dbCharacter.id,
-              project_id: projectId,
-              name: characterName,
-              description: description,
-              appearance: description,
-              personality: personality,
-              front_view_key: frontViewKey || imageUrl,
-            })
-        } catch (e) {
-          console.warn('[TextToCharacterNode] Failed to save to project characters table')
-        }
-        
         dbSaved = true
       } else {
-        console.warn('[TextToCharacterNode] Failed to save to character_library:', error?.message)
+        console.warn('[TextToCharacterNode] Failed to save to character_library via API:', result.error)
       }
     } catch (err) {
-      console.warn('[TextToCharacterNode] Database save failed, using memory storage:', err)
+      console.warn('[TextToCharacterNode] API save failed:', err)
     }
 
     // 保存到内存（作为 fallback 或补充）
