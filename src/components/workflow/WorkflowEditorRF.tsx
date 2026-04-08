@@ -757,6 +757,9 @@ export default function WorkflowEditorRF({
           } else if (data.type === 'node:completed') {
             // 保存节点结果到 fieldValues，用于显示
             const resultData = data.data.result || {}
+            // 提取实际的 data（结果数据可能在 result.data 或 result 中）
+            const actualData = resultData.data || resultData
+            
             setNodes((nds) => nds.map((n) =>
               n.id === data.data.nodeId
                 ? { 
@@ -769,10 +772,10 @@ export default function WorkflowEditorRF({
                       // 将结果保存到 fieldValues 供组件显示
                       fieldValues: {
                         ...n.data.fieldValues,
-                        _resultType: resultData.type,
-                        _resultUrl: resultData.url,
-                        _resultContent: resultData.content || resultData.scenes,
-                        _resultData: resultData,
+                        _resultType: actualData.type,
+                        _resultUrl: actualData.url,
+                        _resultContent: actualData.content || actualData.scenes,
+                        _resultData: actualData,
                       }
                     } 
                   }
@@ -780,12 +783,12 @@ export default function WorkflowEditorRF({
             ))
             
             // 显示 toast 提示
-            if (resultData.type === 'image' && resultData.url) {
+            if (actualData.type === 'image' && actualData.url) {
               toast.success('图像生成成功')
-            } else if (resultData.type === 'video' && resultData.url) {
+            } else if (actualData.type === 'video' && actualData.url) {
               toast.success('视频生成成功')
-            } else if (resultData.type === 'scenes' && resultData.scenes) {
-              toast.success(`生成了 ${resultData.scenes.length} 个分镜`)
+            } else if (actualData.type === 'scenes' && actualData.scenes) {
+              toast.success(`生成了 ${actualData.scenes.length} 个分镜`)
             }
           } else if (data.type === 'node:failed') {
             setNodes((nds) => nds.map((n) =>

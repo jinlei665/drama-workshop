@@ -1,7 +1,12 @@
 import { ReadableStreamDefaultController } from 'stream/web'
 
-// 存储活跃的 SSE 连接
-const connections = new Map<string, ReadableStreamDefaultController>()
+// 使用全局变量存储 SSE 连接（确保跨请求共享）
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const g = global as any
+if (!g.workflowSseConnections) {
+  g.workflowSseConnections = new Map<string, ReadableStreamDefaultController>()
+}
+const connections = g.workflowSseConnections
 
 /**
  * 发送执行事件到客户端
@@ -14,7 +19,7 @@ export function sendExecutionEvent(executionId: string, event: any) {
     try {
       controller.enqueue(encoder.encode(data))
     } catch (error) {
-      console.error('Error sending event:', error)
+      console.error('[SSE] Error sending event:', error)
       connections.delete(executionId)
     }
   }

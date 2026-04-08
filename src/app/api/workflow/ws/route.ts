@@ -5,19 +5,16 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * WebSocket 路由
+ * SSE/WebSocket 路由
  * 用于实时推送工作流执行状态
+ * 支持 GET (SSE 连接) 和 POST (保持兼容性)
  */
 
 /**
  * GET /api/workflow/ws
- * 升级为 WebSocket 连接
+ * 建立 SSE 连接
  */
 export async function GET(request: NextRequest) {
-  // Next.js App Router 不直接支持 WebSocket
-  // 需要使用自定义服务器或 server-sent-events (SSE)
-  // 这里我们改用 SSE 实现
-
   const url = new URL(request.url)
   const executionId = url.searchParams.get('executionId')
 
@@ -76,6 +73,32 @@ export async function GET(request: NextRequest) {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET',
       'Access-Control-Allow-Headers': 'Content-Type, Cache-Control',
+    },
+  })
+}
+
+/**
+ * POST /api/workflow/ws
+ * 兼容某些客户端可能发送 POST 请求
+ */
+export async function POST(request: NextRequest) {
+  const url = new URL(request.url)
+  const executionId = url.searchParams.get('executionId')
+
+  if (!executionId) {
+    return new Response('Missing executionId parameter', { status: 400 })
+  }
+
+  // 返回提示信息，建议使用 GET 方法
+  return new Response(JSON.stringify({
+    error: 'Use GET method for SSE connection',
+    executionId,
+    message: 'Please establish SSE connection using GET request with EventSource'
+  }), {
+    status: 405,
+    headers: {
+      'Content-Type': 'application/json',
+      'Allow': 'GET',
     },
   })
 }
