@@ -46,13 +46,21 @@ export async function uploadFile(
   contentType?: string
 ): Promise<string> {
   const storage = createStorageClient()
-  
-  const size = data instanceof Buffer ? data.length : (data as Blob).size
-  logger.info('Uploading file', { key, size })
-  
+
+  const buffer = data instanceof Buffer ? data : Buffer.from(await (data as Blob).arrayBuffer())
+  const size = buffer.length
+  logger.info('Uploading file', { key, size, contentType })
+
   try {
-    // 简化的上传实现
-    logger.info('File uploaded', { key })
+    // 使用 S3Storage 的 uploadFile 方法上传
+    const url = await storage.uploadFile({
+      fileContent: buffer,
+      fileName: key,
+      contentType: contentType || 'application/octet-stream',
+    })
+
+    logger.info('File uploaded successfully', { key, size, url: url?.substring(0, 80) + '...' })
+
     return getPublicUrl(key)
   } catch (err) {
     logger.error('Upload failed', err)

@@ -420,23 +420,38 @@ export default function WorkflowEditorV2({
 
   // 下载文件（支持跨域）
   const downloadFile = async (url: string, filename: string) => {
+    // 首先尝试使用原始 URL 直接下载（不经过 fetch）
     try {
-      const response = await fetch(url)
-      const blob = await response.blob()
-      const blobUrl = window.URL.createObjectURL(blob)
+      // 创建隐藏的 iframe 来触发下载
+      const iframe = document.createElement('iframe')
+      iframe.style.display = 'none'
+      iframe.src = url
+      document.body.appendChild(iframe)
+
+      // 清理 iframe
+      setTimeout(() => {
+        document.body.removeChild(iframe)
+      }, 5000)
+
+      // 同时尝试使用 a 标签的 download 属性
       const link = document.createElement('a')
-      link.href = blobUrl
+      link.href = url
       link.download = filename
+      link.target = '_self' // 不打开新标签
+      document.body.appendChild(link)
       link.click()
-      window.URL.revokeObjectURL(blobUrl)
+      document.body.removeChild(link)
+
+      toast.success('开始下载', {
+        description: `文件: ${filename}`,
+        duration: 2000,
+      })
     } catch (error) {
       console.error('下载失败:', error)
       toast.error('下载失败', {
         description: error instanceof Error ? error.message : '未知错误',
         duration: 3000,
       })
-      // 降级：在新标签页打开
-      window.open(url, '_blank')
     }
   }
 
