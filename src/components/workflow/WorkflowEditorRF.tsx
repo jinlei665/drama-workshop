@@ -740,11 +740,11 @@ export default function WorkflowEditorRF({
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
-          console.log('[WorkflowEditorRF] SSE event:', data.type, data.data)
 
           if (data.type === 'node:started') {
+            const nodeId = data.data.nodeId
             setNodes((nds) => nds.map((n) =>
-              n.id === data.data.nodeId
+              n.id === nodeId
                 ? { ...n, data: { ...n.data, status: 'running', progress: 0 } }
                 : n
             ))
@@ -755,32 +755,48 @@ export default function WorkflowEditorRF({
                 : n
             ))
           } else if (data.type === 'node:completed') {
-            // 保存节点结果到 fieldValues，用于显示
+            const nodeId = data.data.nodeId
             const resultData = data.data.result || {}
-            // 提取实际的 data（结果数据可能在 result.data 或 result 中）
             const actualData = resultData.data || resultData
             
-            setNodes((nds) => nds.map((n) =>
-              n.id === data.data.nodeId
-                ? { 
-                    ...n, 
-                    data: { 
-                      ...n.data, 
-                      status: 'completed', 
-                      progress: 100,
-                      result: resultData,
-                      // 将结果保存到 fieldValues 供组件显示
-                      fieldValues: {
-                        ...n.data.fieldValues,
-                        _resultType: actualData.type,
-                        _resultUrl: actualData.url,
-                        _resultContent: actualData.content || actualData.scenes,
-                        _resultData: actualData,
-                      }
-                    } 
-                  }
-                : n
-            ))
+            console.log('[WorkflowEditorRF] Processing node:completed', {
+              nodeId,
+              actualData,
+              hasUrl: !!actualData?.url,
+            })
+            
+            setNodes((nds) => {
+              const targetNode = nds.find((n) => n.id === nodeId)
+              console.log('[WorkflowEditorRF] Target node found:', !!targetNode, 'Current IDs:', nds.map(n => n.id))
+              if (targetNode) {
+                console.log('[WorkflowEditorRF] Target node data:', {
+                  hasStatus: 'status' in targetNode.data,
+                  hasFieldValues: 'fieldValues' in targetNode.data,
+                  fieldValues: targetNode.data.fieldValues,
+                })
+              }
+              
+              return nds.map((n) =>
+                n.id === nodeId
+                  ? { 
+                      ...n, 
+                      data: { 
+                        ...n.data, 
+                        status: 'completed', 
+                        progress: 100,
+                        result: resultData,
+                        fieldValues: {
+                          ...(n.data.fieldValues || {}),
+                          _resultType: actualData.type,
+                          _resultUrl: actualData.url,
+                          _resultContent: actualData.content || actualData.scenes,
+                          _resultData: actualData,
+                        }
+                      } 
+                    }
+                  : n
+              )
+            })
             
             // 显示 toast 提示
             if (actualData.type === 'image' && actualData.url) {
@@ -830,7 +846,7 @@ export default function WorkflowEditorRF({
         throw new Error(error.error || '执行失败')
       }
     } catch (error) {
-      console.error('执行失败:', error)
+      console.error('[WorkflowEditorRF] Execution failed:', error)
       toast.error('执行失败', {
         description: error instanceof Error ? error.message : '未知错误',
       })
