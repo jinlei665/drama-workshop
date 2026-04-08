@@ -1,6 +1,6 @@
 /**
  * 图生视频页面
- * 根据图片生成视频
+ * 根据图片生成视频，支持首帧和首尾帧模式
  */
 
 'use client'
@@ -12,10 +12,10 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { Video, Loader2, Download, Play, Upload, Image, X, Copy, Check, Sparkles, ArrowLeft } from 'lucide-react'
+import { Video, Loader2, Download, Play, Upload, Image, X, Copy, Check, Sparkles, ArrowLeft, FlipHorizontal } from 'lucide-react'
 
 const DURATION_OPTIONS = [
   { value: '4', label: '4 秒' },
@@ -33,7 +33,9 @@ const ASPECT_OPTIONS = [
 ]
 
 export default function ImageToVideoPage() {
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [mode, setMode] = useState<'single' | 'first-last'>('single')
+  const [firstFramePreview, setFirstFramePreview] = useState<string | null>(null)
+  const [lastFramePreview, setLastFramePreview] = useState<string | null>(null)
   const [prompt, setPrompt] = useState('')
   const [duration, setDuration] = useState('5')
   const [aspectRatio, setAspectRatio] = useState('16:9')
@@ -44,7 +46,8 @@ export default function ImageToVideoPage() {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const firstFrameInputRef = useRef<HTMLInputElement>(null)
+  const lastFrameInputRef = useRef<HTMLInputElement>(null)
 
   // 优化提示词
   const handleOptimizePrompt = async () => {
@@ -76,8 +79,8 @@ export default function ImageToVideoPage() {
     }
   }
 
-  // 处理图片上传
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 处理首帧图片上传
+  const handleFirstFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -88,7 +91,24 @@ export default function ImageToVideoPage() {
 
     const reader = new FileReader()
     reader.onload = (ev) => {
-      setImagePreview(ev.target?.result as string)
+      setFirstFramePreview(ev.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // 处理尾帧图片上传
+  const handleLastFrameUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('请上传图片文件')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setLastFramePreview(ev.target?.result as string)
     }
     reader.readAsDataURL(file)
   }
@@ -129,22 +149,43 @@ export default function ImageToVideoPage() {
 
   // 生成视频
   const handleGenerate = async () => {
-    if (!imagePreview) {
-      toast.error('请上传图片')
-      return
+    if (mode === 'single') {
+      if (!firstFramePreview) {
+        toast.error('请上传首帧图片')
+        return
+      }
+    } else {
+      if (!firstFramePreview) {
+        toast.error('请上传首帧图片')
+        return
+      }
+      if (!lastFramePreview) {
+        toast.error('请上传尾帧图片')
+        return
+      }
     }
 
     setGenerating(true)
     try {
+      const body: Record<string, unknown> = {
+        prompt,
+        duration: parseInt(duration),
+        aspectRatio,
+      }
+
+      // 首帧模式
+      if (mode === 'single') {
+        body.imageUrl = firstFramePreview
+      } else {
+        // 首尾帧模式
+        body.firstFrameUrl = firstFramePreview
+        body.lastFrameUrl = lastFramePreview
+      }
+
       const response = await fetch('/api/create/image-to-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imageUrl: imagePreview,
-          prompt,
-          duration: parseInt(duration),
-          aspectRatio,
-        }),
+        body: JSON.stringify(body),
       })
 
       const data = await response.json()
@@ -161,6 +202,11 @@ export default function ImageToVideoPage() {
       setGenerating(false)
     }
   }
+
+  // 检查是否可以生成
+  const canGenerate = mode === 'single' 
+    ? !!firstFramePreview && !generating
+    : !!firstFramePreview && !!lastFramePreview && !generating
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
@@ -192,27 +238,86 @@ export default function ImageToVideoPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* 左侧：参数配置 */}
           <div className="space-y-6">
+            {/* 生成模式选择 */}
             <Card>
               <CardHeader>
-                <CardTitle>上传图片</CardTitle>
+                <CardTitle>生成模式</CardTitle>
                 <CardDescription>
-                  上传一张静态图片，AI 将其转化为动态视频
+                  选择视频生成方式
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setMode('single')}
+                    className={`flex-1 p-4 rounded-lg border-2 transition-all ${
+                      mode === 'single'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        mode === 'single' ? 'bg-primary/20' : 'bg-muted'
+                      }`}>
+                        <Image className={`w-5 h-5 ${mode === 'single' ? 'text-primary' : 'text-muted-foreground'}`} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium">首帧模式</p>
+                        <p className="text-xs text-muted-foreground">上传一张图片，AI 自由创作</p>
+                      </div>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => setMode('first-last')}
+                    className={`flex-1 p-4 rounded-lg border-2 transition-all ${
+                      mode === 'first-last'
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                        mode === 'first-last' ? 'bg-primary/20' : 'bg-muted'
+                      }`}>
+                        <FlipHorizontal className={`w-5 h-5 ${mode === 'first-last' ? 'text-primary' : 'text-muted-foreground'}`} />
+                      </div>
+                      <div className="text-left">
+                        <p className="font-medium">首尾帧模式</p>
+                        <p className="text-xs text-muted-foreground">上传首帧和尾帧，控制起止</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 首帧图片上传 */}
+            <Card>
+              <CardHeader>
+                <CardTitle>首帧图片</CardTitle>
+                <CardDescription>
+                  {mode === 'single' 
+                    ? '上传一张静态图片，AI 将其转化为动态视频'
+                    : '上传视频的第一帧图片'
+                  }
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <input
                   type="file"
                   accept="image/*"
-                  ref={fileInputRef}
-                  onChange={handleImageUpload}
+                  ref={firstFrameInputRef}
+                  onChange={handleFirstFrameUpload}
                   className="hidden"
                 />
                 
-                {imagePreview ? (
+                {firstFramePreview ? (
                   <div className="relative">
                     <img
-                      src={imagePreview}
-                      alt="上传图片"
+                      src={firstFramePreview}
+                      alt="首帧图片"
                       className="w-full aspect-video object-contain rounded-lg border bg-black/5"
                     />
                     <Button
@@ -220,8 +325,8 @@ export default function ImageToVideoPage() {
                       size="sm"
                       className="absolute top-2 right-2"
                       onClick={() => {
-                        setImagePreview(null)
-                        if (fileInputRef.current) fileInputRef.current.value = ''
+                        setFirstFramePreview(null)
+                        if (firstFrameInputRef.current) firstFrameInputRef.current.value = ''
                       }}
                     >
                       更换图片
@@ -230,16 +335,68 @@ export default function ImageToVideoPage() {
                 ) : (
                   <div
                     className="aspect-video rounded-lg border-2 border-dashed border-muted-foreground/25 flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 transition-colors"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => firstFrameInputRef.current?.click()}
                   >
                     <Upload className="w-12 h-12 mb-3 text-muted-foreground/50" />
-                    <p className="text-muted-foreground">点击上传图片</p>
+                    <p className="text-muted-foreground">点击上传首帧图片</p>
                     <p className="text-xs text-muted-foreground mt-1">支持 PNG、JPG、WebP</p>
                   </div>
                 )}
               </CardContent>
             </Card>
 
+            {/* 尾帧图片上传（仅首尾帧模式） */}
+            {mode === 'first-last' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>尾帧图片</CardTitle>
+                  <CardDescription>
+                    上传视频的最后一帧图片，AI 会生成从首帧到尾帧的过渡
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={lastFrameInputRef}
+                    onChange={handleLastFrameUpload}
+                    className="hidden"
+                  />
+                  
+                  {lastFramePreview ? (
+                    <div className="relative">
+                      <img
+                        src={lastFramePreview}
+                        alt="尾帧图片"
+                        className="w-full aspect-video object-contain rounded-lg border bg-black/5"
+                      />
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="absolute top-2 right-2"
+                        onClick={() => {
+                          setLastFramePreview(null)
+                          if (lastFrameInputRef.current) lastFrameInputRef.current.value = ''
+                        }}
+                      >
+                        更换图片
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      className="aspect-video rounded-lg border-2 border-dashed border-muted-foreground/25 flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 transition-colors"
+                      onClick={() => lastFrameInputRef.current?.click()}
+                    >
+                      <Upload className="w-12 h-12 mb-3 text-muted-foreground/50" />
+                      <p className="text-muted-foreground">点击上传尾帧图片</p>
+                      <p className="text-xs text-muted-foreground mt-1">支持 PNG、JPG、WebP</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* 运动描述 */}
             <Card>
               <CardHeader>
                 <CardTitle>运动描述</CardTitle>
@@ -267,12 +424,16 @@ export default function ImageToVideoPage() {
                 <Textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="例如：镜头缓慢推进，人物微微转身，背景云朵飘动..."
+                  placeholder={mode === 'single' 
+                    ? "例如：镜头缓慢推进，人物微微转身，背景云朵飘动..."
+                    : "例如：从站立到行走，从微笑到大笑..."
+                  }
                   className="min-h-[100px] resize-none"
                 />
               </CardContent>
             </Card>
 
+            {/* 视频参数 */}
             <Card>
               <CardHeader>
                 <CardTitle>视频参数</CardTitle>
@@ -318,7 +479,7 @@ export default function ImageToVideoPage() {
               size="lg"
               className="w-full"
               onClick={handleGenerate}
-              disabled={generating || !imagePreview}
+              disabled={!canGenerate}
             >
               {generating ? (
                 <>
@@ -384,6 +545,10 @@ export default function ImageToVideoPage() {
 
                     <div className="p-3 bg-muted/50 rounded-lg space-y-2">
                       <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">模式</span>
+                        <span>{mode === 'single' ? '首帧模式' : '首尾帧模式'}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
                         <span className="text-muted-foreground">时长</span>
                         <span>{duration} 秒</span>
                       </div>
@@ -417,9 +582,9 @@ export default function ImageToVideoPage() {
                   <p><strong>提示：</strong></p>
                   <ul className="list-disc list-inside space-y-1">
                     <li>图片清晰度越高，生成效果越好</li>
-                    <li>主体明确的图片效果更佳</li>
-                    <li>添加运动描述可获得更精确的效果</li>
-                    <li>视频生成可能需要数分钟，请耐心等待</li>
+                    <li>首尾帧模式可更好控制视频起止</li>
+                    <li>尾帧与首帧风格差异不宜过大</li>
+                    <li>详细的运动描述可提升生成质量</li>
                   </ul>
                 </div>
               </CardContent>
@@ -430,25 +595,15 @@ export default function ImageToVideoPage() {
 
       {/* 视频预览弹窗 */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-4xl p-0 bg-black">
-          <DialogTitle className="sr-only">视频预览</DialogTitle>
+        <DialogContent className="max-w-4xl">
+          <DialogTitle>视频预览</DialogTitle>
           {result && (
-            <div className="relative">
-              <video
-                src={result.url}
-                className="w-full"
-                controls
-                autoPlay
-              />
-              <Button
-                variant="secondary"
-                size="icon"
-                className="absolute top-2 right-2"
-                onClick={() => setPreviewOpen(false)}
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
+            <video
+              src={result.url}
+              className="w-full aspect-video rounded-lg"
+              controls
+              autoPlay
+            />
           )}
         </DialogContent>
       </Dialog>

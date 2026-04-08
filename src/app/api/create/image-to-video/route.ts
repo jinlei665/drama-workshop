@@ -122,34 +122,64 @@ async function rehostVideo(videoUrl: string): Promise<string> {
 /**
  * POST /api/create/image-to-video
  * 生成视频
+ * 支持首帧模式和首尾帧模式
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const {
-      imageUrl,
+      imageUrl,      // 首帧模式：单张图片
+      firstFrameUrl, // 首尾帧模式：首帧图片
+      lastFrameUrl,  // 首尾帧模式：尾帧图片
       prompt,
       duration = 5,
       aspectRatio = '16:9',
     } = body
 
-    if (!imageUrl) {
+    // 判断模式
+    const isFirstLastMode = !!firstFrameUrl || !!lastFrameUrl
+    const isSingleMode = !!imageUrl
+
+    if (!isSingleMode && !isFirstLastMode) {
       return NextResponse.json(
         { error: '请上传图片' },
         { status: 400 }
       )
     }
 
-    console.log('[Image-to-Video] Generating video from image:', imageUrl.substring(0, 100))
+    if (isFirstLastMode && !firstFrameUrl) {
+      return NextResponse.json(
+        { error: '请上传首帧图片' },
+        { status: 400 }
+      )
+    }
+
+    if (isFirstLastMode && !lastFrameUrl) {
+      return NextResponse.json(
+        { error: '请上传尾帧图片' },
+        { status: 400 }
+      )
+    }
+
+    // 确定使用的图片 URL
+    const effectiveFirstFrameUrl = firstFrameUrl || imageUrl
+    const modeText = isFirstLastMode ? '首尾帧模式' : '首帧模式'
+    
+    console.log(`[Image-to-Video] Generating video (${modeText})`)
+    console.log('[Image-to-Video] First frame:', effectiveFirstFrameUrl?.substring(0, 100))
+    if (isFirstLastMode) {
+      console.log('[Image-to-Video] Last frame:', lastFrameUrl?.substring(0, 100))
+    }
     console.log('[Image-to-Video] Prompt:', prompt)
 
     // 生成视频
     const result = await generateVideoFromImage(
       prompt || '画面自然流畅',
-      imageUrl,
+      effectiveFirstFrameUrl!,
       {
         duration,
         ratio: aspectRatio as '16:9' | '9:16' | '1:1',
+        lastFrameUrl: isFirstLastMode ? lastFrameUrl : undefined,
       }
     )
 
@@ -168,6 +198,7 @@ export async function POST(request: NextRequest) {
         prompt,
         duration,
         aspectRatio,
+        mode: isFirstLastMode ? 'first-last' : 'single',
       }
     })
 

@@ -117,6 +117,8 @@ export interface VideoGenerationOptions {
   resolution?: '480p' | '720p' | '1080p'
   generateAudio?: boolean
   watermark?: boolean
+  /** 尾帧图片 URL（用于首尾帧模式） */
+  lastFrameUrl?: string
 }
 
 // ==================== 系统默认模型配置 ====================
@@ -2699,6 +2701,19 @@ export async function generateVideoFromImage(
 ): Promise<{ videoUrl: string; lastFrameUrl?: string }> {
   try {
     logger.info('Image-to-video generation started')
+
+    // 如果有尾帧 URL，使用首尾帧模式
+    if (options?.lastFrameUrl) {
+      logger.info('Using first-last frame mode')
+      return generateVideoFromFrames(
+        prompt,
+        firstFrameUrl,
+        options.lastFrameUrl,
+        options,
+        config,
+        headers
+      )
+    }
 
     // 策略0: 检查用户配置的自定义 Provider（火山引擎等）
     const videoConfig = await getUserVideoConfig()
