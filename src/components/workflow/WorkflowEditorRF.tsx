@@ -134,14 +134,17 @@ function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>)
     >
       {/* 输入端口 */}
       {inputs.map((port: { id: string; name: string }, index: number) => (
-        <Handle
-          key={`input-${port.id}`}
-          type="target"
-          position={Position.Left}
-          id={port.id}
-          style={{ top: `${52 + index * 36}px` }}
-          className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
-        />
+        <div key={`input-${port.id}`} className="absolute left-0 flex items-center" style={{ top: `${52 + index * 36}px`, transform: 'translateY(-50%)' }}>
+          <Handle
+            type="target"
+            position={Position.Left}
+            id={port.id}
+            className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
+          />
+          <span className="ml-2 text-xs text-muted-foreground bg-background px-1.5 py-0.5 rounded border whitespace-nowrap">
+            {port.name}
+          </span>
+        </div>
       ))}
 
       {/* 节点头部 */}
@@ -191,14 +194,17 @@ function WorkflowNode({ data, selected, id }: NodeProps<Node<WorkflowNodeData>>)
 
       {/* 输出端口 */}
       {outputs.map((port: { id: string; name: string }, index: number) => (
-        <Handle
-          key={`output-${port.id}`}
-          type="source"
-          position={Position.Right}
-          id={port.id}
-          style={{ top: `${52 + index * 36}px` }}
-          className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
-        />
+        <div key={`output-${port.id}`} className="absolute right-0 flex items-center" style={{ top: `${52 + index * 36}px`, transform: 'translateY(-50%)' }}>
+          <span className="mr-2 text-xs text-muted-foreground bg-background px-1.5 py-0.5 rounded border whitespace-nowrap">
+            {port.name}
+          </span>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id={port.id}
+            className="!w-4 !h-4 !bg-background !border-2 !border-primary hover:!bg-primary transition-colors"
+          />
+        </div>
       ))}
     </div>
   )
