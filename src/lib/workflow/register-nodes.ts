@@ -4,11 +4,18 @@
  */
 
 import { NodeFactory } from './node/BaseNode'
-import { TextInputNode } from './nodes/index'
-import { ImageInputNode } from './nodes/index'
+import {
+  TextInputNode,
+  ImageInputNode,
+  TextToImageNode,
+  ImageToVideoNode,
+  TextToAudioNode,
+  ScriptToScenesNode,
+  LLMProcessNode,
+  VideoComposeNode,
+  TextToCharacterNode,
+} from './nodes/index'
 import { ScriptInputNode } from './nodes/ScriptInputNode'
-import { TextToImageNode } from './nodes/index'
-import { ImageToVideoNode } from './nodes/index'
 
 /**
  * 注册所有节点类型
@@ -20,6 +27,11 @@ export function registerAllNodes() {
   NodeFactory.registerNode('script-input', ScriptInputNode as any)
   NodeFactory.registerNode('text-to-image', TextToImageNode as any)
   NodeFactory.registerNode('image-to-video', ImageToVideoNode as any)
+  NodeFactory.registerNode('text-to-audio', TextToAudioNode as any)
+  NodeFactory.registerNode('script-to-scenes', ScriptToScenesNode as any)
+  NodeFactory.registerNode('llm-process', LLMProcessNode as any)
+  NodeFactory.registerNode('video-compose', VideoComposeNode as any)
+  NodeFactory.registerNode('text-to-character', TextToCharacterNode as any)
 }
 
 // 自动注册（仅在服务器端）

@@ -184,7 +184,45 @@
   - 输出端口: `video`(视频)
   - 后端执行逻辑支持多种端口 ID 映射（`image`/`firstFrame` → `firstFrame`，`lastFrameImage`/`lastFrame` → `lastFrame`）
 
-### 7.2 端口 ID 规范
+### 7.2 工作流节点完整列表
+工作流系统已实现以下节点类型：
+
+| 节点类型 | 名称 | 输入端口 | 输出端口 | 功能说明 |
+|---------|------|---------|---------|---------|
+| `text-input` | 文本输入 | 无 | `text` | 输入文本内容 |
+| `image-input` | 图片输入 | 无 | `image` | 上传或选择图片 |
+| `script-input` | 脚本输入 | 无 | `script` | 输入脚本内容 |
+| `text-to-image` | 文生图 | `prompt` | `image` | 根据提示词生成图像 |
+| `image-to-video` | 图生视频 | `prompt`, `firstFrame`, `lastFrame` | `video` | 根据图片生成视频 |
+| `text-to-audio` | 文字转语音 | `text` | `audio` | 将文本转换为语音 |
+| `text-to-character` | 角色生成 | `description` | `character`, `image` | 根据描述创建角色 |
+| `script-to-scenes` | 脚本分析 | `script` | `scenes` | 分析脚本生成分镜 |
+| `llm-process` | LLM 处理 | `input` | `output` | 使用大语言模型处理输入 |
+| `video-compose` | 视频合成 | `videos` | `video` | 合并多个视频片段 |
+
+### 7.3 LLM 调用支持
+工作流节点支持多种 LLM 调用方式：
+
+1. **Coze SDK**（默认）:
+   - 使用 `invokeLLM` / `invokeLLMWithStream`
+   - 支持系统配置的 API Key
+
+2. **Coze Direct API**:
+   - 支持 Bot ID + 个人令牌调用
+   - 使用 `invokeCozeDirect` 函数
+
+3. **自定义 LLM Provider**:
+   - 支持 DeepSeek、Kimi、火山引擎等 OpenAI 兼容服务
+   - 支持用户配置的 API Key 和 Base URL
+   - 使用 `OpenAICompatibleClient`
+
+### 7.4 API 调用优先级
+1. 优先使用用户配置的自定义 LLM Provider（如果配置了）
+2. 如果使用 Coze/豆包模型，检查是否配置了 Bot ID（使用 Coze Direct）
+3. 如果配置了 API Key，使用 Coze SDK
+4. 使用系统默认模型
+
+### 7.5 端口 ID 规范
 - 前端 `getNodeInputs` 和后端节点 `process` 方法中的端口 ID 必须保持一致
 - 统一使用规范的命名：`firstFrame`, `lastFrame`, `prompt` 等
 - 执行器根据 `edge.toPort` 匹配输入端口并设置值
