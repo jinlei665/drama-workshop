@@ -8,7 +8,7 @@ export const maxDuration = 300 // 5分钟
 
 // POST /api/analyze - 分析文本内容，提取人物和视频分镜
 export async function POST(request: NextRequest) {
-  const { projectId, content } = await request.json()
+  const { projectId, content, style, customStylePrompt } = await request.json()
 
   if (!content) {
     return NextResponse.json({ error: "内容不能为空" }, { status: 400 })
@@ -44,6 +44,39 @@ export async function POST(request: NextRequest) {
     console.log(`Content too long (${content.length} chars), truncating to ${maxContentLength}`)
     processedContent = content.substring(0, maxContentLength) + '\n\n...（内容已截断，请分段上传完整内容）'
   }
+
+  // 风格提示词映射
+  const styleDescriptions: Record<string, string> = {
+    // 真人类
+    realistic_cinema: '电影级写实风格，专业影视剧质感，电影级光影',
+    realistic_drama: '短剧写实风格，现代短剧风格，自然光线',
+    realistic_period: '古装写实风格，古风影视质感，唯美画面',
+    realistic_idol: '偶像剧风格，韩剧/偶像剧风格，柔美滤镜',
+    // 动漫类
+    anime_3d_cn: '国漫3D动画风格，国产3D动画如斗罗大陆',
+    anime_2d_cn: '国风2D动画风格，如魔道祖师',
+    anime_jp: '日本动漫风格，如鬼灭之刃',
+    anime_chibi: 'Q版萌系风格，可爱大头小身',
+    // 艺术类
+    art_watercolor: '水彩插画风格，柔和淡雅',
+    art_ink: '中国传统水墨画风格',
+    art_oil: '油画风格，厚重笔触',
+    art_comic: '美式漫画风格，强对比',
+  }
+
+  // 构建风格说明
+  let styleDescription = ''
+  if (style && style !== 'custom') {
+    styleDescription = styleDescriptions[style] || ''
+  }
+  if (customStylePrompt) {
+    styleDescription = customStylePrompt
+  }
+  
+  // 构建带风格的 systemPrompt
+  const styleContext = styleDescription 
+    ? `\n\n## 画面风格要求\n你生成的所有画面描述必须严格遵循以下风格：\n**${styleDescription}**\n\n请在描述场景、人物外貌、动作时，都融入这种风格特征。\n例如：如果是水墨风格，场景描述应该包含山水、留白、墨色等元素；如果是动漫风格，应该包含大眼睛、日系配色等特征。` 
+    : ''
 
   const systemPrompt = `你是一个专业的短剧视频创作助手。你的任务是分析小说或脚本内容，提取出人物信息和视频分镜信息。
 
@@ -110,9 +143,9 @@ export async function POST(request: NextRequest) {
 1. 分镜数量根据内容合理拆分，一般10-20个，具体根据对话量和场景复杂度调整
 2. 每个场景应该是一个独立的视频分镜
 3. 场景描述要详细，包含视觉元素、光影效果
-4. 人物外貌描述要具体，便于生成真人风格的角色造型图
+4. 人物外貌描述要具体，便于生成角色造型图
 5. 景别和镜头运动要符合影视剧拍摄规范
-6. 这是短剧视频分镜，不是漫画`
+6. 这是短剧视频分镜，不是漫画${styleContext}`
 
   try {
     const messages = [

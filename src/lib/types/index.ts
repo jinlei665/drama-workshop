@@ -26,6 +26,10 @@ export interface Project {
   description?: string
   sourceContent: string
   sourceType: 'novel' | 'script'
+  /** 画面风格预设值 */
+  style?: string
+  /** 自定义风格提示词 */
+  customStylePrompt?: string
   status: ProjectStatus
   createdAt: string
   updatedAt: string

@@ -70,6 +70,9 @@ const VISUAL_STYLES = {
   }
 } as const
 
+// 自定义风格标识
+const CUSTOM_STYLE = 'custom'
+
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -81,7 +84,8 @@ export default function Home() {
     description: '',
     sourceContent: '',
     sourceType: 'novel',
-    style: 'realistic_cinema'
+    style: 'realistic_cinema',
+    customStylePrompt: ''
   })
 
   const fetchProjects = async () => {
@@ -133,7 +137,8 @@ export default function Home() {
         description: '',
         sourceContent: '',
         sourceType: 'novel',
-        style: 'realistic_cinema'
+        style: 'realistic_cinema',
+        customStylePrompt: ''
       })
       fetchProjects()
       
@@ -267,9 +272,9 @@ export default function Home() {
                                 <button
                                   key={style.value}
                                   type="button"
-                                  onClick={() => setFormData({ ...formData, style: style.value })}
+                                  onClick={() => setFormData({ ...formData, style: style.value, customStylePrompt: '' })}
                                   className={`text-left p-3 rounded-lg border transition-all ${
-                                    formData.style === style.value
+                                    formData.style === style.value && !formData.customStylePrompt
                                       ? 'border-primary bg-primary/10'
                                       : 'border-border hover:border-primary/50 hover:bg-muted/50'
                                   }`}
@@ -281,6 +286,39 @@ export default function Home() {
                             </div>
                           </div>
                         ))}
+                        
+                        {/* 自定义风格选项 */}
+                        <div className="space-y-2 pt-2 border-t">
+                          <button
+                            type="button"
+                            onClick={() => setFormData({ ...formData, style: CUSTOM_STYLE })}
+                            className={`w-full text-left p-3 rounded-lg border transition-all ${
+                              formData.style === CUSTOM_STYLE
+                                ? 'border-primary bg-primary/10'
+                                : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                            }`}
+                          >
+                            <p className="text-sm font-medium flex items-center gap-2">
+                              <Sparkles className="w-4 h-4" />
+                              自定义风格
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">输入你自己的风格描述</p>
+                          </button>
+                          
+                          {formData.style === CUSTOM_STYLE && (
+                            <div className="space-y-2">
+                              <Textarea
+                                placeholder="输入自定义风格提示词，例如：赛博朋克风格，霓虹灯光，科幻城市..."
+                                className="h-[80px] resize-none"
+                                value={formData.customStylePrompt}
+                                onChange={(e) => setFormData({ ...formData, customStylePrompt: e.target.value })}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                提示：描述你想要的画面风格、光影效果、色彩风格等，AI 会将这个描述融入生成的图像中
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     

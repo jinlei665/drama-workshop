@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
             sourceContent: p.source_content,
             sourceType: p.source_type,
             style: p.style || 'realistic_cinema',
+            customStylePrompt: p.custom_style_prompt || '',
             status: p.status || 'draft',
             createdAt: p.created_at,
             updatedAt: p.updated_at,
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
       sourceType?: string
       description?: string
       style?: string
+      customStylePrompt?: string
     }>(request)
     
     if (!body.name?.trim()) {
@@ -116,6 +118,7 @@ export async function POST(request: NextRequest) {
       sourceType: body.sourceType || 'novel',
       description: body.description,
       style: body.style || 'realistic_cinema',
+      customStylePrompt: body.customStylePrompt || '',
       status: 'draft',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -137,6 +140,7 @@ export async function POST(request: NextRequest) {
             source_type: project.sourceType,
             description: project.description,
             style: project.style,
+            custom_style_prompt: project.customStylePrompt,
             status: project.status,
           })
           .select()
@@ -148,8 +152,8 @@ export async function POST(request: NextRequest) {
           // 创建系统工作流
           createSystemWorkflowForProject(data.id, data.name, project.sourceContent, project.style).catch(console.error)
 
-          // 触发异步分析
-          triggerAnalysis(data.id, project.sourceContent, project.style).catch(console.error)
+          // 触发异步分析（传入 style 和 customStylePrompt）
+          triggerAnalysis(data.id, project.sourceContent, project.style, project.customStylePrompt).catch(console.error)
           
           return successResponse({
             project: {
@@ -159,6 +163,7 @@ export async function POST(request: NextRequest) {
               sourceContent: data.source_content,
               sourceType: data.source_type,
               style: data.style || project.style,
+              customStylePrompt: data.custom_style_prompt || project.customStylePrompt,
               status: data.status,
               createdAt: data.created_at,
               updatedAt: data.updated_at,
@@ -184,8 +189,8 @@ export async function POST(request: NextRequest) {
     // 创建系统工作流
     createSystemWorkflowForProject(project.id, project.name, project.sourceContent, project.style).catch(console.error)
 
-    // 触发异步分析
-    triggerAnalysis(project.id, project.sourceContent, project.style).catch(console.error)
+    // 触发异步分析（传入 style 和 customStylePrompt）
+    triggerAnalysis(project.id, project.sourceContent, project.style, project.customStylePrompt).catch(console.error)
     
     return successResponse({ project }, 201)
   } catch (error) {
@@ -196,7 +201,7 @@ export async function POST(request: NextRequest) {
 /**
  * 触发项目内容分析（异步）
  */
-async function triggerAnalysis(projectId: string, content: string, style?: string) {
+async function triggerAnalysis(projectId: string, content: string, style?: string, customStylePrompt?: string) {
   try {
     // 更新项目状态为分析中
     const projectIndex = memoryProjects.findIndex(p => p.id === projectId)
@@ -230,6 +235,8 @@ async function triggerAnalysis(projectId: string, content: string, style?: strin
       body: JSON.stringify({
         projectId,
         content,
+        style,
+        customStylePrompt,
       }),
     })
     
