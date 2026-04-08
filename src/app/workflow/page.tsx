@@ -1,10 +1,10 @@
 /**
- * 工作流页面 - 使用新的 WorkflowEditorV2
+ * 工作流页面 - 使用 React Flow 版本
  */
 
 'use client'
 
-import WorkflowEditorV2 from '@/components/workflow/workflow-editor-v2'
+import WorkflowEditorRF from '@/components/workflow/WorkflowEditorRF'
 import { AppShell } from '@/components/layout'
 import { useEffect } from 'react'
 
@@ -18,7 +18,7 @@ export default function WorkflowPage() {
   return (
     <AppShell>
       <div className="h-[calc(100vh-4rem)]">
-        <WorkflowEditorV2 />
+        <WorkflowEditorRF />
       </div>
     </AppShell>
   )

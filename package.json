@@ -60,6 +60,7 @@
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/supabase-js": "2.95.3",
+    "@xyflow/react": "^12.10.2",
     "ali-oss": "^6.23.0",
     "archiver": "^7.0.1",
     "axios": "^1.13.6",
