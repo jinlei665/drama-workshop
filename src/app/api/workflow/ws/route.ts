@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
     start(controller) {
       // 保存 controller 以便后续发送事件
       connections.set(executionId, controller)
+      console.log(`[SSE Route] 连接已保存: ${executionId}, 当前连接:`, Array.from(connections.keys()))
 
       // 发送连接成功事件
       const event = `data: ${JSON.stringify({ type: 'connected', executionId })}\n\n`
@@ -61,6 +62,7 @@ export async function GET(request: NextRequest) {
         clearInterval(interval)
       }
       connections.delete(executionId)
+      console.log(`[SSE Route] 连接已从 store 删除: ${executionId}, 剩余连接:`, Array.from(connections.keys()))
     },
   })
 

@@ -34,7 +34,11 @@ import {
   Brain,
   Clapperboard,
   Upload,
+  Download,
+  Maximize2,
+  X,
 } from 'lucide-react'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 
 // 节点数据类型
@@ -44,6 +48,8 @@ interface WorkflowNodeData extends Record<string, unknown> {
   status?: string
   onDelete?: (id: string) => void
   onFieldChange?: (key: string, value: unknown) => void
+  onPreview?: (type: 'image' | 'video', url: string, title: string) => void
+  onDownload?: (url: string, filename?: string) => void
 }
 
 // 节点颜色映射
@@ -297,13 +303,31 @@ function renderNodeFields(data: any) {
           {data.status === 'completed' && data.fieldValues?._resultUrl && (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">生成结果</Label>
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-hidden relative group">
                 <img 
                   src={data.fieldValues._resultUrl} 
                   alt="生成结果"
-                  className="w-full h-32 object-cover"
+                  className="w-full h-32 object-cover cursor-pointer"
+                  onClick={() => data.onPreview?.('image', String(data.fieldValues._resultUrl), '图像预览')}
                   onError={(e) => { e.currentTarget.style.display = 'none' }}
                 />
+                {/* 悬停时显示操作按钮 */}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => data.onPreview?.('image', String(data.fieldValues._resultUrl), '图像预览')}
+                    className="p-2 bg-white rounded-full hover:bg-gray-100 transition-colors"
+                    title="查看大图"
+                  >
+                    <Maximize2 className="w-4 h-4 text-gray-700" />
+                  </button>
+                  <button
+                    onClick={() => data.onDownload?.(String(data.fieldValues._resultUrl), `image-${Date.now()}.png`)}
+                    className="p-2 bg-white rounded-full hover:bg-gray-100 transition-colors"
+                    title="下载图片"
+                  >
+                    <Download className="w-4 h-4 text-gray-700" />
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -362,12 +386,22 @@ function renderNodeFields(data: any) {
           {data.status === 'completed' && data.fieldValues?._resultUrl && (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">生成结果</Label>
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-hidden relative group">
                 <video 
                   src={data.fieldValues._resultUrl} 
                   controls
                   className="w-full h-32 object-cover"
                 />
+                {/* 悬停时显示下载按钮 */}
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => data.onDownload?.(String(data.fieldValues._resultUrl), `video-${Date.now()}.mp4`)}
+                    className="p-2 bg-white rounded-full hover:bg-gray-100 transition-colors shadow-lg"
+                    title="下载视频"
+                  >
+                    <Download className="w-4 h-4 text-gray-700" />
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -414,12 +448,30 @@ function renderNodeFields(data: any) {
           {data.status === 'completed' && data.fieldValues?._resultUrl && (
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">生成结果</Label>
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-hidden relative group">
                 <img 
                   src={data.fieldValues._resultUrl} 
                   alt="角色形象"
-                  className="w-full h-32 object-cover"
+                  className="w-full h-32 object-cover cursor-pointer"
+                  onClick={() => data.onPreview?.('image', String(data.fieldValues._resultUrl), '角色形象预览')}
                 />
+                {/* 悬停时显示操作按钮 */}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => data.onPreview?.('image', String(data.fieldValues._resultUrl), '角色形象预览')}
+                    className="p-2 bg-white rounded-full hover:bg-gray-100 transition-colors"
+                    title="查看大图"
+                  >
+                    <Maximize2 className="w-4 h-4 text-gray-700" />
+                  </button>
+                  <button
+                    onClick={() => data.onDownload?.(String(data.fieldValues._resultUrl), `character-${Date.now()}.png`)}
+                    className="p-2 bg-white rounded-full hover:bg-gray-100 transition-colors"
+                    title="下载图片"
+                  >
+                    <Download className="w-4 h-4 text-gray-700" />
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -587,6 +639,37 @@ export default function WorkflowEditorRF({
   readOnly = false,
 }: WorkflowEditorRFProps) {
   const [isRunning, setIsRunning] = useState(false)
+  const [previewState, setPreviewState] = useState<{
+    open: boolean
+    type: 'image' | 'video'
+    url: string
+    title: string
+  }>({ open: false, type: 'image', url: '', title: '' })
+
+  // 打开预览
+  const openPreview = useCallback((type: 'image' | 'video', url: string, title: string = '预览') => {
+    setPreviewState({ open: true, type, url, title })
+  }, [])
+
+  // 下载文件
+  const downloadFile = useCallback(async (url: string, filename?: string) => {
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = filename || `download-${Date.now()}.${previewState.type}`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+      toast.success('下载成功')
+    } catch (error) {
+      toast.error('下载失败')
+      console.error('Download error:', error)
+    }
+  }, [previewState.type])
 
   // 转换初始节点
   const convertNode = (node: any) => ({
@@ -682,10 +765,12 @@ export default function WorkflowEditorRF({
         fieldValues: {},
         onDelete: deleteNode,
         onFieldChange: (key: string, value: any) => updateNodeField(nodeId, key, value),
+        onPreview: openPreview,
+        onDownload: downloadFile,
       },
     }
     setNodes((nds) => [...nds, newNode])
-  }, [setNodes, deleteNode, updateNodeField])
+  }, [setNodes, deleteNode, updateNodeField, openPreview, downloadFile])
 
   // 保存工作流
   const handleSave = () => {
@@ -743,8 +828,14 @@ export default function WorkflowEditorRF({
 
     try {
       const eventSource = new EventSource(`/api/workflow/ws?executionId=${executionId}`)
+      console.log('[WorkflowEditorRF] EventSource created, executionId:', executionId)
+
+      eventSource.onopen = () => {
+        console.log('[WorkflowEditorRF] EventSource connected!')
+      }
 
       eventSource.onmessage = (event) => {
+        console.log('[WorkflowEditorRF] Received event:', event.data)
         try {
           const data = JSON.parse(event.data)
 
@@ -839,6 +930,8 @@ export default function WorkflowEditorRF({
                           ...n.data, 
                           status: nodeResult.status === 'error' || nodeResult.status === 'failed' ? 'failed' : 'completed',
                           result: actualData,
+                          onPreview: openPreview,
+                          onDownload: downloadFile,
                           fieldValues: {
                             ...(n.data.fieldValues || {}),
                             _resultType: actualData.type,
@@ -865,10 +958,11 @@ export default function WorkflowEditorRF({
       }
 
       // 添加 onerror 处理，防止浏览器自动重试导致频繁请求
-      eventSource.onerror = () => {
-        console.log('[WorkflowEditorRF] EventSource error, closing connection')
-        eventSource.close()
-      }
+      eventSource.onerror = (error) => {
+        console.error('[WorkflowEditorRF] EventSource error:', error)
+        console.log('[WorkflowEditorRF] EventSource readyState:', eventSource.readyState)
+        // 不要立即关闭，等待执行完成
+      };
 
       const response = await fetch('/api/workflow/execute', {
         method: 'POST',
@@ -885,6 +979,52 @@ export default function WorkflowEditorRF({
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || '执行失败')
+      }
+
+      // 解析执行结果
+      const resultData = await response.json()
+      console.log('[WorkflowEditorRF] Execution response:', resultData)
+      
+      // 使用返回的 results 更新节点状态（兜底机制，确保即使 SSE 失败也能显示结果）
+      if (resultData.success && resultData.data?.results && Array.isArray(resultData.data.results)) {
+        console.log('[WorkflowEditorRF] Processing fallback results:', resultData.data.results)
+        
+        resultData.data.results.forEach((resultItem: any) => {
+          const nodeResult = resultItem.result || resultItem
+          const actualData = nodeResult.data || nodeResult.result || nodeResult
+          
+          console.log('[WorkflowEditorRF] Updating node:', resultItem.nodeId, 'with data:', actualData)
+          
+          setNodes((nds) => nds.map((n) =>
+            n.id === resultItem.nodeId
+              ? { 
+                  ...n, 
+                  data: { 
+                    ...n.data, 
+                    status: nodeResult.status === 'error' || nodeResult.status === 'failed' ? 'failed' : 'completed',
+                    result: actualData,
+                    onPreview: openPreview,
+                    onDownload: downloadFile,
+                    fieldValues: {
+                      ...(n.data.fieldValues || {}),
+                      _resultType: actualData.type,
+                      _resultUrl: actualData.url,
+                      _resultContent: actualData.content || actualData.scenes,
+                      _resultData: actualData,
+                    }
+                  } 
+                }
+              : n
+          ))
+        })
+        
+        // 显示完成提示
+        const imageCount = resultData.data.results.filter((r: any) => r.result?.data?.type === 'image').length
+        const videoCount = resultData.data.results.filter((r: any) => r.result?.data?.type === 'video').length
+        
+        if (imageCount > 0) toast.success(`图像生成成功 (${imageCount} 张)`)
+        if (videoCount > 0) toast.success(`视频生成成功 (${videoCount} 个)`)
+        toast.success('工作流执行完成')
       }
     } catch (error) {
       console.error('[WorkflowEditorRF] Execution failed:', error)
@@ -1001,6 +1141,43 @@ export default function WorkflowEditorRF({
           </ReactFlow>
         </div>
       </div>
+
+      {/* 预览 Dialog */}
+      <Dialog open={previewState.open} onOpenChange={(open) => setPreviewState((s) => ({ ...s, open }))}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden">
+          <DialogTitle className="p-4 border-b flex items-center justify-between">
+            <span>{previewState.title}</span>
+            <div className="flex items-center gap-2">
+              {previewState.type === 'image' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadFile(previewState.url, `preview-${Date.now()}.png`)}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  下载
+                </Button>
+              )}
+            </div>
+          </DialogTitle>
+          <div className="flex items-center justify-center bg-black/90 p-4 overflow-auto max-h-[calc(90vh-60px)]">
+            {previewState.type === 'image' ? (
+              <img 
+                src={previewState.url} 
+                alt={previewState.title}
+                className="max-w-full max-h-full object-contain"
+              />
+            ) : (
+              <video 
+                src={previewState.url} 
+                controls
+                className="max-w-full max-h-full"
+                autoPlay
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

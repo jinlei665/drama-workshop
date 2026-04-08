@@ -18,10 +18,13 @@ export function sendExecutionEvent(executionId: string, event: any) {
     const data = `data: ${JSON.stringify(event)}\n\n`
     try {
       controller.enqueue(encoder.encode(data))
+      console.log(`[SSE] 事件已发送: ${event.type} -> ${executionId}`)
     } catch (error) {
       console.error('[SSE] Error sending event:', error)
       connections.delete(executionId)
     }
+  } else {
+    console.warn(`[SSE] 连接不存在: ${executionId}, 当前连接:`, Array.from(connections.keys()))
   }
 }
 
