@@ -1,90 +1,89 @@
 /**
  * 图片存储服务
  * 负责将外部图片 URL 下载并上传到对象存储
+ * 参考 scene-image 的实现方式，使用 ali-oss SDK
  */
 
-import { uploadFile, getStorageConfig } from '@/lib/storage'
 import { logger } from '@/lib/errors'
-
-/**
- * 从 URL 下载图片
- */
-async function downloadImage(url: string): Promise<{ buffer: Buffer; contentType: string }> {
-  logger.info('Downloading image from URL', { url })
-
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
-    redirect: 'follow',
-  })
-
-  if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.status} ${response.statusText}`)
-  }
-
-  const arrayBuffer = await response.arrayBuffer()
-  const buffer = Buffer.from(arrayBuffer)
-  const contentType = response.headers.get('content-type') || 'image/png'
-
-  logger.info('Image downloaded successfully', {
-    size: `${(buffer.length / 1024).toFixed(2)} KB`,
-    contentType,
-  })
-
-  return { buffer, contentType }
-}
-
-/**
- * 检查 URL 是否可以直接访问（用于验证 OSS 上传后的 URL）
- */
-async function checkUrlAccessible(url: string): Promise<boolean> {
-  try {
-    const response = await fetch(url, {
-      method: 'HEAD',  // 只请求头部，不下载内容
-      redirect: 'follow',
-    })
-    return response.ok
-  } catch {
-    return false
-  }
-}
+import { downloadFile } from '@/lib/utils'
 
 /**
  * 上传图片到对象存储
  * @param imageUrl 原始图片 URL
  * @param key 存储路径（如 workflow/text-to-image/1234567890.png）
- * @returns 存储后的公开 URL，如果上传失败或 OSS URL 不可访问则返回 null
+ * @returns 存储后的公开 URL，如果上传失败返回 null
  */
 export async function uploadImageToStorage(imageUrl: string, key: string): Promise<string | null> {
+  let fileKey: string | null = null
+  let viewUrl: string = imageUrl // 默认使用原始 URL
+
   try {
-    // 检查是否配置了对象存储
-    const config = getStorageConfig()
-    if (!config.endpoint || config.endpoint === 'http://localhost:9000') {
-      logger.warn('S3_ENDPOINT not configured or using localhost, skipping image upload')
-      return null
-    }
-
     // 下载图片
-    const { buffer, contentType } = await downloadImage(imageUrl)
+    const imageBuffer = await downloadFile(imageUrl)
+    console.log('[Image Storage] Image downloaded, size:', imageBuffer.length)
 
-    // 使用统一的 uploadFile 函数上传
-    const publicUrl = await uploadFile(key, buffer, contentType)
+    // 尝试上传到对象存储（使用 ali-oss SDK）
+    try {
+      const OSS = await import('ali-oss')
+      const ossClient = new OSS.default({
+        region: process.env.S3_REGION || 'oss-cn-chengdu',
+        accessKeyId: process.env.S3_ACCESS_KEY || '',
+        accessKeySecret: process.env.S3_SECRET_KEY || '',
+        bucket: process.env.S3_BUCKET || 'drama-studio',
+        secure: true,
+      })
 
-    logger.info('Image uploaded to OSS', { key, url: publicUrl.substring(0, 80) + '...' })
+      // 确保 key 格式正确（使用正斜杠）
+      const normalizedKey = key.replace(/\\/g, '/')
+      fileKey = normalizedKey
 
-    // 检查 OSS URL 是否可以直接访问
-    const isAccessible = await checkUrlAccessible(publicUrl)
-    if (isAccessible) {
-      logger.info('OSS URL is accessible, using it')
-      return publicUrl
-    } else {
-      logger.warn('OSS URL is not accessible (CORS or permission issue), using original URL')
-      // OSS URL 无法访问，回退到原始 URL
-      return null
+      // 上传到 OSS
+      await ossClient.put(fileKey, imageBuffer)
+
+      // 设置为公开读取
+      await ossClient.putACL(fileKey, 'public-read')
+
+      // 生成公网 URL
+      const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+      viewUrl = `${endpoint}/${fileKey}`
+
+      console.log('[Image Storage] Image uploaded to OSS:', fileKey)
+      console.log('[Image Storage] Public URL:', viewUrl)
+
+      return viewUrl
+    } catch (ossError) {
+      console.warn('[Image Storage] Failed to upload to OSS:', ossError)
+
+      // 对象存储不可用，保存到本地 public 目录
+      try {
+        const fs = await import('fs')
+        const path = await import('path')
+
+        // 从 key 中提取文件名
+        const fileName = path.basename(key)
+        const timestamp = Date.now()
+        const localFileName = `${fileName.replace(/\.[^.]+$/, '')}_${timestamp}.png`
+
+        const publicDir = path.join(process.cwd(), 'public', 'workflow', path.dirname(key))
+        if (!fs.existsSync(publicDir)) {
+          fs.mkdirSync(publicDir, { recursive: true })
+        }
+
+        const localFilePath = path.join(publicDir, localFileName)
+        fs.writeFileSync(localFilePath, imageBuffer)
+
+        viewUrl = `/workflow/${path.dirname(key)}/${localFileName}`
+        console.log('[Image Storage] Image saved to local:', localFilePath)
+
+        return viewUrl
+      } catch (localError) {
+        console.warn('[Image Storage] Failed to save to local:', localError)
+        // 两个都失败，返回 null 使用原始 URL
+        return null
+      }
     }
   } catch (error) {
-    logger.error('Failed to upload image to storage', error)
+    logger.error('Failed to process image for storage', error)
     return null
   }
 }
