@@ -1256,6 +1256,15 @@ export class TextToCharacterNode extends BaseNodeClass {
         console.log(`[TextToCharacterNode] Input port '${input.id}' has value:`, typeof inputValue === 'object' ? JSON.stringify(inputValue) : inputValue)
 
         if (typeof inputValue === 'object') {
+          // 支持多种输入格式
+          // { type: 'text', content: '...' } - 从文本输入节点传入
+          // { description: '...' } - 直接描述对象
+          // { name: '...' } - 角色名称
+          // { personality: '...' } - 性格特点
+          if (inputValue.content) {
+            // 从 content 字段获取文本内容（如 TextInput 节点输出）
+            this.params.description = inputValue.content
+          }
           if (inputValue.description) {
             this.params.description = inputValue.description
           }
