@@ -1325,12 +1325,13 @@ export class TextToCharacterNode extends BaseNodeClass {
       console.error('[TextToCharacterNode] Image generation failed:', error)
     }
 
-    // 保存角色到内存
+    // 保存角色到人物库
     const characterId = `char_${generateId()}`
+    const characterName = name || `角色_${Date.now()}`
     const character: any = {
       id: characterId,
       projectId,
-      name: name || `角色_${Date.now()}`,
+      name: characterName,
       description,
       personality,
       style,
@@ -1338,34 +1339,58 @@ export class TextToCharacterNode extends BaseNodeClass {
       createdAt: new Date().toISOString(),
     }
 
-    // 尝试保存到数据库
+    // 尝试保存到人物库表（character_library）
     let dbSaved = false
+    let savedToLibrary = false
     try {
       const client = getSupabaseClient()
-      const dbData = {
+      
+      // 保存到人物库
+      const libraryData = {
         id: characterId,
-        project_id: projectId,
-        name: character.name,
+        name: characterName,
         description: description,
         appearance: description,
         personality: personality,
+        style: style,
         front_view_key: frontViewKey || imageUrl,
+        image_url: imageUrl,
         tags: [],
+        created_at: new Date().toISOString(),
       }
 
       const { data: dbCharacter, error } = await client
-        .from('characters')
-        .insert(dbData)
+        .from('character_library')
+        .insert(libraryData)
         .select()
         .single()
 
       if (!error && dbCharacter) {
-        console.log(`[TextToCharacterNode] Character saved to database: ${dbCharacter.id}`)
+        console.log(`[TextToCharacterNode] Character saved to character_library: ${dbCharacter.id}`)
         character.dbId = dbCharacter.id
         character.id = dbCharacter.id // 使用数据库 ID
+        savedToLibrary = true
+        
+        // 同时保存到项目角色表
+        try {
+          await client
+            .from('characters')
+            .insert({
+              id: dbCharacter.id,
+              project_id: projectId,
+              name: characterName,
+              description: description,
+              appearance: description,
+              personality: personality,
+              front_view_key: frontViewKey || imageUrl,
+            })
+        } catch (e) {
+          console.warn('[TextToCharacterNode] Failed to save to project characters table')
+        }
+        
         dbSaved = true
       } else {
-        console.warn('[TextToCharacterNode] Failed to save to database:', error?.message)
+        console.warn('[TextToCharacterNode] Failed to save to character_library:', error?.message)
       }
     } catch (err) {
       console.warn('[TextToCharacterNode] Database save failed, using memory storage:', err)
@@ -1376,13 +1401,20 @@ export class TextToCharacterNode extends BaseNodeClass {
       memoryCharacters.push(character)
     }
 
-    console.log(`[TextToCharacterNode] Created character: ${character.name} (${dbSaved ? 'database' : 'memory'})`)
+    console.log(`[TextToCharacterNode] Created character: ${character.name} (${savedToLibrary ? 'character_library' : 'memory'})`)
+
+    // 返回友好提示，告知用户角色已保存到人物库
+    const message = savedToLibrary 
+      ? `角色"${characterName}"已创建并保存到人物库，请前往人物库页面查看和管理`
+      : `角色"${characterName}"已创建（临时保存）`
 
     return {
       type: 'character',
       character: character,
       image: imageUrl ? { type: 'image', url: imageUrl } : undefined,
       dbSaved,
+      message, // 输出友好提示信息
+      libraryUrl: '/characters', // 提供人物库链接
     }
   }
 }

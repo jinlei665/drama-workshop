@@ -475,7 +475,20 @@ function renderNodeFields(data: any) {
               </div>
             </div>
           )}
-          {data.status === 'completed' && data.fieldValues?._resultData?.character && (
+          {data.status === 'completed' && data.fieldValues?._resultData?.message && (
+            <div className="text-xs p-2 bg-green-50 dark:bg-green-900/20 rounded text-green-600 dark:text-green-400">
+              {data.fieldValues._resultData.message}
+              <a 
+                href="/characters" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="ml-2 underline hover:no-underline"
+              >
+                去人物库查看
+              </a>
+            </div>
+          )}
+          {data.status === 'completed' && data.fieldValues?._resultData?.character && !data.fieldValues?._resultData?.message && (
             <div className="text-xs p-2 bg-green-50 dark:bg-green-900/20 rounded text-green-600 dark:text-green-400">
               角色已创建: {data.fieldValues._resultData.character.name}
             </div>
