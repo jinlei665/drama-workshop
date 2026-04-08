@@ -36,17 +36,32 @@ async function downloadImage(url: string): Promise<{ buffer: Buffer; contentType
 }
 
 /**
+ * 检查 URL 是否可以直接访问（用于验证 OSS 上传后的 URL）
+ */
+async function checkUrlAccessible(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',  // 只请求头部，不下载内容
+      redirect: 'follow',
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
+/**
  * 上传图片到对象存储
  * @param imageUrl 原始图片 URL
  * @param key 存储路径（如 workflow/text-to-image/1234567890.png）
- * @returns 存储后的公开 URL，如果上传失败返回 null
+ * @returns 存储后的公开 URL，如果上传失败或 OSS URL 不可访问则返回 null
  */
 export async function uploadImageToStorage(imageUrl: string, key: string): Promise<string | null> {
   try {
     // 检查是否配置了对象存储
     const config = getStorageConfig()
-    if (!config.endpoint) {
-      logger.warn('S3_ENDPOINT not configured, skipping image upload')
+    if (!config.endpoint || config.endpoint === 'http://localhost:9000') {
+      logger.warn('S3_ENDPOINT not configured or using localhost, skipping image upload')
       return null
     }
 
@@ -56,9 +71,18 @@ export async function uploadImageToStorage(imageUrl: string, key: string): Promi
     // 使用统一的 uploadFile 函数上传
     const publicUrl = await uploadFile(key, buffer, contentType)
 
-    logger.info('Image uploaded successfully', { key, url: publicUrl.substring(0, 80) + '...' })
+    logger.info('Image uploaded to OSS', { key, url: publicUrl.substring(0, 80) + '...' })
 
-    return publicUrl
+    // 检查 OSS URL 是否可以直接访问
+    const isAccessible = await checkUrlAccessible(publicUrl)
+    if (isAccessible) {
+      logger.info('OSS URL is accessible, using it')
+      return publicUrl
+    } else {
+      logger.warn('OSS URL is not accessible (CORS or permission issue), using original URL')
+      // OSS URL 无法访问，回退到原始 URL
+      return null
+    }
   } catch (error) {
     logger.error('Failed to upload image to storage', error)
     return null

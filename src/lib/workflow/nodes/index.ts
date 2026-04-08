@@ -235,7 +235,7 @@ export class ImageToVideoNode extends BaseNodeClass4 {
     return {
       firstFrame: {
         type: 'string',
-        required: true,
+        required: false,  // 改为可选，因为可以从输入端口获取
         description: '首帧图片 URL'
       },
       lastFrame: {
@@ -284,9 +284,44 @@ export class ImageToVideoNode extends BaseNodeClass4 {
   }
 
   async process(context: ExecutionContext): Promise<any> {
-    const firstFrame = this.params.firstFrame
-    const lastFrame = this.params.lastFrame
-    const prompt = this.params.prompt || ''
+    // 优先从输入端口获取 firstFrame，如果没有则从参数获取
+    let firstFrame = this.params.firstFrame
+
+    // 检查输入端口是否有连接
+    const firstFrameInput = this.inputs.find((inp: any) => inp.id === 'firstFrame')
+    if (firstFrameInput && firstFrameInput.value) {
+      const inputValue = firstFrameInput.value
+      // 如果输入值是对象（如 {type: 'image', url: '...'}），提取 url 字段
+      if (typeof inputValue === 'object' && inputValue.url) {
+        firstFrame = inputValue.url
+      } else if (typeof inputValue === 'string') {
+        firstFrame = inputValue
+      }
+    }
+
+    // 同样处理 lastFrame
+    let lastFrame = this.params.lastFrame
+    const lastFrameInput = this.inputs.find((inp: any) => inp.id === 'lastFrame')
+    if (lastFrameInput && lastFrameInput.value) {
+      const inputValue = lastFrameInput.value
+      if (typeof inputValue === 'object' && inputValue.url) {
+        lastFrame = inputValue.url
+      } else if (typeof inputValue === 'string') {
+        lastFrame = inputValue
+      }
+    }
+
+    // 同样处理 prompt
+    let prompt = this.params.prompt || ''
+    const promptInput = this.inputs.find((inp: any) => inp.id === 'prompt')
+    if (promptInput && promptInput.value) {
+      const inputValue = promptInput.value
+      if (typeof inputValue === 'object' && inputValue.content) {
+        prompt = inputValue.content
+      } else if (typeof inputValue === 'string') {
+        prompt = inputValue
+      }
+    }
 
     if (!firstFrame) {
       throw new Error('首帧图片 URL 是必填的')
