@@ -16,6 +16,23 @@ interface ProjectWorkflow {
 }
 
 /**
+ * 检查工作流是否为旧格式（没有使用 React Flow 的节点类型）
+ */
+function isOldWorkflowFormat(workflow: any): boolean {
+  if (!workflow || !workflow.nodes) return false
+  // 旧格式的节点类型可能是自定义的，不是新的节点类型
+  const oldNodeTypes = ['script-to-scenes', 'image-input', 'video-compose']
+  const newNodeTypes = ['text-input', 'text-to-image', 'image-to-video', 'text-to-character', 'character-triple-views']
+  
+  const nodeTypes = workflow.nodes.map((n: any) => n.type)
+  // 如果有旧格式的节点类型但没有新格式的节点类型，说明是旧格式
+  const hasOldType = nodeTypes.some((t: string) => oldNodeTypes.includes(t))
+  const hasNewType = nodeTypes.some((t: string) => newNodeTypes.includes(t))
+  
+  return hasOldType && !hasNewType
+}
+
+/**
  * GET /api/projects/[id]/workflow
  * 获取项目的工作流配置
  */
@@ -27,8 +44,9 @@ export async function GET(
     const { id } = await params
     console.log(`🔍 GET Workflow API - 项目ID: ${id}`)
 
-    // 尝试从数据库获取项目信息（不查询 metadata 字段，避免 Supabase 缓存问题）
+    // 尝试从数据库获取项目信息
     let projectData: any = null
+    let existingWorkflow: any = null
 
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
@@ -37,53 +55,121 @@ export async function GET(
         const db = getSupabaseClient()
         const { data, error } = await db
           .from('projects')
-          .select('id, name, source_content, style')
+          .select('id, name, source_content, style, metadata')
           .eq('id', id)
           .maybeSingle()
-
-        console.log(`📊 Supabase REST API 查询结果:`, {
-          hasError: !!error,
-          errorMessage: error?.message,
-          hasData: !!data,
-        })
 
         if (!error && data) {
           projectData = data
           console.log(`✅ 找到项目: ${data.name}`)
+          
+          // 检查是否有已保存的工作流
+          if (data.metadata?.workflow) {
+            existingWorkflow = data.metadata.workflow
+            console.log(`📋 项目有已保存的工作流: ${existingWorkflow.id}`)
+          }
         }
       }
     } catch (dbError) {
       console.warn('数据库查询失败:', dbError)
     }
 
-    // 如果找到了项目，直接生成系统工作流
+    // 如果项目存在于内存中，也检查工作流
+    const memoryProject = memoryProjects.find(p => p.id === id)
+    if (!projectData && memoryProject) {
+      projectData = memoryProject
+      if (memoryProject.metadata?.workflow) {
+        existingWorkflow = memoryProject.metadata.workflow
+      }
+    }
+
+    // 生成新的系统工作流（使用项目内容填充参数）
+    let systemWorkflow: any = null
     if (projectData) {
-      console.log(`⚠️ 项目存在，生成系统工作流`)
-      // 生成系统工作流（不保存到数据库，直接返回）
-      const systemWorkflow = createSystemWorkflow(
+      console.log(`🔄 生成系统工作流`)
+      systemWorkflow = createSystemWorkflow(
         projectData.id,
         projectData.name,
-        projectData.source_content,
+        projectData.source_content || projectData.sourceContent || '',
         projectData.style
       )
-
       console.log(`✨ 系统工作流生成完成: ${systemWorkflow.nodes.length} 个节点`)
+    }
+
+    // 决定返回哪个工作流
+    let workflowToReturn: any
+    let isSystem = false
+    let readonly = true
+
+    if (existingWorkflow) {
+      // 如果有已保存的工作流，检查是否是旧格式
+      if (isOldWorkflowFormat(existingWorkflow)) {
+        console.log(`⚠️ 检测到旧格式工作流，将使用新的系统工作流`)
+        workflowToReturn = systemWorkflow
+        isSystem = true
+        readonly = true
+        
+        // 异步更新数据库中的工作流
+        tryUpdateWorkflow(id, systemWorkflow).catch(console.error)
+      } else {
+        console.log(`✅ 使用已保存的工作流: ${existingWorkflow.id}`)
+        workflowToReturn = existingWorkflow
+        // 检查是否是系统工作流
+        isSystem = existingWorkflow.system === true
+        readonly = existingWorkflow.readonly !== false
+      }
+    } else if (systemWorkflow) {
+      // 没有已保存的工作流，使用新生成的系统工作流
+      console.log(`📝 没有已保存的工作流，使用新生成的系统工作流`)
+      workflowToReturn = systemWorkflow
+      isSystem = true
+      readonly = true
+      
+      // 异步保存到数据库
+      tryUpdateWorkflow(id, systemWorkflow).catch(console.error)
+    } else {
+      // 项目不存在，返回默认工作流
+      console.log(`⚠️ 项目不存在，返回默认工作流`)
+      const defaultWorkflow = getDefaultWorkflow()
       return successResponse({
-        workflow: systemWorkflow,
-        isSystem: true,
-        readonly: true,
+        workflow: defaultWorkflow,
+        isDefault: true
       })
     }
 
-    // 如果项目不存在，返回默认工作流
-    console.log(`⚠️ 项目不存在，返回默认工作流`)
-    const defaultWorkflow = getDefaultWorkflow()
     return successResponse({
-      workflow: defaultWorkflow,
-      isDefault: true
+      workflow: workflowToReturn,
+      isSystem,
+      readonly,
     })
   } catch (error) {
     return errorResponse(error)
+  }
+}
+
+/**
+ * 尝试更新项目的工作流数据
+ */
+async function tryUpdateWorkflow(projectId: string, workflow: any) {
+  try {
+    const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+    
+    if (isDatabaseConfigured()) {
+      const db = getSupabaseClient()
+      await db
+        .from('projects')
+        .update({
+          metadata: {
+            workflow,
+            workflowUpdatedAt: new Date().toISOString(),
+          },
+        })
+        .eq('id', projectId)
+      
+      console.log(`✅ 工作流已更新到数据库`)
+    }
+  } catch (dbError) {
+    console.warn('⚠️ 工作流更新失败:', dbError)
   }
 }
 
@@ -169,162 +255,93 @@ export async function PUT(
 
 /**
  * POST /api/projects/[id]/workflow
- * 生成系统工作流（为旧项目补充）
+ * 强制重新生成系统工作流
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  console.log('🔥 POST /api/projects/[id]/workflow 被调用')
+  console.log('🔥 POST /api/projects/[id]/workflow - 强制重新生成系统工作流')
 
   try {
     const { id } = await params
-    console.log('📝 项目ID:', id)
 
-    const body = await getJSON<{ generate?: boolean }>(request)
-    console.log('📦 请求体:', body)
+    // 获取项目信息
+    let project: any = null
 
-    // 如果是生成系统工作流的请求
-    if (body.generate === true) {
-      console.log('🚀 开始生成系统工作流流程...')
-      // 获取项目信息
-      let project: any = null
-
-      try {
-        const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-
-        if (isDatabaseConfigured()) {
-          const db = getSupabaseClient()
-          const { data, error } = await db
-            .from('projects')
-            .select('id, name, source_content, style, metadata')
-            .eq('id', id)
-            .maybeSingle()
-
-          if (!error && data) {
-            project = data
-          }
-        }
-      } catch (dbError) {
-        console.warn('Database not available, using memory storage:', dbError)
-      }
-
-      // 从内存获取项目
-      if (!project) {
-        project = memoryProjects.find(p => p.id === id)
-      }
-
-      if (!project) {
-        return errorResponse('项目不存在', 404)
-      }
-
-      // 生成系统工作流
-      console.log(`🔄 开始为项目 ${id} 生成系统工作流...`)
-      console.log(`项目信息:`, { name: project.name, contentLength: project.sourceContent?.length })
-
-      const systemWorkflow = createSystemWorkflow(
-        project.id,
-        project.name,
-        project.sourceContent,
-        project.style
-      )
-
-      console.log(`✅ 系统工作流生成完成:`, {
-        id: systemWorkflow.id,
-        nodesCount: systemWorkflow.nodes.length,
-        edgesCount: systemWorkflow.edges.length,
-        system: systemWorkflow.system,
-        readonly: systemWorkflow.readonly,
-      })
-
-      // 保存到数据库
-      try {
-        const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-
-        if (isDatabaseConfigured()) {
-          const db = getSupabaseClient()
-          const existingMetadata = (project.metadata as Record<string, unknown>) || {}
-
-          await db
-            .from('projects')
-            .update({
-              metadata: {
-                ...existingMetadata,
-                workflow: systemWorkflow,
-              },
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', id)
-
-          console.log(`✅ 系统工作流已保存到数据库: ${systemWorkflow.id}`)
-        }
-      } catch (dbError) {
-        console.warn('系统工作流保存到数据库失败，保存到内存:', dbError)
-      }
-
-      // 保存到内存
-      const projectIndex = memoryProjects.findIndex(p => p.id === id)
-      if (projectIndex !== -1) {
-        if (!memoryProjects[projectIndex].metadata) {
-          memoryProjects[projectIndex].metadata = {}
-        }
-        memoryProjects[projectIndex].metadata!.workflow = systemWorkflow
-        console.log(`✅ 系统工作流已保存到内存: ${systemWorkflow.id}`)
-      }
-
-      return successResponse({
-        workflow: systemWorkflow,
-        message: '系统工作流生成成功',
-      })
-    }
-
-    // 重置为默认工作流（保留旧功能）
-    const defaultWorkflow = getDefaultWorkflow()
-
-    // 尝试保存到数据库
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
 
       if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
-
-        // 先获取现有的 metadata
-        const { data: existingProject } = await db
+        const { data, error } = await db
           .from('projects')
-          .select('metadata')
+          .select('id, name, source_content, style')
           .eq('id', id)
           .maybeSingle()
 
-        const existingMetadata = (existingProject?.metadata as Record<string, unknown>) || {}
+        if (!error && data) {
+          project = data
+        }
+      }
+    } catch (dbError) {
+      console.warn('Database query failed:', dbError)
+    }
 
+    // 从内存获取项目
+    if (!project) {
+      project = memoryProjects.find(p => p.id === id)
+    }
+
+    if (!project) {
+      return errorResponse('项目不存在', 404)
+    }
+
+    // 生成新的系统工作流
+    console.log(`🔄 重新生成系统工作流，项目: ${project.name}`)
+    
+    const systemWorkflow = createSystemWorkflow(
+      project.id,
+      project.name,
+      project.source_content || project.sourceContent || '',
+      project.style
+    )
+
+    // 保存到数据库
+    try {
+      const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
+
+      if (isDatabaseConfigured()) {
+        const db = getSupabaseClient()
+        
         await db
           .from('projects')
           .update({
             metadata: {
-              ...existingMetadata,
-              workflow: defaultWorkflow,
+              workflow: systemWorkflow,
+              workflowUpdatedAt: new Date().toISOString(),
             },
-            updated_at: new Date().toISOString(),
           })
           .eq('id', id)
+
+        console.log(`✅ 系统工作流已保存到数据库`)
       }
     } catch (dbError) {
-      console.warn('Failed to save workflow to database:', dbError)
+      console.warn('Failed to save to database:', dbError)
     }
 
-    // 同时更新内存存储
+    // 保存到内存
     const projectIndex = memoryProjects.findIndex(p => p.id === id)
     if (projectIndex !== -1) {
-      const existingMetadata = (memoryProjects[projectIndex].metadata as Record<string, unknown>) || {}
-      memoryProjects[projectIndex].metadata = {
-        ...existingMetadata,
-        workflow: defaultWorkflow,
+      if (!memoryProjects[projectIndex].metadata) {
+        memoryProjects[projectIndex].metadata = {}
       }
+      memoryProjects[projectIndex].metadata!.workflow = systemWorkflow
     }
 
     return successResponse({
-      workflow: defaultWorkflow,
-      isDefault: true,
+      workflow: systemWorkflow,
+      message: '系统工作流已重新生成',
     })
   } catch (error) {
     return errorResponse(error)
