@@ -13,7 +13,7 @@ import { invokeCozeDirect, getCozeDirectConfig } from '@/lib/ai/coze-direct'
 import { OpenAICompatibleClient } from '@/lib/ai/openai-compatible'
 import { memoryScenes, memoryCharacters, generateId } from '@/lib/memory-storage'
 import { getSupabaseClient } from '@/storage/database/supabase-client'
-import { uploadImageToStorage } from '@/lib/storage/image-storage'
+import { uploadImageToStorage, uploadVideoToStorage } from '@/lib/storage/image-storage'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import * as fs from 'fs'
@@ -186,17 +186,22 @@ export class TextToImageNode extends BaseNodeClass {
         console.log(`[TextToImageNode] Input port '${input.id}' has value:`, typeof inputValue === 'object' ? JSON.stringify(inputValue) : inputValue)
 
         if (typeof inputValue === 'object') {
-          // 优先使用 extractedUrl
-          if (input.extractedUrl) {
-            // 如果有 extractedUrl，可能是参考图片
+          // 优先使用 extractedUrl（参考图片）
+          if (input.extractedUrl && input.extractedUrl.startsWith('http')) {
             this.params.referenceImage = input.extractedUrl
           }
-          this.params.prompt = inputValue.content || inputValue.text || inputValue.prompt || this.params.prompt || ''
-          if (inputValue.url && !this.params.referenceImage) {
+          // 获取文本内容作为提示词
+          this.params.prompt = inputValue.content || inputValue.text || this.params.prompt || ''
+          if (inputValue.url && !this.params.referenceImage && inputValue.url.startsWith('http')) {
             this.params.referenceImage = inputValue.url
           }
         } else if (typeof inputValue === 'string') {
-          this.params.prompt = inputValue
+          // 字符串可能是提示词或URL
+          if (inputValue.startsWith('http')) {
+            this.params.referenceImage = inputValue
+          } else {
+            this.params.prompt = inputValue
+          }
         }
       }
     }
@@ -206,7 +211,7 @@ export class TextToImageNode extends BaseNodeClass {
     const size = this.params.size || '2K'
     const referenceImage = this.params.referenceImage
 
-    console.log('[TextToImageNode] Final params:', { prompt: prompt?.substring(0, 50), style, size, referenceImage })
+    console.log('[TextToImageNode] Final params:', { prompt: prompt?.substring(0, 50), style, size, hasRefImage: !!referenceImage })
 
     if (!prompt) {
       throw new Error('请提供提示词')
@@ -215,13 +220,13 @@ export class TextToImageNode extends BaseNodeClass {
     // 构建完整提示词
     let fullPrompt = prompt
     if (style === 'realistic') {
-      fullPrompt += '，写实风格，真实感，细腻的皮肤纹理，光影效果自然'
+      fullPrompt += '，写实风格，真实感人像摄影，光影自然，细腻皮肤纹理'
     } else if (style === 'anime') {
-      fullPrompt += '，动漫风格，二次元，精美的线条，明亮的色彩'
+      fullPrompt += '，动漫风格，二次元，精致线条，明亮色彩'
     } else if (style === 'cartoon') {
-      fullPrompt += '，卡通风格，可爱，活泼，圆润的线条'
+      fullPrompt += '，卡通风格，可爱活泼，圆润线条'
     } else if (style === 'oil_painting') {
-      fullPrompt += '，油画风格，厚重的笔触，丰富的色彩层次'
+      fullPrompt += '，油画风格，厚重笔触，色彩丰富'
     }
 
     // 生成图片
@@ -235,8 +240,9 @@ export class TextToImageNode extends BaseNodeClass {
     )
 
     let imageUrl = result.urls[0]
+    console.log('[TextToImageNode] Generated image URL:', imageUrl?.substring(0, 100))
 
-    // 将图片上传到阿里云 OSS
+    // 将图片上传到存储
     try {
       const storageUrl = await uploadImageToStorage(imageUrl, `workflow/text-to-image/${Date.now()}.png`)
       if (storageUrl) {
@@ -390,9 +396,23 @@ export class ImageToVideoNode extends BaseNodeClass {
       }
     )
 
+    console.log('[ImageToVideoNode] Video generated, URL:', result.videoUrl?.substring(0, 100))
+
+    // 将视频上传到存储
+    let videoUrl = result.videoUrl
+    try {
+      const storageUrl = await uploadVideoToStorage(result.videoUrl, `workflow/image-to-video/${Date.now()}.mp4`)
+      if (storageUrl) {
+        console.log('[ImageToVideoNode] Video uploaded to storage:', storageUrl)
+        videoUrl = storageUrl
+      }
+    } catch (storageError) {
+      console.warn('[ImageToVideoNode] Failed to upload video to storage:', storageError)
+    }
+
     return {
       type: 'video',
-      url: result.videoUrl,
+      url: videoUrl,
       lastFrameUrl: result.lastFrameUrl,
       duration: this.params.duration,
       ratio: this.params.ratio

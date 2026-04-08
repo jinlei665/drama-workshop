@@ -143,12 +143,38 @@ export async function POST(request: NextRequest) {
     }
 
     // 构建工作流对象
+    // 确保节点的 params 从 data 中提取
+    // 标准化 edges 格式（支持 source/target 或 from/to）
+    const normalizedEdges = edges.map((edge: any) => ({
+      id: edge.id,
+      from: edge.from || edge.source,  // 兼容 source/target 格式
+      to: edge.to || edge.target,
+      fromPort: edge.fromPort || edge.sourcePort,
+      toPort: edge.toPort || edge.targetPort,
+      animated: edge.animated,
+    }))
+
+    const workflowNodes = nodes.map((node: any) => {
+      // 如果节点有 data.params，将其移到 params
+      if (node.data && typeof node.data === 'object' && !node.params) {
+        return {
+          ...node,
+          params: {
+            ...node.data, // 保留 data 中的所有属性作为 params
+            // 保留原始的 params 如果存在
+            ...(node.params || {}),
+          }
+        }
+      }
+      return node
+    })
+
     const workflow: Workflow = {
       id: workflowId,
       projectId,
       name: '临时工作流',
-      nodes,
-      edges,
+      nodes: workflowNodes,
+      edges: normalizedEdges,
       version: '1.0.0',
     }
 
