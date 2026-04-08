@@ -446,7 +446,7 @@ export default function Home() {
                         </Link>
                         <Link href={`/projects/${project.id}/workflow`} className="flex-1">
                           <Button size="sm" className="w-full">
-                            工作流
+                            工作流（测试版）
                           </Button>
                         </Link>
                       </div>
