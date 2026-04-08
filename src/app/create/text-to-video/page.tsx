@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { Video, Loader2, Download, Play, X, Copy, Check } from 'lucide-react'
+import { Video, Loader2, Download, Play, X, Copy, Check, Sparkles } from 'lucide-react'
 
 const DURATION_OPTIONS = [
   { value: '4', label: '4 秒' },
@@ -37,9 +37,40 @@ export default function TextToVideoPage() {
   const [aspectRatio, setAspectRatio] = useState('16:9')
   const [generateAudio, setGenerateAudio] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
   const [result, setResult] = useState<{ url: string; originalUrl: string } | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  // 优化提示词
+  const handleOptimizePrompt = async () => {
+    if (!prompt.trim()) {
+      toast.error('请先输入提示词')
+      return
+    }
+
+    setOptimizing(true)
+    try {
+      const response = await fetch('/api/create/optimize-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, type: 'video' }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setPrompt(data.data.optimized)
+        toast.success('提示词优化完成')
+      } else {
+        toast.error(data.error || '优化失败')
+      }
+    } catch (error) {
+      console.error('Optimize error:', error)
+      toast.error('优化失败，请重试')
+    } finally {
+      setOptimizing(false)
+    }
+  }
 
   // 下载视频
   const downloadVideo = async (url: string, filename?: string) => {
@@ -141,7 +172,23 @@ export default function TextToVideoPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="prompt">提示词</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="prompt">提示词</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleOptimizePrompt}
+                      disabled={optimizing || !prompt.trim()}
+                      className="h-7 text-xs"
+                    >
+                      {optimizing ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3 h-3 mr-1" />
+                      )}
+                      LLM 优化
+                    </Button>
+                  </div>
                   <Textarea
                     id="prompt"
                     value={prompt}

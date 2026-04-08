@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Slider } from '@/components/ui/slider'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { Video, Loader2, Download, Play, Upload, Image, X, Copy, Check } from 'lucide-react'
+import { Video, Loader2, Download, Play, Upload, Image, X, Copy, Check, Sparkles } from 'lucide-react'
 
 const DURATION_OPTIONS = [
   { value: '4', label: '4 秒' },
@@ -37,12 +37,43 @@ export default function ImageToVideoPage() {
   const [duration, setDuration] = useState('5')
   const [aspectRatio, setAspectRatio] = useState('16:9')
   const [generating, setGenerating] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
   const [result, setResult] = useState<{ url: string; originalUrl: string } | null>(null)
   const [videoPlaying, setVideoPlaying] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 优化提示词
+  const handleOptimizePrompt = async () => {
+    if (!prompt.trim()) {
+      toast.error('请先输入提示词')
+      return
+    }
+
+    setOptimizing(true)
+    try {
+      const response = await fetch('/api/create/optimize-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, type: 'video' }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setPrompt(data.data.optimized)
+        toast.success('提示词优化完成')
+      } else {
+        toast.error(data.error || '优化失败')
+      }
+    } catch (error) {
+      console.error('Optimize error:', error)
+      toast.error('优化失败，请重试')
+    } finally {
+      setOptimizing(false)
+    }
+  }
 
   // 处理图片上传
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,7 +238,23 @@ export default function ImageToVideoPage() {
                   描述图片中想要的运动效果（可选）
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleOptimizePrompt}
+                    disabled={optimizing || !prompt.trim()}
+                    className="h-7 text-xs"
+                  >
+                    {optimizing ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3 mr-1" />
+                    )}
+                    LLM 优化
+                  </Button>
+                </div>
                 <Textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}

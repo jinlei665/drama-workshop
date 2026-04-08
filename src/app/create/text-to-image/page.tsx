@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { Wand2, Loader2, Download, Maximize2, X, Copy, Check } from 'lucide-react'
+import { Wand2, Loader2, Download, Maximize2, X, Copy, Check, Sparkles } from 'lucide-react'
 
 const STYLE_OPTIONS = [
   { value: 'realistic', label: '写实风格', description: '逼真的照片级图像' },
@@ -41,9 +41,40 @@ export default function TextToImagePage() {
   const [style, setStyle] = useState('realistic')
   const [size, setSize] = useState('1024x1024')
   const [generating, setGenerating] = useState(false)
+  const [optimizing, setOptimizing] = useState(false)
   const [result, setResult] = useState<{ url: string; originalUrl: string } | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  // 优化提示词
+  const handleOptimizePrompt = async () => {
+    if (!prompt.trim()) {
+      toast.error('请先输入提示词')
+      return
+    }
+
+    setOptimizing(true)
+    try {
+      const response = await fetch('/api/create/optimize-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, type: 'image' }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setPrompt(data.data.optimized)
+        toast.success('提示词优化完成')
+      } else {
+        toast.error(data.error || '优化失败')
+      }
+    } catch (error) {
+      console.error('Optimize error:', error)
+      toast.error('优化失败，请重试')
+    } finally {
+      setOptimizing(false)
+    }
+  }
 
   // 下载图片
   const downloadImage = async (url: string, filename?: string) => {
@@ -146,7 +177,23 @@ export default function TextToImagePage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="prompt">正向提示词</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="prompt">正向提示词</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleOptimizePrompt}
+                      disabled={optimizing || !prompt.trim()}
+                      className="h-7 text-xs"
+                    >
+                      {optimizing ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3 h-3 mr-1" />
+                      )}
+                      LLM 优化
+                    </Button>
+                  </div>
                   <Textarea
                     id="prompt"
                     value={prompt}
