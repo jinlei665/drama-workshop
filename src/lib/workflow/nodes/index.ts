@@ -285,27 +285,32 @@ export class ImageToVideoNode extends BaseNodeClass4 {
 
   async process(context: ExecutionContext): Promise<any> {
     // 优先从输入端口获取 firstFrame，如果没有则从参数获取
-    let firstFrame = this.params.firstFrame
+    // 注意：端口 ID 可能是 'image'（前端定义的）或 'firstFrame'
+    let firstFrame = this.params.firstFrame || this.params.image
 
     // 检查输入端口是否有连接
-    const firstFrameInput = this.inputs.find((inp: any) => inp.id === 'firstFrame')
-    if (firstFrameInput && firstFrameInput.value) {
+    console.log('[ImageToVideoNode] inputs:', JSON.stringify(this.inputs))
+    const firstFrameInput = this.inputs.find((inp: any) => inp.id === 'image' || inp.id === 'firstFrame')
+    console.log('[ImageToVideoNode] firstFrameInput:', JSON.stringify(firstFrameInput))
+
+    if (firstFrameInput && firstFrameInput.value !== undefined) {
       const inputValue = firstFrameInput.value
+      console.log('[ImageToVideoNode] inputValue:', JSON.stringify(inputValue))
       // 如果输入值是对象（如 {type: 'image', url: '...'}），提取 url 字段
-      if (typeof inputValue === 'object' && inputValue.url) {
-        firstFrame = inputValue.url
+      if (typeof inputValue === 'object' && inputValue !== null) {
+        firstFrame = inputValue.url || inputValue.content || JSON.stringify(inputValue)
       } else if (typeof inputValue === 'string') {
         firstFrame = inputValue
       }
     }
 
     // 同样处理 lastFrame
-    let lastFrame = this.params.lastFrame
-    const lastFrameInput = this.inputs.find((inp: any) => inp.id === 'lastFrame')
-    if (lastFrameInput && lastFrameInput.value) {
+    let lastFrame = this.params.lastFrame || this.params.lastFrameImage
+    const lastFrameInput = this.inputs.find((inp: any) => inp.id === 'lastFrameImage' || inp.id === 'lastFrame')
+    if (lastFrameInput && lastFrameInput.value !== undefined) {
       const inputValue = lastFrameInput.value
-      if (typeof inputValue === 'object' && inputValue.url) {
-        lastFrame = inputValue.url
+      if (typeof inputValue === 'object' && inputValue !== null) {
+        lastFrame = inputValue.url || inputValue.content || JSON.stringify(inputValue)
       } else if (typeof inputValue === 'string') {
         lastFrame = inputValue
       }
@@ -314,14 +319,16 @@ export class ImageToVideoNode extends BaseNodeClass4 {
     // 同样处理 prompt
     let prompt = this.params.prompt || ''
     const promptInput = this.inputs.find((inp: any) => inp.id === 'prompt')
-    if (promptInput && promptInput.value) {
+    if (promptInput && promptInput.value !== undefined) {
       const inputValue = promptInput.value
-      if (typeof inputValue === 'object' && inputValue.content) {
-        prompt = inputValue.content
+      if (typeof inputValue === 'object' && inputValue !== null) {
+        prompt = inputValue.content || inputValue.text || JSON.stringify(inputValue)
       } else if (typeof inputValue === 'string') {
         prompt = inputValue
       }
     }
+
+    console.log('[ImageToVideoNode] Final values:', { firstFrame, lastFrame, prompt })
 
     if (!firstFrame) {
       throw new Error('首帧图片 URL 是必填的')
