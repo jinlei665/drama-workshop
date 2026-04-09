@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
   try {
     // 获取项目风格
     let style = 'realistic_cinema'
+    let customStylePrompt = ''
     let projectId = ''
     
     // 从内存获取
@@ -29,6 +30,9 @@ export async function POST(request: NextRequest) {
       const project = memoryProjects.find(p => p.id === projectId)
       if (project?.style) {
         style = project.style
+      }
+      if (project?.customStylePrompt) {
+        customStylePrompt = project.customStylePrompt
       }
     }
     
@@ -47,18 +51,27 @@ export async function POST(request: NextRequest) {
         projectId = sceneData.project_id
         const { data: projectData } = await supabase
           .from('projects')
-          .select('style')
+          .select('style, custom_style_prompt')
           .eq('id', sceneData.project_id)
           .single()
         
         if (projectData?.style) {
           style = projectData.style
         }
+        if (projectData?.custom_style_prompt) {
+          customStylePrompt = projectData.custom_style_prompt
+        }
       }
     }
 
     // 获取风格提示词
-    const stylePrompt = getStylePrompt(style)
+    // 如果是自定义风格，使用用户输入的自定义提示词
+    let stylePrompt: string
+    if (style === 'custom' && customStylePrompt) {
+      stylePrompt = customStylePrompt
+    } else {
+      stylePrompt = getStylePrompt(style)
+    }
 
     // 获取人物参考图（用于保持人物一致性）
     let characterReferenceImages: string[] = []

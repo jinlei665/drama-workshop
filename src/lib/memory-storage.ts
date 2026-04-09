@@ -11,6 +11,7 @@ export const memoryProjects: Array<{
   sourceContent: string
   sourceType: string
   style?: string
+  customStylePrompt?: string
   status: string
   createdAt: string
   updatedAt: string

@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     // 获取项目风格
     let style = 'realistic_cinema'
+    let customStylePrompt = ''
     
     // 从内存获取
     const charIndex = memoryCharacters.findIndex(c => c.id === characterId)
@@ -33,6 +34,9 @@ export async function POST(request: NextRequest) {
       const project = memoryProjects.find(p => p.id === projectId)
       if (project?.style) {
         style = project.style
+      }
+      if (project?.customStylePrompt) {
+        customStylePrompt = project.customStylePrompt
       }
     }
     
@@ -49,18 +53,27 @@ export async function POST(request: NextRequest) {
       if (charData?.project_id) {
         const { data: projectData } = await supabase
           .from('projects')
-          .select('style')
+          .select('style, custom_style_prompt')
           .eq('id', charData.project_id)
           .single()
         
         if (projectData?.style) {
           style = projectData.style
         }
+        if (projectData?.custom_style_prompt) {
+          customStylePrompt = projectData.custom_style_prompt
+        }
       }
     }
 
     // 获取角色风格提示词
-    const stylePrompt = getCharacterStylePrompt(style)
+    // 如果是自定义风格，使用用户输入的自定义提示词
+    let stylePrompt: string
+    if (style === 'custom' && customStylePrompt) {
+      stylePrompt = customStylePrompt
+    } else {
+      stylePrompt = getCharacterStylePrompt(style)
+    }
 
     // 生成角色设定图
     const basePrompt = `${stylePrompt}，${appearance}，角色三视图包含正面、侧面、背面三个角度，白色背景，用于角色设定参考`

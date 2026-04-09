@@ -131,6 +131,7 @@ export async function GET(
               sourceContent: project.source_content,
               sourceType: project.source_type,
               style: project.style || 'realistic_cinema',
+              customStylePrompt: project.custom_style_prompt || '',
               status: project.status,
               createdAt: project.created_at,
               updatedAt: project.updated_at,
@@ -233,6 +234,8 @@ export async function PUT(
         if (body.name) updateData.name = body.name
         if (body.description !== undefined) updateData.description = body.description
         if (body.status) updateData.status = body.status
+        if (body.style) updateData.style = body.style
+        if (body.customStylePrompt !== undefined) updateData.custom_style_prompt = body.customStylePrompt
         
         const { data, error } = await db
           .from('projects')
@@ -249,6 +252,8 @@ export async function PUT(
               description: data.description,
               sourceContent: data.source_content,
               sourceType: data.source_type,
+              style: data.style || 'realistic_cinema',
+              customStylePrompt: data.custom_style_prompt || '',
               status: data.status,
               createdAt: data.created_at,
               updatedAt: data.updated_at,
