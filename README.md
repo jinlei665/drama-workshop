@@ -2,6 +2,19 @@
 
 > 将文字故事转化为精美短剧视频的 AI 创作工具
 
+## 预览截图
+
+![首页](public/assets/1-homepage.png)
+![分镜管理](public/assets/2-scenes-panel.png)
+![风格选择](public/assets/3-style-select.png)
+![工作流编辑器](public/assets/4-workflow.png)
+![人物库管理](public/assets/6-character-lib1.png)
+![人物库形象](public/assets/7-character-lib2.png)
+![视频生成](public/assets/8-video-merge.png)
+![视频输出](public/assets/9-video-output.png)
+
+---
+
 ## 功能特性
 
 - **智能剧本解析** - 自动解析小说或脚本内容，提取人物、场景、对白
