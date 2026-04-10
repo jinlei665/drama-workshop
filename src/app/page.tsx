@@ -4,7 +4,7 @@
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,7 +19,9 @@ import {
   Clock,
   FileText,
   Settings,
-  ChevronRight
+  ChevronRight,
+  Upload,
+  File
 } from 'lucide-react'
 import {
   Dialog,
@@ -38,6 +40,85 @@ import { AppShell } from '@/components/layout'
 import { ModelConfigStatus } from '@/components/model-config-status'
 import { FFmpegStatusIndicator } from '@/components/ffmpeg-status-indicator'
 import type { Project } from '@/lib/types'
+
+/**
+ * 上传文档按钮组件
+ * 支持上传 txt、md 格式的文档
+ */
+function UploadDocumentButton({ 
+  onContentLoaded 
+}: { 
+  onContentLoaded: (content: string, fileName: string) => void 
+}) {
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload/document', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || '上传失败')
+      }
+
+      onContentLoaded(result.content, result.fileName)
+      
+      if (result.truncated) {
+        toast.warning(result.message)
+      }
+    } catch (error) {
+      console.error('上传文档失败:', error)
+      toast.error(error instanceof Error ? error.message : '上传文档失败')
+    } finally {
+      setUploading(false)
+      // 清空 input 以便重复选择同一文件
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  return (
+    <>
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".txt,.md,.text"
+        onChange={handleFileChange}
+        className="hidden"
+        id="document-upload"
+      />
+      <label
+        htmlFor="document-upload"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-muted hover:bg-muted/80 rounded-md cursor-pointer transition-colors"
+      >
+        {uploading ? (
+          <>
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span>上传中...</span>
+          </>
+        ) : (
+          <>
+            <Upload className="w-4 h-4" />
+            <span>上传文档</span>
+          </>
+        )}
+      </label>
+    </>
+  )
+}
 
 // 画面风格配置
 const VISUAL_STYLES = {
@@ -332,14 +413,30 @@ export default function Home() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="content">小说/脚本内容 *</Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="content">小说/脚本内容 *</Label>
+                        <UploadDocumentButton 
+                          onContentLoaded={(content, fileName) => {
+                            setFormData({ 
+                              ...formData, 
+                              sourceContent: content 
+                            })
+                            toast.success(`已加载文档: ${fileName}`)
+                          }} 
+                        />
+                      </div>
                       <Textarea
                         id="content"
-                        placeholder="粘贴你的小说或脚本内容，AI 将自动分析提取人物和分镜..."
+                        placeholder="粘贴你的小说或脚本内容，或点击右侧按钮上传文档..."
                         className="h-[150px] resize-none"
                         value={formData.sourceContent}
                         onChange={(e) => setFormData({ ...formData, sourceContent: e.target.value })}
                       />
+                      {formData.sourceContent && (
+                        <p className="text-xs text-muted-foreground">
+                          已填写 {formData.sourceContent.length} 字符
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex justify-end gap-3 pt-4 border-t flex-shrink-0">
