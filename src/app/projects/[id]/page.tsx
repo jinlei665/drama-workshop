@@ -47,8 +47,7 @@ import {
   FolderOpen,
   Settings,
   Info,
-  Upload,
-  FileText
+  Upload
 } from "lucide-react"
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
@@ -60,85 +59,6 @@ import { ModelConfigProvider } from "@/lib/model-config"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-
-/**
- * 上传脚本按钮组件
- * 支持上传 txt、md 格式的文档
- */
-function UploadScriptButton({
-  onContentLoaded
-}: {
-  onContentLoaded: (content: string) => void
-}) {
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const res = await fetch('/api/upload/document', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const result = await res.json()
-
-      if (!res.ok || !result.success) {
-        throw new Error(result.error || '上传失败')
-      }
-
-      onContentLoaded(result.content)
-
-      if (result.truncated) {
-        toast.warning(result.message)
-      }
-    } catch (error) {
-      console.error('上传文档失败:', error)
-      toast.error(error instanceof Error ? error.message : '上传文档失败')
-    } finally {
-      setUploading(false)
-      // 清空 input 以便重复选择同一文件
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-    }
-  }
-
-  return (
-    <>
-      <input
-        type="file"
-        ref={fileInputRef}
-        accept=".txt,.md,.text"
-        onChange={handleFileChange}
-        className="hidden"
-        id="script-upload"
-      />
-      <label
-        htmlFor="script-upload"
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-muted hover:bg-muted/80 rounded-md cursor-pointer transition-colors"
-      >
-        {uploading ? (
-          <>
-            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <span>上传中...</span>
-          </>
-        ) : (
-          <>
-            <Upload className="w-4 h-4" />
-            <span>上传文档</span>
-          </>
-        )}
-      </label>
-    </>
-  )
-}
 
 interface Project {
   id: string
@@ -212,11 +132,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [videoMode, setVideoMode] = useState<'fast' | 'continuous'>('continuous')
   const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
-  // 新建脚本对话框状态
-  const [newScriptDialogOpen, setNewScriptDialogOpen] = useState(false)
-  const [newScriptTitle, setNewScriptTitle] = useState('')
-  const [newScriptContent, setNewScriptContent] = useState('')
-  const [newScriptUploading, setNewScriptUploading] = useState(false)
   const [videoGenerationSession, setVideoGenerationSession] = useState<{
     isGenerating: boolean
     total: number
@@ -235,48 +150,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
   const [videoGenerateConfirmDialogOpen, setVideoGenerateConfirmDialogOpen] = useState(false)
   const [pendingVideoMode, setPendingVideoMode] = useState<'fast' | 'continuous'>('continuous')
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
-
-  // 处理创建脚本
-  const handleCreateScript = async () => {
-    if (!newScriptTitle.trim() || !newScriptContent.trim()) {
-      toast.error('请填写脚本标题和内容')
-      return
-    }
-
-    setNewScriptUploading(true)
-    try {
-      const res = await fetch('/api/scripts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: id,
-          title: newScriptTitle,
-          content: newScriptContent,
-        })
-      })
-
-      const result = await res.json()
-
-      if (!res.ok || !result.script) {
-        throw new Error(result.error || '创建脚本失败')
-      }
-
-      toast.success('脚本创建成功，正在分析...')
-      
-      // 关闭对话框
-      setNewScriptDialogOpen(false)
-      setNewScriptTitle('')
-      setNewScriptContent('')
-      
-      // 刷新数据
-      fetchData()
-    } catch (error) {
-      console.error('创建脚本失败:', error)
-      toast.error(error instanceof Error ? error.message : '创建脚本失败')
-    } finally {
-      setNewScriptUploading(false)
-    }
-  }
 
   const fetchData = async () => {
     try {
@@ -1031,80 +904,6 @@ export default function ProjectPage({ params }: { params: Promise<{ id: string }
             >
               <Film className="w-4 h-4 mr-2" />
               开始生成
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 新建脚本对话框 */}
-      <Dialog open={newScriptDialogOpen} onOpenChange={setNewScriptDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              新建脚本
-            </DialogTitle>
-            <DialogDescription>
-              创建新的脚本内容，系统将根据新脚本重新分析生成分镜
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 flex-1 overflow-y-auto">
-            <div className="space-y-2">
-              <Label htmlFor="scriptTitle">脚本标题</Label>
-              <Input
-                id="scriptTitle"
-                placeholder="输入脚本标题"
-                value={newScriptTitle}
-                onChange={(e) => setNewScriptTitle(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="scriptContent">脚本内容</Label>
-                <UploadScriptButton
-                  onContentLoaded={(content) => setNewScriptContent(content)}
-                />
-              </div>
-              <Textarea
-                id="scriptContent"
-                placeholder="粘贴脚本内容，或点击右侧按钮上传文档..."
-                className="h-[200px] resize-none"
-                value={newScriptContent}
-                onChange={(e) => setNewScriptContent(e.target.value)}
-              />
-              {newScriptContent && (
-                <p className="text-xs text-muted-foreground">
-                  已填写 {newScriptContent.length} 字符
-                </p>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setNewScriptDialogOpen(false)
-                setNewScriptTitle('')
-                setNewScriptContent('')
-              }}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={handleCreateScript}
-              disabled={!newScriptTitle.trim() || !newScriptContent.trim() || newScriptUploading}
-            >
-              {newScriptUploading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  创建中...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  创建并分析
-                </>
-              )}
             </Button>
           </DialogFooter>
         </DialogContent>
