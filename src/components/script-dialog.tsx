@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,8 +18,87 @@ import {
   Loader2,
   Sparkles,
   User,
+  Upload,
 } from "lucide-react"
 import { toast } from "sonner"
+
+/**
+ * 上传文档按钮组件
+ * 支持上传 txt、md 格式的文档
+ */
+function UploadDocumentButton({
+  onContentLoaded
+}: {
+  onContentLoaded: (content: string, fileName: string) => void
+}) {
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/upload/document', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || '上传失败')
+      }
+
+      onContentLoaded(result.content, result.fileName)
+
+      if (result.truncated) {
+        toast.warning(result.message)
+      }
+    } catch (error) {
+      console.error('上传文档失败:', error)
+      toast.error(error instanceof Error ? error.message : '上传文档失败')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  return (
+    <>
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".txt,.md,.text"
+        onChange={handleFileChange}
+        className="hidden"
+        id="script-dialog-upload"
+      />
+      <label
+        htmlFor="script-dialog-upload"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-muted hover:bg-muted/80 rounded-md cursor-pointer transition-colors"
+      >
+        {uploading ? (
+          <>
+            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <span>上传中...</span>
+          </>
+        ) : (
+          <>
+            <Upload className="w-4 h-4" />
+            <span>上传文档</span>
+          </>
+        )}
+      </label>
+    </>
+  )
+}
 
 interface ScriptDialogProps {
   open: boolean
@@ -153,9 +232,17 @@ export function ScriptDialog({
 
           {/* 脚本输入 */}
           <div className="space-y-2">
-            <Label htmlFor="script">
-              脚本内容 <span className="text-destructive">*</span>
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="script">
+                脚本内容 <span className="text-destructive">*</span>
+              </Label>
+              <UploadDocumentButton
+                onContentLoaded={(content, fileName) => {
+                  setScriptContent(content)
+                  toast.success(`已加载文档: ${fileName}`)
+                }}
+              />
+            </div>
             <Textarea
               id="script"
               value={scriptContent}
