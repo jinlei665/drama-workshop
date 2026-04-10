@@ -47,7 +47,8 @@ import {
   FolderOpen,
   Settings,
   Info,
-  Upload
+  Upload,
+  FileText
 } from "lucide-react"
 import { toast } from "sonner"
 import { CharactersPanel } from "./characters-panel"
