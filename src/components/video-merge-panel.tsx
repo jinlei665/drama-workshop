@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { VideoPreview } from '@/components/video-preview'
 import {
   Film,
   CheckCircle,
@@ -486,16 +487,11 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
           </DialogHeader>
           <div className="aspect-video bg-black rounded-lg overflow-hidden">
             {result?.url && (
-              <video
-                src={result?.url || ''}
-                controls
-                autoPlay
-                className="w-full h-full object-contain"
+              <VideoPreview 
+                url={result.url}
+                title="合并视频预览"
                 onError={() => {
-                  console.warn('视频播放错误')
-                }}
-                onAbort={() => {
-                  // 视频播放被中断，正常情况，不需要处理
+                  toast.error('视频预览失败，请重新合并')
                 }}
               />
             )}
