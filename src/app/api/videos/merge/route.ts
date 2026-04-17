@@ -28,6 +28,7 @@ function getTmpDir(): string {
 
 /**
  * 获取 FFmpeg 路径
+ * 优先使用用户配置的路径，如果路径无效则 fallback 到系统 PATH
  */
 async function getFfmpegPath(): Promise<{ ffmpeg: string; ffprobe: string }> {
   let ffmpegPath: string | null = null
@@ -53,10 +54,47 @@ async function getFfmpegPath(): Promise<{ ffmpeg: string; ffprobe: string }> {
     // 忽略错误
   }
   
-  // 返回路径（默认使用系统 PATH 中的 ffmpeg）
+  // 如果配置了路径，验证该路径在当前系统是否有效
+  if (ffmpegPath) {
+    try {
+      await execAsync(`"${ffmpegPath}" -version`, { timeout: 5000 })
+      console.log('[VideoMerge] 使用用户配置的 FFmpeg:', ffmpegPath)
+      return {
+        ffmpeg: ffmpegPath,
+        ffprobe: ffprobePath || ffmpegPath
+      }
+    } catch (error) {
+      console.warn(`[VideoMerge] 用户配置的 FFmpeg 路径 "${ffmpegPath}" 无效，尝试系统 FFmpeg`)
+    }
+  }
+  
+  // 尝试从系统 PATH 检测
+  try {
+    const checkCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg'
+    const { stdout } = await execAsync(checkCmd)
+    const lines = stdout.trim().split('\n')
+    if (lines.length > 0) {
+      const systemPath = lines[0].trim()
+      // 验证系统 FFmpeg 是否有效
+      try {
+        await execAsync(`"${systemPath}" -version`, { timeout: 5000 })
+        console.log('[VideoMerge] 使用系统 FFmpeg:', systemPath)
+        return {
+          ffmpeg: systemPath,
+          ffprobe: systemPath.replace(/ffmpeg(\.exe)?$/, 'ffprobe$1')
+        }
+      } catch {
+        console.warn('[VideoMerge] 系统 FFmpeg 无效')
+      }
+    }
+  } catch {
+    console.warn('[VideoMerge] 无法从系统 PATH 检测 FFmpeg')
+  }
+  
+  // 最后 fallback 到 'ffmpeg'（依赖系统 PATH）
   return {
-    ffmpeg: ffmpegPath || 'ffmpeg',
-    ffprobe: ffprobePath || 'ffprobe'
+    ffmpeg: 'ffmpeg',
+    ffprobe: 'ffprobe'
   }
 }
 
