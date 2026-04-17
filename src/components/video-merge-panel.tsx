@@ -196,22 +196,10 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
     }
   }
 
-  // 下载合并后的视频
-  const handleDownload = async () => {
+  // 下载合并后的视频（使用新窗口打开，避免 CORS 限制）
+  const handleDownload = () => {
     if (!result?.url) return
-
-    try {
-      const response = await fetch(result.url)
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = result.filename
-      link.click()
-      window.URL.revokeObjectURL(url)
-    } catch {
-      toast.error('下载失败')
-    }
+    window.open(result.url, '_blank')
   }
 
   // 添加至剧集

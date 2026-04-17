@@ -1,12 +1,12 @@
 /**
  * 视频预览组件
  * 支持本地路径和 OSS URL 的视频预览
- * 对于跨域资源，直接使用 video 标签播放，依赖 video.error 事件处理错误
+ * 注意：不使用 crossOrigin 属性，避免触发 CORS 预检请求
  */
 
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { AlertCircle, Download, ExternalLink, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -45,24 +45,11 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
     }
   }
 
-  // 下载视频
-  const handleDownload = async () => {
+  // 下载视频（使用新窗口打开，避免 CORS 限制）
+  const handleDownload = () => {
     if (!url) return
-    
-    try {
-      const response = await fetch(url)
-      const blob = await response.blob()
-      const blobUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = url.split('/').pop() || 'video.mp4'
-      link.click()
-      window.URL.revokeObjectURL(blobUrl)
-      toast.success('视频下载成功')
-    } catch (error) {
-      console.error('[VideoPreview] 下载失败:', error)
-      toast.error('视频下载失败，请尝试直接点击链接下载')
-    }
+    // 对于跨域资源，直接在新窗口打开 URL，浏览器会自动下载
+    window.open(url, '_blank')
   }
 
   // 复制视频链接
@@ -95,7 +82,7 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
               </Button>
               <Button variant="outline" size="sm" onClick={handleDownload}>
                 <Download className="w-4 h-4 mr-1" />
-                下载视频
+                新窗口打开
               </Button>
               <Button variant="outline" size="sm" onClick={handleCopyLink}>
                 <ExternalLink className="w-4 h-4 mr-1" />
@@ -110,12 +97,17 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
 
   return (
     <div className="relative h-full">
+      {/* 
+        注意：不添加 crossOrigin 属性！
+        crossOrigin="anonymous" 会触发 CORS 预检请求，
+        OSS 没有 CORS 配置时视频将无法加载。
+        不加 crossOrigin 时，浏览器直接请求资源，不需要预检。
+      */}
       <video
         ref={videoRef}
         src={url}
         controls
         autoPlay
-        crossOrigin="anonymous"
         className="w-full h-full object-contain"
         onError={handleError}
         onCanPlay={handleCanPlay}
@@ -142,7 +134,7 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
               size="icon"
               className="h-8 w-8 bg-black/50 hover:bg-black/70 text-white"
               onClick={handleDownload}
-              title="下载视频"
+              title="新窗口打开"
             >
               <Download className="w-4 h-4" />
             </Button>
