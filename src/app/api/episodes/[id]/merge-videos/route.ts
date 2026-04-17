@@ -185,11 +185,9 @@ export async function POST(
           contentType: "video/mp4",
         })
 
-        // 生成访问 URL
-        viewUrl = await storage.generatePresignedUrl({
-          key: fileKey,
-          expireTime: 86400 * 30, // 30天有效
-        })
+        // 生成公开访问 URL（直接拼接，无需签名）
+        viewUrl = `${ossEndpoint}/${fileKey}`
+        console.log('[MergeVideos] 上传成功:', viewUrl)
       } else {
         // 对象存储未配置，保存到本地 public 目录
         const publicDir = path.join(process.cwd(), 'public', 'episodes')

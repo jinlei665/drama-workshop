@@ -366,12 +366,8 @@ export async function POST(request: NextRequest) {
         contentType: 'video/mp4'
       })
       
-      // 生成签名 URL
-      downloadUrl = await storage.generatePresignedUrl({
-        key: storageKey,
-        expireTime: 86400 * 7 // 7 天有效期
-      })
-      
+      // 生成公开访问 URL（直接拼接，无需签名）
+      downloadUrl = `${ossEndpoint}/${storageKey}`
       console.log('[VideoMerge] 上传成功:', downloadUrl)
     } catch (uploadError) {
       console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
