@@ -407,14 +407,10 @@ export async function POST(request: NextRequest) {
           throw new Error('文件上传后验证失败')
         }
         
-        // 使用签名 URL（确保可访问）
-        downloadUrl = ossClient.signatureUrl(storageKey, {
-          expires: 3600 * 24 * 7, // 7天有效期
-          response: {
-            'content-type': 'video/mp4',
-          },
-        })
-        console.log('[VideoMerge] 上传成功，签名 URL 已生成')
+        // 已设置 public-read ACL，直接使用公开 URL
+        // 格式：https://bucket.region.aliyuncs.com/key
+        downloadUrl = `https://${ossBucket}.oss-${process.env.S3_REGION || 'cn-chengdu'}.aliyuncs.com/${storageKey}`
+        console.log('[VideoMerge] 上传成功，公开 URL:', downloadUrl)
     } catch (uploadError) {
       console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
       

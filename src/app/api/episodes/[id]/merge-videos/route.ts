@@ -217,15 +217,10 @@ export async function POST(
           console.warn('[MergeVideos] ACL 设置失败（不影响上传）:', aclError)
         }
 
-        // 使用签名 URL（确保可访问）
-        viewUrl = ossClient.signatureUrl(storageKey, {
-          expires: 3600 * 24 * 7, // 7天有效期
-          response: {
-            'content-type': 'video/mp4',
-          },
-        })
+        // 已设置 public-read ACL，直接使用公开 URL
+        viewUrl = `https://${ossBucket}.oss-${process.env.S3_REGION || 'cn-chengdu'}.aliyuncs.com/${storageKey}`
         fileKey = storageKey
-        console.log('[MergeVideos] 上传成功，签名 URL 已生成')
+        console.log('[MergeVideos] 上传成功，公开 URL:', viewUrl)
       } else {
         // 对象存储未配置，保存到本地 public 目录
         const publicDir = path.join(process.cwd(), 'public', 'episodes')
