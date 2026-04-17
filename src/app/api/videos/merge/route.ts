@@ -360,14 +360,20 @@ export async function POST(request: NextRequest) {
         })
       
       const fileBuffer = readFileSync(outputPath)
-      const storageKey = await storage.uploadFile({
+      const storageResult = await storage.uploadFile({
         fileContent: fileBuffer,
         fileName: `merged/${projectId}/${outputFilename}`,
         contentType: 'video/mp4'
       })
       
-      // 生成公开访问 URL（阿里云 OSS 格式：endpoint/bucket/key）
-      downloadUrl = `${ossEndpoint}/${ossBucket}/${storageKey}`
+      // storage.uploadFile 可能返回完整的 URL 或纯 key，需要判断
+      // 如果返回的是完整 URL（以 http 开头），直接使用
+      // 否则按 endpoint/bucket/key 格式拼接
+      if (storageResult && storageResult.startsWith('http')) {
+        downloadUrl = storageResult
+      } else {
+        downloadUrl = `${ossEndpoint}/${ossBucket}/${storageResult}`
+      }
       console.log('[VideoMerge] 上传成功:', downloadUrl)
     } catch (uploadError) {
       console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
