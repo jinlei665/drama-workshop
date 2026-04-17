@@ -24,42 +24,66 @@ async function checkFfmpegAvailable(customPath?: string | null): Promise<{
   path?: string
   error?: string
 }> {
-  const ffmpegCmd = customPath ? `"${customPath}"` : 'ffmpeg'
+  // 如果提供了自定义路径，先验证该路径在当前系统是否有效
+  if (customPath) {
+    try {
+      const { stdout } = await execAsync(`"${customPath}" -version`, {
+        timeout: 5000,
+        windowsHide: true
+      })
+      
+      // 路径有效，直接使用
+      const versionMatch = stdout.match(/ffmpeg version ([^\s]+)/)
+      const version = versionMatch ? versionMatch[1] : 'unknown'
+      
+      return {
+        available: true,
+        version,
+        path: customPath
+      }
+    } catch (error) {
+      // 自定义路径无效，尝试使用系统 PATH 中的 ffmpeg
+      console.warn(`[FFmpeg] 自定义路径 "${customPath}" 无效，尝试使用系统 FFmpeg`)
+    }
+  }
   
+  // 尝试从系统 PATH 中获取 ffmpeg
   try {
-    const { stdout } = await execAsync(`${ffmpegCmd} -version`, {
-      timeout: 5000,
-      windowsHide: true
-    })
+    const whichCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg'
+    const { stdout: whichOutput } = await execAsync(whichCmd, { timeout: 3000 })
+    const actualPath = whichOutput.trim().split('\n')[0].trim()
     
-    // 解析版本信息
-    const versionMatch = stdout.match(/ffmpeg version ([^\s]+)/)
-    const version = versionMatch ? versionMatch[1] : 'unknown'
-    
-    // 获取实际路径
-    let actualPath = customPath || 'system'
-    if (!customPath) {
+    if (actualPath) {
+      // 验证系统中的 ffmpeg
       try {
-        const { stdout: whichOutput } = await execAsync(
-          process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg',
-          { timeout: 3000 }
-        )
-        actualPath = whichOutput.split('\n')[0].trim()
+        const { stdout } = await execAsync(`"${actualPath}" -version`, {
+          timeout: 5000,
+          windowsHide: true
+        })
+        
+        const versionMatch = stdout.match(/ffmpeg version ([^\s]+)/)
+        const version = versionMatch ? versionMatch[1] : 'unknown'
+        
+        return {
+          available: true,
+          version,
+          path: actualPath
+        }
       } catch {
-        // 无法获取路径，使用默认值
+        // 系统 FFmpeg 也无效
+        return {
+          available: false,
+          error: '系统 FFmpeg 不可用，请安装 FFmpeg 或配置有效路径'
+        }
       }
     }
-    
-    return {
-      available: true,
-      version,
-      path: actualPath
-    }
-  } catch (error) {
-    return {
-      available: false,
-      error: error instanceof Error ? error.message : 'FFmpeg 不可用'
-    }
+  } catch {
+    // 无法找到系统 FFmpeg
+  }
+  
+  return {
+    available: false,
+    error: '未找到 FFmpeg，请安装或配置有效路径'
   }
 }
 

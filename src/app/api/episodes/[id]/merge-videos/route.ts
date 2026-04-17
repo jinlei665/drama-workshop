@@ -11,7 +11,7 @@ const execAsync = promisify(exec)
 
 /**
  * 获取 FFmpeg 路径
- * 优先使用用户配置的路径，否则使用系统 PATH 中的 ffmpeg
+ * 优先使用用户配置的路径，如果路径无效则 fallback 到系统 PATH
  */
 async function getFfmpegPath(): Promise<string> {
   let ffmpegPath: string | null = null
@@ -30,21 +30,39 @@ async function getFfmpegPath(): Promise<string> {
     console.warn("[MergeVideos] 无法从数据库获取 FFmpeg 配置:", error)
   }
   
-  // 如果没有配置路径，尝试从系统 PATH 检测
-  if (!ffmpegPath) {
+  // 如果配置了路径，验证该路径在当前系统是否有效
+  if (ffmpegPath) {
     try {
-      const checkCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg'
-      const { stdout } = await execAsync(checkCmd)
-      const lines = stdout.trim().split('\n')
-      if (lines.length > 0) {
-        ffmpegPath = lines[0].trim()
-      }
-    } catch {
-      // 系统 PATH 中没有 ffmpeg，使用默认值
+      await execAsync(`"${ffmpegPath}" -version`, { timeout: 5000 })
+      console.log('[MergeVideos] 使用用户配置的 FFmpeg:', ffmpegPath)
+      return ffmpegPath
+    } catch (error) {
+      console.warn(`[MergeVideos] 用户配置的 FFmpeg 路径 "${ffmpegPath}" 无效，尝试系统 FFmpeg`)
     }
   }
   
-  return ffmpegPath || 'ffmpeg'
+  // 尝试从系统 PATH 检测
+  try {
+    const checkCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg'
+    const { stdout } = await execAsync(checkCmd)
+    const lines = stdout.trim().split('\n')
+    if (lines.length > 0) {
+      const systemPath = lines[0].trim()
+      // 验证系统 FFmpeg 是否有效
+      try {
+        await execAsync(`"${systemPath}" -version`, { timeout: 5000 })
+        console.log('[MergeVideos] 使用系统 FFmpeg:', systemPath)
+        return systemPath
+      } catch {
+        console.warn('[MergeVideos] 系统 FFmpeg 无效')
+      }
+    }
+  } catch {
+    console.warn('[MergeVideos] 无法从系统 PATH 检测 FFmpeg')
+  }
+  
+  // 最后 fallback 到 'ffmpeg'（依赖系统 PATH）
+  return 'ffmpeg'
 }
 
 /**
