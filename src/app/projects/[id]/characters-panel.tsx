@@ -902,7 +902,7 @@ export function CharactersPanel({ projectId, characters, onUpdate }: CharactersP
                                 )}
                                 <div className="flex-1 min-w-0">
                                   <h4 className="font-medium truncate">{char.name}</h4>
-                                  <p className="text-sm text-muted-foreground truncate">
+                                  <p className="text-sm text-muted-foreground line-clamp-2">
                                     {char.description || '暂无描述'}
                                   </p>
                                 </div>
