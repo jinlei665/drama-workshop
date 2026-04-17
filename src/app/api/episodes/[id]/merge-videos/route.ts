@@ -179,20 +179,22 @@ export async function POST(
           region: "cn-beijing",
         })
 
-        fileKey = await storage.uploadFile({
+        const storageKey = `episodes/${id}/merged_${Date.now()}.mp4`
+        await storage.uploadFile({
           fileContent: mergedVideo,
-          fileName: `episodes/${id}/merged_${Date.now()}.mp4`,
+          fileName: storageKey,
           contentType: "video/mp4",
         })
 
-        // storage.uploadFile 可能返回完整的 URL 或纯 key，需要判断
-        // 如果返回的是完整 URL（以 http 开头），直接使用
-        // 否则按 endpoint/bucket/key 格式拼接
-        if (fileKey && fileKey.startsWith('http')) {
-          viewUrl = fileKey
-        } else {
-          viewUrl = `${ossEndpoint}/${ossBucket}/${fileKey}`
-        }
+        // 使用 generatePresignedUrl 生成可公开访问的 URL
+        const signedUrl = await storage.generatePresignedUrl({
+          key: storageKey,
+          expireTime: 3600 * 24 * 7, // 7天有效期
+        })
+        
+        // 处理返回值，可能是 string 或 object
+        viewUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url
+        fileKey = storageKey
         console.log('[MergeVideos] 上传成功:', viewUrl)
       } else {
         // 对象存储未配置，保存到本地 public 目录

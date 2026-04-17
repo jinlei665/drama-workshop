@@ -360,20 +360,21 @@ export async function POST(request: NextRequest) {
         })
       
       const fileBuffer = readFileSync(outputPath)
-      const storageResult = await storage.uploadFile({
+      const storageKey = `merged/${projectId}/${outputFilename}`
+      await storage.uploadFile({
         fileContent: fileBuffer,
-        fileName: `merged/${projectId}/${outputFilename}`,
+        fileName: storageKey,
         contentType: 'video/mp4'
       })
       
-      // storage.uploadFile 可能返回完整的 URL 或纯 key，需要判断
-      // 如果返回的是完整 URL（以 http 开头），直接使用
-      // 否则按 endpoint/bucket/key 格式拼接
-      if (storageResult && storageResult.startsWith('http')) {
-        downloadUrl = storageResult
-      } else {
-        downloadUrl = `${ossEndpoint}/${ossBucket}/${storageResult}`
-      }
+      // 使用 generatePresignedUrl 生成可公开访问的 URL
+      const signedUrl = await storage.generatePresignedUrl({
+        key: storageKey,
+        expireTime: 3600 * 24 * 7, // 7天有效期
+      })
+      
+      // 处理返回值，可能是 string 或 object
+      downloadUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url
       console.log('[VideoMerge] 上传成功:', downloadUrl)
     } catch (uploadError) {
       console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
