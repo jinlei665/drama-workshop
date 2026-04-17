@@ -1,7 +1,6 @@
 /**
  * 视频预览组件
- * 支持本地路径和 OSS URL 的视频预览
- * 注意：不使用 crossOrigin 属性，避免触发 CORS 预检请求
+ * 支持本地路径、代理路径和 OSS URL 的视频预览
  */
 
 'use client'
@@ -22,7 +21,6 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
   const [hasError, setHasError] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
-  // 处理视频加载错误
   const handleError = () => {
     console.error('[VideoPreview] 视频加载失败:', url)
     setHasError(true)
@@ -30,13 +28,11 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
     onError?.()
   }
 
-  // 处理视频加载成功
   const handleCanPlay = () => {
     setHasError(false)
     setIsLoading(false)
   }
 
-  // 重新尝试播放
   const handleRetry = () => {
     setHasError(false)
     setIsLoading(true)
@@ -45,10 +41,11 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
     }
   }
 
-  // 下载视频（使用新窗口打开，避免 CORS 限制）
+  // 下载视频
   const handleDownload = () => {
     if (!url) return
-    // 对于跨域资源，直接在新窗口打开 URL，浏览器会自动下载
+    // 代理路径直接在新窗口打开，浏览器会下载
+    // OSS 直链也在新窗口打开
     window.open(url, '_blank')
   }
 
@@ -59,50 +56,36 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
     toast.success('链接已复制到剪贴板')
   }
 
-  // 视频不可用或加载中
-  if (hasError || isLoading) {
+  if (hasError) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-muted/20 rounded-lg">
-        {isLoading && !hasError ? (
-          <>
-            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-muted-foreground">正在加载视频...</p>
-          </>
-        ) : (
-          <>
-            <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-            <p className="text-muted-foreground mb-2">视频播放失败</p>
-            <p className="text-xs text-muted-foreground mb-4 text-center px-4">
-              可能是跨域问题或视频文件不存在
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleRetry}>
-                <RefreshCw className="w-4 h-4 mr-1" />
-                重新播放
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleDownload}>
-                <Download className="w-4 h-4 mr-1" />
-                新窗口打开
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleCopyLink}>
-                <ExternalLink className="w-4 h-4 mr-1" />
-                复制链接
-              </Button>
-            </div>
-          </>
-        )}
+        <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+        <p className="text-muted-foreground mb-2">视频播放失败</p>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleRetry}>
+            <RefreshCw className="w-4 h-4 mr-1" />
+            重试
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDownload}>
+            <Download className="w-4 h-4 mr-1" />
+            下载
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleCopyLink}>
+            <ExternalLink className="w-4 h-4 mr-1" />
+            复制链接
+          </Button>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="relative h-full">
-      {/* 
-        注意：不添加 crossOrigin 属性！
-        crossOrigin="anonymous" 会触发 CORS 预检请求，
-        OSS 没有 CORS 配置时视频将无法加载。
-        不加 crossOrigin 时，浏览器直接请求资源，不需要预检。
-      */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
       <video
         ref={videoRef}
         src={url}
@@ -113,7 +96,6 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
         onCanPlay={handleCanPlay}
         onLoadStart={() => setIsLoading(true)}
       />
-      {/* 工具栏 */}
       {title && (
         <div className="absolute top-2 left-2 right-2 flex justify-between items-center">
           <span className="bg-black/50 text-white text-xs px-2 py-1 rounded">
@@ -134,7 +116,7 @@ export function VideoPreview({ url, title, onError }: VideoPreviewProps) {
               size="icon"
               className="h-8 w-8 bg-black/50 hover:bg-black/70 text-white"
               onClick={handleDownload}
-              title="新窗口打开"
+              title="下载"
             >
               <Download className="w-4 h-4" />
             </Button>

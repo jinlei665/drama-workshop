@@ -217,11 +217,10 @@ export async function POST(
           console.warn('[MergeVideos] ACL 设置失败（不影响上传）:', aclError)
         }
 
-        // 已设置 public-read ACL，直接使用公开 URL
-        const ossRegion = process.env.S3_REGION || 'oss-cn-chengdu'
-        viewUrl = `https://${ossBucket}.${ossRegion}.aliyuncs.com/${storageKey}`
+        // 使用后端代理路径播放视频，避免 CORS 和 Content-Type 问题
+        viewUrl = `/api/videos/stream?key=${encodeURIComponent(storageKey)}`
         fileKey = storageKey
-        console.log('[MergeVideos] 上传成功，公开 URL:', viewUrl)
+        console.log('[MergeVideos] 上传成功，代理路径:', viewUrl)
       } else {
         // 对象存储未配置，保存到本地 public 目录
         const publicDir = path.join(process.cwd(), 'public', 'episodes')
