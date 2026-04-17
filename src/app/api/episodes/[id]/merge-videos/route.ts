@@ -182,17 +182,50 @@ export async function POST(
         })
 
         const storageKey = `episodes/${id}/merged_${Date.now()}.mp4`
+        const fileSizeMB = (mergedVideo.length / 1024 / 1024).toFixed(2)
+        console.log(`[MergeVideos] 准备上传，文件大小: ${fileSizeMB}MB，key: ${storageKey}`)
         
-        // 上传到 OSS
-        await ossClient.put(storageKey, mergedVideo)
+        // 上传到 OSS（大文件使用 multipartUpload）
+        let putResult: any
+        if (mergedVideo.length > 100 * 1024 * 1024) {
+          console.log('[MergeVideos] 使用分片上传...')
+          putResult = await ossClient.multipartUpload(storageKey, mergedVideo, {
+            mime: 'video/mp4',
+          })
+        } else {
+          putResult = await ossClient.put(storageKey, mergedVideo, {
+            mime: 'video/mp4',
+          })
+        }
+
+        console.log('[MergeVideos] 上传结果:', JSON.stringify({
+          name: putResult?.name,
+          url: putResult?.url,
+          res: putResult?.res?.statusCode,
+        }))
+
+        // 验证上传是否成功
+        if (putResult?.res?.statusCode !== 200) {
+          throw new Error(`上传返回非200状态码: ${putResult?.res?.statusCode}`)
+        }
         
         // 设置为公开读取
-        await ossClient.putACL(storageKey, 'public-read')
-        
-        // 生成公网 URL（阿里云 OSS 格式：endpoint/bucket/key）
-        viewUrl = `${ossEndpoint}/${ossBucket}/${storageKey}`
+        try {
+          await ossClient.putACL(storageKey, 'public-read')
+          console.log('[MergeVideos] ACL 设置成功')
+        } catch (aclError) {
+          console.warn('[MergeVideos] ACL 设置失败（不影响上传）:', aclError)
+        }
+
+        // 使用签名 URL（确保可访问）
+        viewUrl = ossClient.signatureUrl(storageKey, {
+          expires: 3600 * 24 * 7, // 7天有效期
+          response: {
+            'content-type': 'video/mp4',
+          },
+        })
         fileKey = storageKey
-        console.log('[MergeVideos] 上传成功:', viewUrl)
+        console.log('[MergeVideos] 上传成功，签名 URL 已生成')
       } else {
         // 对象存储未配置，保存到本地 public 目录
         const publicDir = path.join(process.cwd(), 'public', 'episodes')

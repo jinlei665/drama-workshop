@@ -362,16 +362,59 @@ export async function POST(request: NextRequest) {
       
         const fileBuffer = readFileSync(outputPath)
         const storageKey = `merged/${projectId}/${outputFilename}`
+        const fileSizeMB = (fileBuffer.length / 1024 / 1024).toFixed(2)
+        console.log(`[VideoMerge] 准备上传，文件大小: ${fileSizeMB}MB，key: ${storageKey}`)
         
-        // 上传到 OSS
-        await ossClient.put(storageKey, fileBuffer)
+        // 上传到 OSS（大文件使用 multipartUpload）
+        let putResult: any
+        if (fileBuffer.length > 100 * 1024 * 1024) {
+          // 大于 100MB 使用分片上传
+          console.log('[VideoMerge] 使用分片上传...')
+          putResult = await ossClient.multipartUpload(storageKey, fileBuffer, {
+            mime: 'video/mp4',
+          })
+        } else {
+          putResult = await ossClient.put(storageKey, fileBuffer, {
+            mime: 'video/mp4',
+          })
+        }
+        
+        console.log('[VideoMerge] 上传结果:', JSON.stringify({
+          name: putResult?.name,
+          url: putResult?.url,
+          res: putResult?.res?.statusCode,
+        }))
+        
+        // 验证上传是否成功
+        if (putResult?.res?.statusCode !== 200) {
+          throw new Error(`上传返回非200状态码: ${putResult?.res?.statusCode}`)
+        }
         
         // 设置为公开读取
-        await ossClient.putACL(storageKey, 'public-read')
+        try {
+          await ossClient.putACL(storageKey, 'public-read')
+          console.log('[VideoMerge] ACL 设置成功')
+        } catch (aclError) {
+          console.warn('[VideoMerge] ACL 设置失败（不影响上传）:', aclError)
+        }
         
-        // 生成公网 URL（阿里云 OSS endpoint 已包含 bucket，直接拼接 key）
-        downloadUrl = `${ossEndpoint}/${storageKey}`
-        console.log('[VideoMerge] 上传成功:', downloadUrl)
+        // 验证文件是否存在
+        try {
+          await ossClient.head(storageKey)
+          console.log('[VideoMerge] 文件验证成功，已存在于 OSS')
+        } catch (headError) {
+          console.error('[VideoMerge] 文件验证失败，文件可能未上传成功:', headError)
+          throw new Error('文件上传后验证失败')
+        }
+        
+        // 使用签名 URL（确保可访问）
+        downloadUrl = ossClient.signatureUrl(storageKey, {
+          expires: 3600 * 24 * 7, // 7天有效期
+          response: {
+            'content-type': 'video/mp4',
+          },
+        })
+        console.log('[VideoMerge] 上传成功，签名 URL 已生成')
     } catch (uploadError) {
       console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
       
