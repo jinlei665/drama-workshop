@@ -171,29 +171,26 @@ export async function POST(
     try {
       // 优先尝试对象存储
       if (ossEndpoint && ossBucket) {
-        const storage = new S3Storage({
-          endpointUrl: ossEndpoint,
-          accessKey: ossAccessKey,
-          secretKey: ossSecretKey,
-          bucketName: ossBucket,
-          region: "cn-beijing",
+        // 使用 ali-oss SDK 上传
+        const OSS = await import('ali-oss')
+        const ossClient = new OSS.default({
+          region: process.env.S3_REGION || 'oss-cn-chengdu',
+          accessKeyId: ossAccessKey,
+          accessKeySecret: ossSecretKey,
+          bucket: ossBucket,
+          secure: true,
         })
 
         const storageKey = `episodes/${id}/merged_${Date.now()}.mp4`
-        await storage.uploadFile({
-          fileContent: mergedVideo,
-          fileName: storageKey,
-          contentType: "video/mp4",
-        })
-
-        // 使用 generatePresignedUrl 生成可公开访问的 URL
-        const signedUrl = await storage.generatePresignedUrl({
-          key: storageKey,
-          expireTime: 3600 * 24 * 7, // 7天有效期
-        })
         
-        // 处理返回值，可能是 string 或 object
-        viewUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url
+        // 上传到 OSS
+        await ossClient.put(storageKey, mergedVideo)
+        
+        // 设置为公开读取
+        await ossClient.putACL(storageKey, 'public-read')
+        
+        // 生成公网 URL
+        viewUrl = `${ossEndpoint}/${storageKey}`
         fileKey = storageKey
         console.log('[MergeVideos] 上传成功:', viewUrl)
       } else {

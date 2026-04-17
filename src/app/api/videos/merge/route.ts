@@ -348,34 +348,30 @@ export async function POST(request: NextRequest) {
     // 首先尝试对象存储
     if (ossEndpoint && ossBucket) {
       try {
-        const { S3Storage } = await import('coze-coding-dev-sdk')
+        // 使用 ali-oss SDK 上传
+        const OSS = await import('ali-oss')
         console.log('[VideoMerge] 使用对象存储:', ossEndpoint, ossBucket)
         
-        const storage = new S3Storage({
-          endpointUrl: ossEndpoint,
-          accessKey: ossAccessKey,
-          secretKey: ossSecretKey,
-          bucketName: ossBucket,
-          region: 'cn-beijing',
+        const ossClient = new OSS.default({
+          region: process.env.S3_REGION || 'oss-cn-chengdu',
+          accessKeyId: ossAccessKey,
+          accessKeySecret: ossSecretKey,
+          bucket: ossBucket,
+          secure: true,
         })
       
-      const fileBuffer = readFileSync(outputPath)
-      const storageKey = `merged/${projectId}/${outputFilename}`
-      await storage.uploadFile({
-        fileContent: fileBuffer,
-        fileName: storageKey,
-        contentType: 'video/mp4'
-      })
-      
-      // 使用 generatePresignedUrl 生成可公开访问的 URL
-      const signedUrl = await storage.generatePresignedUrl({
-        key: storageKey,
-        expireTime: 3600 * 24 * 7, // 7天有效期
-      })
-      
-      // 处理返回值，可能是 string 或 object
-      downloadUrl = typeof signedUrl === 'string' ? signedUrl : (signedUrl as { url: string }).url
-      console.log('[VideoMerge] 上传成功:', downloadUrl)
+        const fileBuffer = readFileSync(outputPath)
+        const storageKey = `merged/${projectId}/${outputFilename}`
+        
+        // 上传到 OSS
+        await ossClient.put(storageKey, fileBuffer)
+        
+        // 设置为公开读取
+        await ossClient.putACL(storageKey, 'public-read')
+        
+        // 生成公网 URL
+        downloadUrl = `${ossEndpoint}/${storageKey}`
+        console.log('[VideoMerge] 上传成功:', downloadUrl)
     } catch (uploadError) {
       console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
       
