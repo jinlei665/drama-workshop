@@ -783,7 +783,18 @@ export function EpisodesPanel({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => window.open(episode.merged_video_url!, '_blank')}
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(episode.merged_video_url!, { method: 'HEAD' })
+                            if (!res.ok) {
+                              toast.error("视频文件不存在，请重新合成")
+                              return
+                            }
+                            window.open(episode.merged_video_url!, '_blank')
+                          } catch {
+                            toast.error("无法访问视频文件，请重新合成")
+                          }
+                        }}
                       >
                         <Play className="w-4 h-4 mr-1" />
                         预览
