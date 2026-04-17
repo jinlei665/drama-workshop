@@ -185,8 +185,8 @@ export async function POST(
           contentType: "video/mp4",
         })
 
-        // 生成公开访问 URL（直接拼接，无需签名）
-        viewUrl = `${ossEndpoint}/${fileKey}`
+        // 生成公开访问 URL（阿里云 OSS 格式：endpoint/bucket/key）
+        viewUrl = `${ossEndpoint}/${ossBucket}/${fileKey}`
         console.log('[MergeVideos] 上传成功:', viewUrl)
       } else {
         // 对象存储未配置，保存到本地 public 目录

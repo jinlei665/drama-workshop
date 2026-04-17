@@ -108,7 +108,14 @@ export function generateKey(type: 'character' | 'scene' | 'video' | 'audio', id:
 /** 获取文件公开 URL */
 export function getPublicUrl(key: string): string {
   const config = getStorageConfig()
-  // 注意：endpoint 已经包含了 bucket 名称（如 https://bucket.oss-region.aliyuncs.com）
-  // 所以只需要拼接 key 即可，不需要再添加 bucket
-  return `${config.endpoint}/${key}`
+  // 检查 endpoint 是否已包含 bucket 名称（阿里云 OSS 格式：https://bucket.oss-region.aliyuncs.com）
+  const endpointHasBucket = config.endpoint.includes(config.bucket)
+  
+  if (endpointHasBucket) {
+    // endpoint 已包含 bucket，直接拼接 key
+    return `${config.endpoint}/${key}`
+  } else {
+    // endpoint 不包含 bucket，需要添加 bucket 名称到路径中
+    return `${config.endpoint}/${config.bucket}/${key}`
+  }
 }
