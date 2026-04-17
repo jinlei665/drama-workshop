@@ -339,16 +339,23 @@ export async function POST(request: NextRequest) {
     // 上传到对象存储或保存到本地
     let downloadUrl: string
     
+    // 获取 OSS 配置
+    const ossEndpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+    const ossBucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
+    
     // 首先尝试对象存储
-    try {
-      const { S3Storage } = await import('coze-coding-dev-sdk')
-      const storage = new S3Storage({
-        endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-        accessKey: '',
-        secretKey: '',
-        bucketName: process.env.COZE_BUCKET_NAME,
-        region: 'cn-beijing',
-      })
+    if (ossEndpoint && ossBucket) {
+      try {
+        const { S3Storage } = await import('coze-coding-dev-sdk')
+        console.log('[VideoMerge] 使用对象存储:', ossEndpoint, ossBucket)
+        
+        const storage = new S3Storage({
+          endpointUrl: ossEndpoint,
+          accessKey: '',
+          secretKey: '',
+          bucketName: ossBucket,
+          region: 'cn-beijing',
+        })
       
       const fileBuffer = readFileSync(outputPath)
       const storageKey = await storage.uploadFile({
@@ -385,6 +392,22 @@ export async function POST(request: NextRequest) {
         return errorResponse({ message: '视频保存失败，请检查磁盘空间' }, 500)
       }
     }
+  } else {
+    // OSS 未配置，保存到本地
+    console.log('[VideoMerge] 对象存储未配置，保存到本地')
+    
+    const publicDir = join(process.cwd(), 'public', 'merged')
+    if (!existsSync(publicDir)) {
+      mkdirSync(publicDir, { recursive: true })
+    }
+    
+    const localPath = join(publicDir, outputFilename)
+    const fileBuffer = readFileSync(outputPath)
+    writeFileSync(localPath, fileBuffer)
+    
+    downloadUrl = `/merged/${outputFilename}`
+    console.log('[VideoMerge] 保存到本地成功:', downloadUrl)
+  }
     
     // 清理临时文件
     try {
