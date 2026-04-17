@@ -218,7 +218,8 @@ export async function POST(
         }
 
         // 已设置 public-read ACL，直接使用公开 URL
-        viewUrl = `https://${ossBucket}.oss-${process.env.S3_REGION || 'cn-chengdu'}.aliyuncs.com/${storageKey}`
+        const ossRegion = process.env.S3_REGION || 'oss-cn-chengdu'
+        viewUrl = `https://${ossBucket}.${ossRegion}.aliyuncs.com/${storageKey}`
         fileKey = storageKey
         console.log('[MergeVideos] 上传成功，公开 URL:', viewUrl)
       } else {

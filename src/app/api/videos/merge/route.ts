@@ -408,8 +408,9 @@ export async function POST(request: NextRequest) {
         }
         
         // 已设置 public-read ACL，直接使用公开 URL
-        // 格式：https://bucket.region.aliyuncs.com/key
-        downloadUrl = `https://${ossBucket}.oss-${process.env.S3_REGION || 'cn-chengdu'}.aliyuncs.com/${storageKey}`
+        // S3_REGION 格式为 oss-cn-chengdu，已包含 oss- 前缀
+        const ossRegion = process.env.S3_REGION || 'oss-cn-chengdu'
+        downloadUrl = `https://${ossBucket}.${ossRegion}.aliyuncs.com/${storageKey}`
         console.log('[VideoMerge] 上传成功，公开 URL:', downloadUrl)
     } catch (uploadError) {
       console.warn('[VideoMerge] 对象存储上传失败，尝试保存到本地:', uploadError)
