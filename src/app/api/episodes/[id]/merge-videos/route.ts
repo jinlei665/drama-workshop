@@ -10,6 +10,44 @@ import path from "path"
 const execAsync = promisify(exec)
 
 /**
+ * 获取 FFmpeg 路径
+ * 优先使用用户配置的路径，否则使用系统 PATH 中的 ffmpeg
+ */
+async function getFfmpegPath(): Promise<string> {
+  let ffmpegPath: string | null = null
+  
+  try {
+    const client = getSupabaseClient()
+    const { data } = await client
+      .from("settings")
+      .select("ffmpeg_path")
+      .single()
+    
+    if (data?.ffmpeg_path) {
+      ffmpegPath = data.ffmpeg_path
+    }
+  } catch (error) {
+    console.warn("[MergeVideos] 无法从数据库获取 FFmpeg 配置:", error)
+  }
+  
+  // 如果没有配置路径，尝试从系统 PATH 检测
+  if (!ffmpegPath) {
+    try {
+      const checkCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg'
+      const { stdout } = await execAsync(checkCmd)
+      const lines = stdout.trim().split('\n')
+      if (lines.length > 0) {
+        ffmpegPath = lines[0].trim()
+      }
+    } catch {
+      // 系统 PATH 中没有 ffmpeg，使用默认值
+    }
+  }
+  
+  return ffmpegPath || 'ffmpeg'
+}
+
+/**
  * POST /api/episodes/[id]/merge-videos
  * 将剧集下的所有分镜视频合成为一个完整视频
  */
@@ -75,10 +113,27 @@ export async function POST(
     const fileListContent = videoFiles.map(f => `file '${f.replace(/\\/g, '/')}'`).join("\n")
     await fs.writeFile(listPath, fileListContent)
 
+    // 获取 FFmpeg 路径
+    const ffmpegPath = await getFfmpegPath()
+    console.log('[MergeVideos] FFmpeg 路径:', ffmpegPath)
+
+    // 验证 FFmpeg 可用
+    try {
+      await execAsync(`"${ffmpegPath}" -version`, { timeout: 5000 })
+    } catch (ffmpegError) {
+      console.error('[MergeVideos] FFmpeg 检测失败:', ffmpegError)
+      return NextResponse.json({ 
+        error: 'FFmpeg 不可用，请检查安装或配置',
+        details: ffmpegError instanceof Error ? ffmpegError.message : String(ffmpegError)
+      }, { status: 500 })
+    }
+
     // 使用 FFmpeg 合并视频
     const outputPath = path.join(tempDir, "merged.mp4")
     // 使用绝对路径并指定工作目录
-    await execAsync(`ffmpeg -f concat -safe 0 -i "${listPath.replace(/\\/g, '/')}" -c copy "${outputPath.replace(/\\/g, '/')}"`, {
+    const ffmpegCmd = `"${ffmpegPath}" -f concat -safe 0 -i "${listPath.replace(/\\/g, '/')}" -c copy "${outputPath.replace(/\\/g, '/')}"`
+    console.log('[MergeVideos] 执行命令:', ffmpegCmd)
+    await execAsync(ffmpegCmd, {
       cwd: tempDir, // 指定工作目录
     })
 

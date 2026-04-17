@@ -21,6 +21,44 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 /**
+ * 获取 FFmpeg 路径
+ * 优先使用用户配置的路径，否则使用系统 PATH 中的 ffmpeg
+ */
+async function getFfmpegPathForNode(): Promise<string> {
+  let ffmpegPath: string | null = null
+  
+  try {
+    const client = getSupabaseClient()
+    const { data } = await client
+      .from("settings")
+      .select("ffmpeg_path")
+      .single()
+    
+    if (data?.ffmpeg_path) {
+      ffmpegPath = data.ffmpeg_path
+    }
+  } catch (error) {
+    console.warn("[WorkflowNodes] 无法从数据库获取 FFmpeg 配置:", error)
+  }
+  
+  // 如果没有配置路径，尝试从系统 PATH 检测
+  if (!ffmpegPath) {
+    try {
+      const checkCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg'
+      const { stdout } = await execAsync(checkCmd)
+      const lines = stdout.trim().split('\n')
+      if (lines.length > 0) {
+        ffmpegPath = lines[0].trim()
+      }
+    } catch {
+      // 系统 PATH 中没有 ffmpeg，使用默认值
+    }
+  }
+  
+  return ffmpegPath || 'ffmpeg'
+}
+
+/**
  * 获取人物库专用的 Supabase 客户端（与服务端 API 保持一致）
  */
 function getCharacterLibraryClientForNode() {
@@ -1190,10 +1228,16 @@ export class VideoComposeNode extends BaseNodeClass {
       const concatContent = localVideos.map(v => `file '${v}'`).join('\n')
       fs.writeFileSync(concatListPath, concatContent)
 
+      // 获取 FFmpeg 路径
+      const ffmpegPath = await getFfmpegPathForNode()
+      console.log(`[VideoComposeNode] FFmpeg 路径:`, ffmpegPath)
+
       console.log(`[VideoComposeNode] Running FFmpeg concat...`)
 
       // 使用 FFmpeg 合并视频
-      await execAsync(`ffmpeg -f concat -safe 0 -i "${concatListPath}" -c copy "${outputPath}" -y`)
+      const ffmpegCmd = `"${ffmpegPath}" -f concat -safe 0 -i "${concatListPath}" -c copy "${outputPath}" -y`
+      console.log(`[VideoComposeNode] 执行命令:`, ffmpegCmd)
+      await execAsync(ffmpegCmd)
 
       // 检查输出文件
       if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
