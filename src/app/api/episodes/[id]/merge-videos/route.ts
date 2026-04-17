@@ -189,8 +189,8 @@ export async function POST(
         // 设置为公开读取
         await ossClient.putACL(storageKey, 'public-read')
         
-        // 生成公网 URL
-        viewUrl = `${ossEndpoint}/${storageKey}`
+        // 生成公网 URL（阿里云 OSS 格式：endpoint/bucket/key）
+        viewUrl = `${ossEndpoint}/${ossBucket}/${storageKey}`
         fileKey = storageKey
         console.log('[MergeVideos] 上传成功:', viewUrl)
       } else {

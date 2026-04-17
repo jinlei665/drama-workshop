@@ -369,7 +369,7 @@ export async function POST(request: NextRequest) {
         // 设置为公开读取
         await ossClient.putACL(storageKey, 'public-read')
         
-        // 生成公网 URL
+        // 生成公网 URL（阿里云 OSS endpoint 已包含 bucket，直接拼接 key）
         downloadUrl = `${ossEndpoint}/${storageKey}`
         console.log('[VideoMerge] 上传成功:', downloadUrl)
     } catch (uploadError) {
