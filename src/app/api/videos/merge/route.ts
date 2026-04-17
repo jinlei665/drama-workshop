@@ -342,6 +342,8 @@ export async function POST(request: NextRequest) {
     // 获取 OSS 配置
     const ossEndpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
     const ossBucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
+    const ossAccessKey = process.env.S3_ACCESS_KEY || ''
+    const ossSecretKey = process.env.S3_SECRET_KEY || ''
     
     // 首先尝试对象存储
     if (ossEndpoint && ossBucket) {
@@ -351,8 +353,8 @@ export async function POST(request: NextRequest) {
         
         const storage = new S3Storage({
           endpointUrl: ossEndpoint,
-          accessKey: '',
-          secretKey: '',
+          accessKey: ossAccessKey,
+          secretKey: ossSecretKey,
           bucketName: ossBucket,
           region: 'cn-beijing',
         })

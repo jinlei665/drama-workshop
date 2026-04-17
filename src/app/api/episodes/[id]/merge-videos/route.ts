@@ -161,14 +161,21 @@ export async function POST(
     // 上传视频
     let viewUrl: string
     let fileKey: string | null = null
+    
+    // 获取 OSS 配置
+    const ossEndpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+    const ossBucket = process.env.S3_BUCKET || process.env.COZE_BUCKET_NAME
+    const ossAccessKey = process.env.S3_ACCESS_KEY || ''
+    const ossSecretKey = process.env.S3_SECRET_KEY || ''
+    
     try {
       // 优先尝试对象存储
-      if (process.env.COZE_BUCKET_ENDPOINT_URL && process.env.COZE_BUCKET_NAME) {
+      if (ossEndpoint && ossBucket) {
         const storage = new S3Storage({
-          endpointUrl: process.env.COZE_BUCKET_ENDPOINT_URL,
-          accessKey: "",
-          secretKey: "",
-          bucketName: process.env.COZE_BUCKET_NAME,
+          endpointUrl: ossEndpoint,
+          accessKey: ossAccessKey,
+          secretKey: ossSecretKey,
+          bucketName: ossBucket,
           region: "cn-beijing",
         })
 
