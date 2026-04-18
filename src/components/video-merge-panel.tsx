@@ -52,9 +52,10 @@ interface Episode {
 }
 
 interface FFmpegStatus {
-  configured: boolean
+  available: boolean
+  ffmpegPath?: string
   version?: string
-  path?: string
+  customPath?: string | null
   error?: string
 }
 
@@ -112,7 +113,7 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
         const data = await res.json()
         setFfmpegStatus(data.data || data)
       } catch {
-        setFfmpegStatus({ configured: false, error: '检测失败' })
+        setFfmpegStatus({ available: false, error: '检测失败' })
       } finally {
         setCheckingFfmpeg(false)
       }
@@ -147,7 +148,7 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
       return
     }
 
-    if (!ffmpegStatus?.configured) {
+    if (!ffmpegStatus?.available) {
       toast.error('FFmpeg 未配置，请先在设置中配置')
       setSettingsOpen(true)
       return
@@ -267,7 +268,7 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
                   <Loader2 className="w-3 h-3 animate-spin" />
                   检测中
                 </Badge>
-              ) : ffmpegStatus?.configured ? (
+              ) : ffmpegStatus?.available ? (
                 <Badge variant="outline" className="gap-1 text-green-500 border-green-500/30">
                   <CheckCircle className="w-3 h-3" />
                   FFmpeg 可用
@@ -292,7 +293,7 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
         {expanded && (
           <CardContent className="space-y-4">
             {/* FFmpeg 未配置提示 */}
-            {!checkingFfmpeg && !ffmpegStatus?.configured && (
+            {!checkingFfmpeg && !ffmpegStatus?.available && (
               <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                 <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
                 <div className="flex-1">
@@ -418,7 +419,7 @@ export function VideoMergePanel({ projectId, scenes, onVideoAddedToEpisode }: Vi
             <div className="flex gap-2">
               <Button
                 onClick={handleMerge}
-                disabled={merging || selectedScenes.size === 0 || !ffmpegStatus?.configured}
+                disabled={merging || selectedScenes.size === 0 || !ffmpegStatus?.available}
                 className="flex-1"
               >
                 {merging ? (
