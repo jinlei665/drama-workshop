@@ -19,7 +19,7 @@ async function getFfmpegPath(): Promise<string> {
   try {
     const client = getSupabaseClient()
     const { data } = await client
-      .from("settings")
+      .from("user_settings")
       .select("ffmpeg_path")
       .single()
     

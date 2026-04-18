@@ -16,74 +16,115 @@ const execAsync = promisify(exec)
 let memoryFfmpegConfig: { ffmpegPath: string | null; ffprobePath: string | null } | null = null
 
 /**
- * 检测 FFmpeg 是否可用
+ * Windows 常见 FFmpeg 安装路径
  */
-async function checkFfmpegAvailable(customPath?: string | null): Promise<{
+const WINDOWS_COMMON_PATHS = [
+  'C:\\ffmpeg\\bin\\ffmpeg.exe',
+  'C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe',
+  'C:\\Program Files (x86)\\ffmpeg\\bin\\ffmpeg.exe',
+  process.env.LOCALAPPDATA ? `${process.env.LOCALAPPDATA}\\ffmpeg\\bin\\ffmpeg.exe` : null,
+  process.env.USERPROFILE ? `${process.env.USERPROFILE}\\ffmpeg\\bin\\ffmpeg.exe` : null,
+].filter((p): p is string => p !== null)
+
+/**
+ * 验证 FFmpeg/ffprobe 路径是否可用
+ */
+async function validateFfmpegPath(ffmpegPath: string): Promise<{ valid: boolean; version?: string }> {
+  try {
+    const { stdout } = await execAsync(`"${ffmpegPath}" -version`, {
+      timeout: 5000,
+      windowsHide: true
+    })
+    const versionMatch = stdout.match(/ffmpeg version ([^\s\n]+)/)
+    return { valid: true, version: versionMatch ? versionMatch[1] : 'unknown' }
+  } catch {
+    return { valid: false }
+  }
+}
+
+/**
+ * 检测 FFmpeg 是否可用
+ * 优先级：自定义路径 > 内存配置 > 系统 PATH > Windows 常见路径 > ffprobe 推断
+ */
+async function checkFfmpegAvailable(): Promise<{
   available: boolean
   version?: string
   path?: string
   error?: string
 }> {
-  // 如果提供了自定义路径，先验证该路径在当前系统是否有效
-  if (customPath) {
-    try {
-      const { stdout } = await execAsync(`"${customPath}" -version`, {
-        timeout: 5000,
-        windowsHide: true
-      })
-      
-      // 路径有效，直接使用
-      const versionMatch = stdout.match(/ffmpeg version ([^\s]+)/)
-      const version = versionMatch ? versionMatch[1] : 'unknown'
-      
+  // 1. 如果有内存配置（用户刚配置过），优先使用
+  if (memoryFfmpegConfig?.ffmpegPath) {
+    const result = await validateFfmpegPath(memoryFfmpegConfig.ffmpegPath)
+    if (result.valid) {
+      console.log('[FFmpeg] 使用内存配置:', memoryFfmpegConfig.ffmpegPath)
       return {
         available: true,
-        version,
-        path: customPath
+        version: result.version,
+        path: memoryFfmpegConfig.ffmpegPath
       }
-    } catch (error) {
-      // 自定义路径无效，尝试使用系统 PATH 中的 ffmpeg
-      console.warn(`[FFmpeg] 自定义路径 "${customPath}" 无效，尝试使用系统 FFmpeg`)
     }
+    console.warn('[FFmpeg] 内存配置路径无效:', memoryFfmpegConfig.ffmpegPath)
   }
-  
-  // 尝试从系统 PATH 中获取 ffmpeg
+
+  // 2. 尝试从系统 PATH 获取
   try {
     const whichCmd = process.platform === 'win32' ? 'where ffmpeg' : 'which ffmpeg'
-    const { stdout: whichOutput } = await execAsync(whichCmd, { timeout: 3000 })
-    const actualPath = whichOutput.trim().split('\n')[0].trim()
-    
-    if (actualPath) {
-      // 验证系统中的 ffmpeg
-      try {
-        const { stdout } = await execAsync(`"${actualPath}" -version`, {
-          timeout: 5000,
-          windowsHide: true
-        })
-        
-        const versionMatch = stdout.match(/ffmpeg version ([^\s]+)/)
-        const version = versionMatch ? versionMatch[1] : 'unknown'
-        
+    const { stdout: whichOutput } = await execAsync(whichCmd, { timeout: 5000, windowsHide: true })
+    const lines = whichOutput.trim().split('\n')
+
+    for (const line of lines) {
+      const systemPath = line.trim()
+      if (!systemPath || systemPath.includes('not found')) continue
+
+      const result = await validateFfmpegPath(systemPath)
+      if (result.valid) {
+        console.log('[FFmpeg] 使用系统 PATH:', systemPath)
         return {
           available: true,
-          version,
-          path: actualPath
-        }
-      } catch {
-        // 系统 FFmpeg 也无效
-        return {
-          available: false,
-          error: '系统 FFmpeg 不可用，请安装 FFmpeg 或配置有效路径'
+          version: result.version,
+          path: systemPath
         }
       }
     }
   } catch {
-    // 无法找到系统 FFmpeg
+    // 系统 PATH 检测失败，继续尝试常见路径
+    console.warn('[FFmpeg] 系统 PATH 检测失败')
   }
-  
+
+  // 3. Windows 常见安装路径
+  if (process.platform === 'win32') {
+    for (const commonPath of WINDOWS_COMMON_PATHS) {
+      const result = await validateFfmpegPath(commonPath)
+      if (result.valid) {
+        console.log('[FFmpeg] 使用常见安装路径:', commonPath)
+        return {
+          available: true,
+          version: result.version,
+          path: commonPath
+        }
+      }
+    }
+  }
+
+  // 4. 最后尝试直接执行 ffmpeg（依赖系统 PATH）
+  try {
+    const { stdout } = await execAsync('ffmpeg -version', {
+      timeout: 5000,
+      windowsHide: true
+    })
+    const versionMatch = stdout.match(/ffmpeg version ([^\s\n]+)/)
+    return {
+      available: true,
+      version: versionMatch ? versionMatch[1] : 'unknown',
+      path: 'ffmpeg' // 表示使用 PATH 中的 ffmpeg
+    }
+  } catch {
+    // 完全无法找到
+  }
+
   return {
     available: false,
-    error: '未找到 FFmpeg，请安装或配置有效路径'
+    error: '未找到 FFmpeg，请安装 FFmpeg 或在设置中配置路径'
   }
 }
 
@@ -93,21 +134,18 @@ async function checkFfmpegAvailable(customPath?: string | null): Promise<{
  */
 export async function GET() {
   try {
-    // 尝试从数据库获取配置
-    let ffmpegPath: string | null = null
-    
+    // 尝试从数据库加载配置到内存
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-      
+
       if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
         const { data } = await db
           .from('user_settings')
           .select('ffmpeg_path, ffprobe_path')
           .maybeSingle()
-        
+
         if (data) {
-          ffmpegPath = data.ffmpeg_path
           memoryFfmpegConfig = {
             ffmpegPath: data.ffmpeg_path,
             ffprobePath: data.ffprobe_path
@@ -115,21 +153,19 @@ export async function GET() {
         }
       }
     } catch (dbError) {
-      // 数据库不可用，使用内存配置
-      ffmpegPath = memoryFfmpegConfig?.ffmpegPath || null
+      // 数据库不可用，使用已有内存配置
+      console.warn('[FFmpeg] 数据库加载失败，使用内存配置:', dbError)
     }
-    
-    // 检测 FFmpeg 是否可用
-    const checkResult = await checkFfmpegAvailable(ffmpegPath)
-    
+
+    // 检测 FFmpeg 是否可用（现在内部处理所有检测逻辑）
+    const checkResult = await checkFfmpegAvailable()
+
     return successResponse({
-      configured: checkResult.available,
+      available: checkResult.available,
       ffmpegPath: checkResult.path,
       version: checkResult.version,
-      customPath: ffmpegPath,
-      error: checkResult.error,
-      // 是否使用用户自定义路径
-      useCustomPath: !!ffmpegPath && checkResult.available
+      customPath: memoryFfmpegConfig?.ffmpegPath || null,
+      error: checkResult.error
     })
   } catch (error) {
     return errorResponse(error)
@@ -146,41 +182,41 @@ export async function PUT(request: NextRequest) {
       ffmpegPath?: string
       ffprobePath?: string
     }>(request)
-    
+
     const ffmpegPath = body.ffmpegPath?.trim() || null
     const ffprobePath = body.ffprobePath?.trim() || null
-    
-    // 验证路径是否有效
+
+    // 先验证路径是否有效（更新内存配置前先验证）
     if (ffmpegPath) {
-      const checkResult = await checkFfmpegAvailable(ffmpegPath)
-      if (!checkResult.available) {
+      const validation = await validateFfmpegPath(ffmpegPath)
+      if (!validation.valid) {
         return successResponse({
           saved: false,
-          error: `FFmpeg 路径无效: ${checkResult.error}`,
+          error: `FFmpeg 路径无效，请检查路径是否正确`,
           available: false
         })
       }
     }
-    
+
     // 保存到数据库
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-      
+
       if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
-        
+
         // 检查是否存在设置
         const { data: existing } = await db
           .from('user_settings')
           .select('id')
           .maybeSingle()
-        
+
         const updateData = {
           ffmpeg_path: ffmpegPath,
           ffprobe_path: ffprobePath,
           updated_at: new Date().toISOString()
         }
-        
+
         if (existing?.id) {
           await db
             .from('user_settings')
@@ -193,15 +229,16 @@ export async function PUT(request: NextRequest) {
         }
       }
     } catch (dbError) {
-      console.warn('Database not available, saving to memory:', dbError)
+      console.warn('[FFmpeg] 数据库保存失败，仅保存到内存:', dbError)
     }
-    
+
     // 更新内存配置
     memoryFfmpegConfig = { ffmpegPath, ffprobePath }
-    
+    console.log('[FFmpeg] 配置已更新:', { ffmpegPath, ffprobePath })
+
     // 返回检测结果
-    const checkResult = await checkFfmpegAvailable(ffmpegPath)
-    
+    const checkResult = await checkFfmpegAvailable()
+
     return successResponse({
       saved: true,
       available: checkResult.available,
@@ -222,14 +259,14 @@ export async function DELETE() {
     // 清除数据库配置
     try {
       const { getSupabaseClient, isDatabaseConfigured } = await import('@/storage/database/supabase-client')
-      
+
       if (isDatabaseConfigured()) {
         const db = getSupabaseClient()
         const { data: existing } = await db
           .from('user_settings')
           .select('id')
           .maybeSingle()
-        
+
         if (existing?.id) {
           await db
             .from('user_settings')
@@ -242,15 +279,16 @@ export async function DELETE() {
         }
       }
     } catch (dbError) {
-      console.warn('Database update failed:', dbError)
+      console.warn('[FFmpeg] 数据库清除失败:', dbError)
     }
-    
+
     // 清除内存配置
     memoryFfmpegConfig = null
-    
+    console.log('[FFmpeg] 配置已清除')
+
     // 检测系统默认 FFmpeg
     const checkResult = await checkFfmpegAvailable()
-    
+
     return successResponse({
       cleared: true,
       systemAvailable: checkResult.available,
