@@ -4,7 +4,16 @@
 
 // ==================== 第一阶段：全局扫描 ====================
 
+/**
+ * 构建第一阶段全局扫描提示词
+ *
+ * 注意：时长估算使用"每1000中文字符≈60秒"的启发式规则，
+ * 仅适用于中文剧本。英文或其他语言剧本会导致估算偏差。
+ */
 export function buildPhase1Prompt(scriptContent: string, styleDescription: string): string {
+  if (scriptContent.length > 50000) {
+    console.warn(`[prompts] buildPhase1Prompt: scriptContent is ${scriptContent.length} chars, may exceed model context window`)
+  }
   return `你是一个专业的影视剧本分析专家。请快速扫描以下剧本，提取概要信息。
 
 ## 画面风格
@@ -62,7 +71,7 @@ ${scriptContent}
 
 // ==================== 第二阶段：分段详解 ====================
 
-export function buildPhase2Prompt(params: {
+export interface Phase2PromptParams {
   chunkContent: string
   chunkId: number
   totalChunks: number
@@ -72,7 +81,9 @@ export function buildPhase2Prompt(params: {
   maxDurationPerShotSec: number
   previousShotSummary: string | null
   styleDescription: string
-}): string {
+}
+
+export function buildPhase2Prompt(params: Phase2PromptParams): string {
   const {
     chunkContent, chunkId, totalChunks, characters,
     currentSceneIndex, currentSceneLocation, maxDurationPerShotSec,
@@ -169,10 +180,10 @@ ${chunkContent}
 
 export interface Phase1Character {
   name: string
-  role: string
+  role: '主角' | '配角' | '反派' | '路人'
   summary: string
   appearanceBrief: string
-  importance: string
+  importance: '高' | '中' | '低'
 }
 
 export interface Phase1SceneOutline {
