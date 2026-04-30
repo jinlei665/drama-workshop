@@ -6,7 +6,7 @@ import { chunkScript } from "@/lib/script-parser"
 import type { Phase1Character } from "@/lib/script-parser"
 
 // 风格描述映射
-const styleDescriptions: Record<string, string> = {
+const styleDescriptions = Object.freeze({
   realistic_cinema: '电影级写实风格，专业影视剧质感，电影级光影',
   realistic_drama: '短剧写实风格，现代短剧风格，自然光线',
   realistic_period: '古装写实风格，古风影视质感，唯美画面',
@@ -19,7 +19,7 @@ const styleDescriptions: Record<string, string> = {
   art_ink: '中国传统水墨画风格',
   art_oil: '油画风格，厚重笔触',
   art_comic: '美式漫画风格，强对比',
-}
+} as const) as Readonly<Record<string, string>>
 
 const MAX_DURATION_PER_SHOT_SEC = 12 // Seedance 1.5 Pro 限制
 
