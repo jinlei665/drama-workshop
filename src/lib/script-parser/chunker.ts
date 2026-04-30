@@ -113,7 +113,49 @@ export function buildChunks(text: string, boundaries: number[]): Chunk[] {
   for (const seg of segments) {
     const segLen = seg.text.length
 
-    // 情况1：当前chunk为空或是seg可以并入当前chunk
+    // 单个场景超过上限 → 在段落边界拆分
+    if (segLen > MAX_CHUNK_SIZE) {
+      // 先保存当前 chunk
+      if (currentText) {
+        chunks.push({
+          chunkId: chunkId++,
+          text: currentText,
+          sceneIndices: [...currentSceneIndices],
+          charCount: currentText.length,
+          startCharIndex: currentStartChar,
+          endCharIndex: currentStartChar + currentText.length,
+        })
+        currentText = ''
+        currentSceneIndices = []
+      }
+
+      // 按段落边界拆分过长场景
+      const paragraphs = seg.text.split(/\n\n+/)
+      let paraChunk = ''
+      for (const para of paragraphs) {
+        if (paraChunk && paraChunk.length + para.length + 2 > MAX_CHUNK_SIZE) {
+          chunks.push({
+            chunkId: chunkId++,
+            text: paraChunk,
+            sceneIndices: [seg.sceneIndex],
+            charCount: paraChunk.length,
+            startCharIndex: seg.startChar,
+            endCharIndex: seg.startChar + seg.text.length,
+          })
+          paraChunk = para
+        } else {
+          paraChunk = paraChunk ? paraChunk + '\n\n' + para : para
+        }
+      }
+      if (paraChunk) {
+        currentText = paraChunk
+        currentSceneIndices = [seg.sceneIndex]
+        currentStartChar = seg.startChar
+      }
+      continue
+    }
+
+    // 正常情况：尝试合并到当前 chunk
     if (currentText === '' || (currentText.length + segLen <= MAX_CHUNK_SIZE)) {
       currentText = currentText ? currentText + '\n\n' + seg.text : seg.text
       currentSceneIndices.push(seg.sceneIndex)
@@ -121,14 +163,15 @@ export function buildChunks(text: string, boundaries: number[]): Chunk[] {
         currentStartChar = seg.startChar
       }
     } else {
-      // 情况2：当前chunk已满，保存并开始新chunk
+      // 当前 chunk 已满，保存并开始新的
+      const actualEnd = seg.startChar // end of previous chunk is start of this one
       chunks.push({
         chunkId: chunkId++,
         text: currentText,
         sceneIndices: [...currentSceneIndices],
         charCount: currentText.length,
         startCharIndex: currentStartChar,
-        endCharIndex: currentStartChar + currentText.length,
+        endCharIndex: actualEnd,
       })
       currentText = seg.text
       currentSceneIndices = [seg.sceneIndex]
@@ -136,7 +179,7 @@ export function buildChunks(text: string, boundaries: number[]): Chunk[] {
     }
   }
 
-  // 保存最后一个chunk
+  // 保存最后一个 chunk，使用文本总长度作为 endCharIndex
   if (currentText) {
     chunks.push({
       chunkId: chunkId,
@@ -144,7 +187,7 @@ export function buildChunks(text: string, boundaries: number[]): Chunk[] {
       sceneIndices: [...currentSceneIndices],
       charCount: currentText.length,
       startCharIndex: currentStartChar,
-      endCharIndex: currentStartChar + currentText.length,
+      endCharIndex: text.length,
     })
   }
 
