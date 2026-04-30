@@ -59,6 +59,13 @@ export async function runPhase1(
     }
   }
 
+  // 过滤掉无效的角色条目（缺少名称的）
+  const validCharacters = result.characters.filter(c => c && typeof c.name === 'string' && c.name.trim())
+  if (validCharacters.length !== result.characters.length) {
+    console.warn(`[Phase1] Filtered out ${result.characters.length - validCharacters.length} invalid character entries`)
+    result.characters = validCharacters
+  }
+
   if (!result.sceneOutline || !Array.isArray(result.sceneOutline)) {
     return {
       success: false,
@@ -67,13 +74,26 @@ export async function runPhase1(
     }
   }
 
+  // 验证 estimatedTotalDurationSec 是有效数字
+  if (typeof result.estimatedTotalDurationSec !== 'number' || result.estimatedTotalDurationSec < 0) {
+    console.warn('[Phase1] estimatedTotalDurationSec is not a valid number, defaulting to 0')
+    result.estimatedTotalDurationSec = 0
+  }
+
+  // 过滤掉无效的场景条目（缺少 index 或 location 的）
+  const validScenes = result.sceneOutline.filter(s => s && typeof s.index === 'number')
+  if (validScenes.length !== result.sceneOutline.length) {
+    console.warn(`[Phase1] Filtered out ${result.sceneOutline.length - validScenes.length} invalid scene entries`)
+    result.sceneOutline = validScenes
+  }
+
   // 3. 用分块器对剧本做智能分块
   const chunks = chunkScript(scriptContent)
   const chunkPlan = generateChunkPlan(chunks)
 
   // 4. 计算总预估分镜数
   const totalEstimatedScenes = result.sceneOutline.reduce(
-    (sum, s) => sum + (s.estimatedShots || 1),
+    (sum, s) => sum + (s.estimatedShots ?? 1),
     0
   )
 
