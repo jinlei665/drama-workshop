@@ -109,6 +109,8 @@ const LLM_MODELS = [
   { value: "doubao-seed-1-6-vision-250815", label: "Doubao Seed 1.6 Vision", description: "图像/视频理解" },
   { value: "deepseek-v3-2-251201", label: "DeepSeek V3.2", description: "高级推理" },
   { value: "deepseek-r1-250528", label: "DeepSeek R1", description: "研究分析" },
+  { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash", description: "快速响应" },
+  { value: "deepseek-v4-1", label: "DeepSeek V4.1", description: "最新旗舰模型" },
   { value: "kimi-k2-250905", label: "Kimi K2", description: "长上下文处理" },
   { value: "kimi-k2-5-260127", label: "Kimi K2.5", description: "Agent、代码、多模态" },
 ]
@@ -662,15 +664,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     </div>
                     <div className="space-y-2">
                       <Label>模型</Label>
-                      <select
-                        className="w-full h-10 px-3 rounded-md border border-input bg-background"
+                      <Input
+                        list="llm-models-list"
                         value={settings.llm_model}
                         onChange={(e) => updateSetting("llm_model", e.target.value)}
-                      >
+                        placeholder="选择或输入模型名称"
+                      />
+                      <datalist id="llm-models-list">
                         {LLM_MODELS.map((m) => (
                           <option key={m.value} value={m.value}>{m.label}</option>
                         ))}
-                      </select>
+                      </datalist>
                     </div>
                   </div>
 

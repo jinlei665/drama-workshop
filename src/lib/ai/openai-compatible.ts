@@ -24,6 +24,12 @@ export const MODEL_NAME_MAPPING: Record<string, Record<string, string>> = {
   'deepseek-r1-250528': {
     deepseek: 'deepseek-reasoner',
   },
+  'deepseek-v4-flash': {
+    deepseek: 'deepseek-chat',
+  },
+  'deepseek-v4-1': {
+    deepseek: 'deepseek-chat',
+  },
   // Kimi 映射
   'kimi-k2-250905': {
     kimi: 'moonshot-v1-128k',

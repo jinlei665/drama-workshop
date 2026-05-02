@@ -75,10 +75,8 @@ export async function POST(request: NextRequest) {
       console.warn('[Generate Appearance from Text] No reference image found, falling back to text-to-image')
       // 如果没有参考图片，回退到文生图
       const name = characterName || '角色'
-      const desc = appearance || '角色形象'
       const change = changeDescription
-      const basePrompt = `${name}，${desc}，人物形象变成${change}，保持人物面部特征一致，高质量，细节丰富`
-
+      const basePrompt = `${name}的角色形象图：${change}，高质量，细节丰富`
       console.log('[Generate Appearance from Text] Falling back to text-to-image with prompt:', basePrompt.substring(0, 100))
 
       const { generateImage } = await import('@/lib/ai')
@@ -98,12 +96,26 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 检查参考图片是否是 localhost URL，如果是，转换为公网 URL
-    if (refImageUrl.includes('localhost') || refImageUrl.includes('127.0.0.1')) {
-      console.log('[Generate Appearance from Text] Reference image is localhost URL, downloading and re-uploading to get public URL')
+    // 检查参考图片 URL 是否需要转换为公网 URL
+    // 外部 AI API 只能访问公网 HTTPS URL，不能访问 localhost、相对路径或内网地址
+    const isPublicUrl = refImageUrl.startsWith('https://') &&
+                        !refImageUrl.includes('localhost') &&
+                        !refImageUrl.includes('127.0.0.1')
+
+    if (!isPublicUrl) {
+      console.log('[Generate Appearance from Text] Reference image is not a public URL, converting...')
       try {
+        // 如果是相对路径（以 / 开头），先构造完整 URL 才能下载
+        let downloadUrl = refImageUrl
+        if (refImageUrl.startsWith('/')) {
+          // 使用环境变量中的域名或默认 localhost 来构造下载 URL
+          const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+          downloadUrl = `${domain}${refImageUrl}`
+          console.log('[Generate Appearance from Text] Resolved relative path to:', downloadUrl)
+        }
+
         // 下载图片
-        const refImageBuffer = await downloadFile(refImageUrl)
+        const refImageBuffer = await downloadFile(downloadUrl)
 
         // 上传到 OSS 获取公网 URL
         const { fileKey: refFileKey, viewUrl: refPublicUrl } = await uploadImage(refImageBuffer, `${characterId}_ref`)
@@ -117,9 +129,8 @@ export async function POST(request: NextRequest) {
 
         // 转换失败，回退到文生图
         const name = characterName || '角色'
-        const desc = appearance || '角色形象'
         const change = changeDescription
-        const basePrompt = `${name}，${desc}，人物形象变成${change}，保持人物面部特征一致，高质量，细节丰富`
+        const basePrompt = `${name}的角色形象图：${change}，高质量，细节丰富`
 
         const { generateImage } = await import('@/lib/ai')
         const result = await generateImage(basePrompt, {
@@ -141,11 +152,11 @@ export async function POST(request: NextRequest) {
 
     // 使用图生图功能生成新形象
     const name = characterName || '角色'
-    const desc = appearance || '角色形象'
     const change = changeDescription
 
-    // 提示词：保持角色特征，根据描述改变形象
-    const basePrompt = `${name}，${desc}，人物形象变成${change}，保持人物面部特征一致，高质量，细节丰富`
+    // 提示词：参考图片已包含原始形象，这里只描述目标变更
+    // 避免混入原始外貌描述导致 AI 困惑，确保 AI 基于参考图做定向修改
+    const basePrompt = `请根据参考图片，将人物${name}的形象改变为：${change}。必须保持人物面部特征与参考图一致，不要改变五官和脸型。更换服装、发型、姿态和整体气质以匹配新的形象描述。高质量，细节丰富。`
 
     console.log('[Generate Appearance from Text] Generating new appearance with prompt:', basePrompt.substring(0, 100))
     console.log('[Generate Appearance from Text] Using reference image:', refImageUrl)

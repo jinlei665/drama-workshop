@@ -114,6 +114,17 @@ export async function DELETE(
 }
 
 /**
+ * PUT /api/characters/[id]
+ * 更新人物
+ */
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return PATCH(request, { params })
+}
+
+/**
  * PATCH /api/characters/[id]
  * 更新人物
  */

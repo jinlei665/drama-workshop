@@ -1,21 +1,15 @@
-.next
-
 # Dependencies
 node_modules/
 .pnp
 .pnp.js
 
-# Production build
-dist/
-build/
-out/
+# Next.js
 .next/
-.rsbuild/
+out/
 
-# Testing
-coverage/
-*.lcov
-.nyc_output
+# Production
+build/
+dist/
 
 # Environment variables
 .env
@@ -24,76 +18,38 @@ coverage/
 .env.test.local
 .env.production.local
 
-# Logs
-logs/
-*.log
+# Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Diagnostic reports
-report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
-
-# Cache
-.cache/
-.parcel-cache/
-.eslintcache
-.stylelintcache
-.npm
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
+# IDE
 .idea/
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+.vscode/
 *.swp
 *.swo
-*~
 
-# OS files
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
-Desktop.ini
 
-# Temporary files
-*.tmp
-*.temp
-.tmp/
-.temp/
+# AI agents / memory
+.agents/
+.claude/
 
-# Optional files
-*.tgz
-*.gz
-*.zip
-*.tar
+# Merged media (large files)
+public/merged/
+
+# Uploaded media (large generated files)
+public/characters/
+public/character-appearances/
+public/character-library/
+public/scenes/
+public/videos/
+public/ai-create/
 
 # TypeScript
-*.tsbuildinfo
+tsconfig.tsbuildinfo
 
-# Misc
-.vercel
-.turbo
-
-.coze-logs
+# Test artifacts
+__tests__/test-output/

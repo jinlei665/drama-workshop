@@ -24,13 +24,93 @@ export async function POST(request: NextRequest) {
   console.log('[Generate Appearance] Starting generation for:', characterId, 'from reference image:', referenceImageUrl)
 
   try {
+    // 检查参考图片 URL 是否需要转换为公网 URL
+    // 外部 AI API 只能访问公网 HTTPS URL
+    let refImageUrl = referenceImageUrl
+    const isPublicUrl = refImageUrl.startsWith('https://') &&
+                        !refImageUrl.includes('localhost') &&
+                        !refImageUrl.includes('127.0.0.1')
+
+    if (!isPublicUrl) {
+      console.log('[Generate Appearance from Image] Reference image is not a public URL, converting...')
+      try {
+        // 如果是相对路径（以 / 开头），先构造完整 URL 才能下载
+        let downloadUrl = refImageUrl
+        if (refImageUrl.startsWith('/')) {
+          const domain = process.env.COZE_PROJECT_DOMAIN_DEFAULT || 'http://localhost:5000'
+          downloadUrl = `${domain}${refImageUrl}`
+          console.log('[Generate Appearance from Image] Resolved relative path to:', downloadUrl)
+        }
+
+        // 下载图片
+        const refImageBuffer = await downloadFile(downloadUrl)
+
+        // 上传到 OSS 获取公网 URL
+        const { fileKey: refFileKey, viewUrl: refPublicUrl } = await uploadImage(refImageBuffer, `${characterId}_ref`)
+
+        if (refPublicUrl) {
+          refImageUrl = refPublicUrl
+          console.log('[Generate Appearance from Image] Reference image converted to public URL:', refImageUrl)
+        }
+      } catch (error) {
+        console.warn('[Generate Appearance from Image] Failed to convert reference image, falling back to text-to-image:', error)
+
+        // 转换失败，回退到文生图
+        const fallbackPrompt = `${characterName || '角色'}的角色形象图：${changeDescription || '新形象'}，高质量，细节丰富`
+        const { generateImage } = await import('@/lib/ai')
+        const result = await generateImage(fallbackPrompt, {
+          size: '2K',
+          watermark: false,
+        }, undefined, customHeaders)
+
+        const fallbackImageUrl = result.urls[0]
+        const fallbackBuffer = await downloadFile(fallbackImageUrl)
+
+        let fallbackFileKey: string | null = null
+        let fallbackViewUrl: string = fallbackImageUrl
+
+        try {
+          const OSS = await import('ali-oss')
+          const ossClient = new OSS.default({
+            region: process.env.S3_REGION || 'oss-cn-chengdu',
+            accessKeyId: process.env.S3_ACCESS_KEY || '',
+            accessKeySecret: process.env.S3_SECRET_KEY || '',
+            bucket: process.env.S3_BUCKET || 'drama-studio',
+            secure: true,
+          })
+          fallbackFileKey = `character-appearances/${characterId}/appearance_${Date.now()}.png`
+          await ossClient.put(fallbackFileKey, fallbackBuffer)
+          await ossClient.putACL(fallbackFileKey, 'public-read')
+          const endpoint = process.env.S3_ENDPOINT || process.env.COZE_BUCKET_ENDPOINT_URL
+          fallbackViewUrl = `${endpoint}/${fallbackFileKey}`
+        } catch (ossError) {
+          console.warn('Failed to upload fallback image to OSS:', ossError)
+          const fs = await import('fs')
+          const path = await import('path')
+          const publicDir = path.join(process.cwd(), 'public', 'character-appearances', characterId)
+          if (!fs.existsSync(publicDir)) {
+            fs.mkdirSync(publicDir, { recursive: true })
+          }
+          const localFileName = `appearance_${Date.now()}.png`
+          const localFilePath = path.join(publicDir, localFileName)
+          fs.writeFileSync(localFilePath, fallbackBuffer)
+          fallbackFileKey = `${characterId}/${localFileName}`
+          fallbackViewUrl = `/character-appearances/${fallbackFileKey}`
+        }
+
+        return NextResponse.json({
+          success: true,
+          viewUrl: fallbackViewUrl,
+          fileKey: fallbackFileKey,
+        })
+      }
+    }
+
     // 构建生成新形象的提示词
     const name = characterName || '角色'
-    const desc = appearance || '角色形象'
     const change = changeDescription || '保持原风格'
-
-    // 提示词：请根据所提供图片来变更生成一张新图片，图中的人形象变成...
-    const basePrompt = `请根据所提供图片来变更生成一张新图片，图中的人形象变成${change}。${name}，${desc}，保持人物面部特征一致，高质量，细节丰富`
+    // 提示词：参考图片已包含原始形象，这里只描述目标变更
+    const basePrompt = `请根据参考图片，将人物${name}的形象改变为：${change}。必须保持人物面部特征与参考图一致，不要改变五官和脸型。更换服装、发型、姿态和整体气质以匹配新的形象描述。高质量，细节丰富。`
 
     console.log('Generating new appearance with prompt:', basePrompt.substring(0, 100))
 

@@ -154,6 +154,8 @@ export const AVAILABLE_LLM_MODELS = [
   { value: 'doubao-seed-1-6-lite-251015', label: 'Doubao Seed 1.6 Lite', description: '轻量级' },
   { value: 'deepseek-v3-2-251201', label: 'DeepSeek V3.2', description: '高级推理' },
   { value: 'deepseek-r1-250528', label: 'DeepSeek R1', description: '研究分析' },
+  { value: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', description: '快速响应' },
+  { value: 'deepseek-v4-1', label: 'DeepSeek V4.1', description: '最新旗舰模型' },
   { value: 'kimi-k2-250905', label: 'Kimi K2', description: '长上下文处理' },
   { value: 'kimi-k2-5-260127', label: 'Kimi K2.5', description: 'Agent、代码、多模态' },
 ] as const
@@ -1041,14 +1043,11 @@ async function invokeBotForImageGeneration(
   if (referenceImages && referenceImages.length > 0) {
     console.log('[Bot Image] Processing reference images:', referenceImages)
 
-    // 多模态消息格式：包含图片和文本
+    // Coze v3 API 多模态消息格式：type: "image" + file_url，content_type: "object_string"
     const multimodalContent: Array<{
       type: string
       text?: string
-      image_url?: {
-        url: string
-        detail?: 'low' | 'high'
-      }
+      file_url?: string
     }> = []
 
     // 先添加参考图片
@@ -1057,11 +1056,8 @@ async function invokeBotForImageGeneration(
       console.log(`[Bot Image] Adding reference image ${i + 1}/${referenceImages.length}:`, refUrl)
 
       multimodalContent.push({
-        type: 'image_url',
-        image_url: {
-          url: refUrl,
-          detail: 'low'  // 使用 low detail 以减少 token 消耗
-        }
+        type: 'image',
+        file_url: refUrl,
       })
     }
 
@@ -1073,12 +1069,13 @@ async function invokeBotForImageGeneration(
 
     additionalMessages.push({
       role: 'user',
-      content: multimodalContent,
+      content: JSON.stringify(multimodalContent),
+      content_type: 'object_string',
     })
 
     console.log('[Bot Image] Multimodal message structure:', {
       totalContentItems: multimodalContent.length,
-      imageCount: multimodalContent.filter(item => item.type === 'image_url').length,
+      imageCount: multimodalContent.filter(item => item.type === 'image').length,
       hasText: multimodalContent.some(item => item.type === 'text')
     })
   } else {
@@ -3071,6 +3068,75 @@ export async function generateVideoFromFrames(
  * 解析 LLM 返回的 JSON
  * 增强版：支持多种 JSON 格式和自动修复
  */
+/**
+ * 修复 JSON 字符串值内的未转义 ASCII 双引号
+ *
+ * 使用状态机逐字符扫描，检测并转义字符串值内不应该出现的未转义双引号。
+ * 同时处理字符串内的裸换行符（\r, \n）。
+ *
+ * 判断逻辑：当在字符串内部遇到 " 时，检查其后第一个非空字符：
+ * - 如果是 , } ] : → 这是合法的字符串结束引号
+ * - 否则 → 这是内容中的未转义引号，需要在其前插入 \
+ */
+function repairJsonStringQuotes(jsonStr: string): string {
+  let result = ''
+  let inString = false
+  let escapeNext = false
+
+  for (let i = 0; i < jsonStr.length; i++) {
+    const ch = jsonStr[i]
+
+    if (escapeNext) {
+      result += ch
+      escapeNext = false
+      continue
+    }
+
+    if (inString) {
+      if (ch === '\\') {
+        result += ch
+        escapeNext = true
+      } else if (ch === '"') {
+        // 检查下一个非空白字符，判断是字符串结束还是内容引号
+        let j = i + 1
+        while (j < jsonStr.length && (jsonStr[j] === ' ' || jsonStr[j] === '\t' || jsonStr[j] === '\n' || jsonStr[j] === '\r')) {
+          j++
+        }
+        const nextChar = j < jsonStr.length ? jsonStr[j] : ''
+
+        if (nextChar === '' || nextChar === ',' || nextChar === '}' || nextChar === ']' || nextChar === ':') {
+          // 合法的字符串结束引号
+          result += ch
+          inString = false
+        } else {
+          // 内容中的未转义引号，需要转义
+          result += '\\"'
+        }
+      } else if (ch === '\n') {
+        result += '\\n'
+      } else if (ch === '\r') {
+        // 跳过 \r，如果后跟 \n 则由 \n 处理
+        if (i + 1 < jsonStr.length && jsonStr[i + 1] === '\n') {
+          // \r\n → 跳过 \r，让 \n 输出 \n
+          continue
+        }
+        result += '\\r'
+      } else {
+        result += ch
+      }
+    } else {
+      if (ch === '"') {
+        result += ch
+        inString = true
+      } else {
+        result += ch
+      }
+    }
+  }
+
+  return result
+}
+
 export function parseLLMJson<T>(content: string): T {
   logger.info(`[parseLLMJson] Content length: ${content.length}`)
   logger.info(`[parseLLMJson] Content preview (first 200 chars): ${content.substring(0, 200)}`)
@@ -3091,6 +3157,10 @@ export function parseLLMJson<T>(content: string): T {
   
   logger.info(`[parseLLMJson] Extracted JSON length: ${jsonStr.length}`)
   logger.info(`[parseLLMJson] Extracted JSON preview (first 200 chars): ${jsonStr.substring(0, 200)}`)
+
+  // 策略1.5：修复 JSON 字符串值内的未转义双引号
+  // LLM 经常在 JSON 字符串中混入未转义的 ASCII 双引号（特别是在对话/描述文本中）
+  jsonStr = repairJsonStringQuotes(jsonStr)
 
   try {
     const result = JSON.parse(jsonStr) as T
